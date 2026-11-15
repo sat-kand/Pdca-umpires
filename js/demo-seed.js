@@ -60,13 +60,14 @@ const NAMES = Array.from({ length: 10 }, (_, i) => `Demo Umpire ${i + 1}`);
 const todayIso = () => { const d = new Date(); return iso(d); };
 
 // Real fixtures for the whole season from Play Cricket, or null when the service can't be reached.
-export async function loadLiveSeason({ fetchFn, timeoutMs = 45000 } = {}) {
+export async function loadLiveSeason({ fetchFn, timeoutMs = 45000, playCricketId } = {}) {
+  if (!playCricketId) return null;
   const work = (async () => {
     const api = makeApi(CONFIG.apiBase, fetchFn);
-    const seasons = await fetchSeasons(api, CONFIG.orgId);
+    const seasons = await fetchSeasons(api, playCricketId);
     const cur = seasons.find(x => x.current) || seasons[0];
     if (!cur) return null;
-    const comps = await fetchCompetitions(api, CONFIG.orgId, cur.id);
+    const comps = await fetchCompetitions(api, playCricketId, cur.id);
     const games = await loadFixtures({ api, comps, from: '0000-01-01', to: '9999-12-31' });
     return games.length ? { season: { id: cur.id, name: cur.name }, games, comps } : null;
   })();
@@ -91,7 +92,7 @@ export async function seedDemo(store, { live = true, fetchFn } = {}) {
     await store.saveUmpire({ pid: had ? had.pid : newPid(), email, name, phone: '', active: true });
   }
 
-  const real = live ? await loadLiveSeason({ fetchFn }) : null;
+  const real = live ? await loadLiveSeason({ fetchFn, playCricketId: store.org && store.org.playCricketId }) : null;
   let seasonInfo, all, comps = [];
   if (real) {
     seasonInfo = real.season; all = real.games; comps = real.comps;

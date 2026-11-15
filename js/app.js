@@ -3,9 +3,12 @@ import { h, setChildren, spinner, toast } from './ui.js';
 import { createDemoStore } from './store-demo.js';
 import { seedDemo } from './demo-seed.js';
 import { viewLogin, viewProfile, viewMy } from './views-umpire.js';
+import { viewAssociations, viewOrgSettings } from './views-org.js';
 import { viewAdminHome, viewBoard, viewAvailabilityOverview, viewSeasonAvailability, viewReport, viewUmpires } from './views-admin.js';
 
-const S = { store: null, user: null, isAdmin: false, umpire: null };
+const S = { store: null, user: null, org: null, isAdmin: false, umpire: null };
+const ORG_KEY = 'pdca-org';            // the association this browser last used
+const JOIN_KEY = 'pdca-org-joining';   // set when it was just chosen (join link, picker or sign-up)
 const main = document.getElementById('app');
 const header = document.getElementById('top');
 let renderId = 0;
@@ -13,12 +16,34 @@ let renderId = 0;
 const go = path => { if (location.hash === '#' + path) render(); else location.hash = '#' + path; };
 
 async function loadUser(user) {
-  S.user = user; S.isAdmin = false; S.umpire = null;
+  S.user = user; S.isAdmin = false; S.umpire = null; S.org = null;
+  await S.store.useOrg(null);
   if (!user) return;
+  try {
+    let id = localStorage.getItem(ORG_KEY);
+    // Arriving by a link (or having just picked one) wins. Otherwise use the association this browser last used,
+    // unless this person belongs to others and not that one (a shared computer).
+    if (!localStorage.getItem(JOIN_KEY)) {
+      const mine = (await S.store.listMyOrgs(user.email)).map(o => o.id);
+      if (mine.length && !mine.includes(id)) id = mine.length === 1 ? mine[0] : null;
+    }
+    S.org = id ? await S.store.useOrg(id) : null;
+    if (id && !S.org) { localStorage.removeItem(ORG_KEY); if (localStorage.getItem(JOIN_KEY)) toast('That association link is not valid.', 'err'); }
+  } catch (e) { console.warn('association load failed', e); }
+  const joining = localStorage.getItem(JOIN_KEY);
+  localStorage.removeItem(JOIN_KEY);
+  if (!S.org) return;
+  localStorage.setItem(ORG_KEY, S.org.id);
+  if (joining) { try { await S.store.rememberOrg(user.email, S.org.id); } catch (e) { console.warn('could not remember association', e); } }
   try { S.isAdmin = await S.store.isAdmin(user.email); } catch (e) { console.warn('admin check failed', e); }
   try { S.umpire = await S.store.getUmpire(user.email); } catch (e) { console.warn('umpire load failed', e); }
 }
-const ctx = { get store() { return S.store; }, S, go, refreshUser: () => loadUser(S.user) };
+async function chooseOrg(id) {
+  localStorage.setItem(ORG_KEY, id); localStorage.setItem(JOIN_KEY, '1');
+  if (S.user) await loadUser(S.user);
+  go('/');
+}
+const ctx = { get store() { return S.store; }, S, go, refreshUser: () => loadUser(S.user), chooseOrg, redrawHeader: () => drawHeader() };
 
 const ROUTES = [
   [/^\/$/, () => viewMy(ctx)],
@@ -27,6 +52,7 @@ const ROUTES = [
   [/^\/admin$/, () => viewAdminHome(ctx), true],
   [/^\/admin\/availability$/, () => viewSeasonAvailability(ctx), true],
   [/^\/admin\/umpires$/, () => viewUmpires(ctx), true],
+  [/^\/admin\/settings$/, () => viewOrgSettings(ctx), true],
   [/^\/admin\/round\/([^/]+)$/, rid => viewBoard(ctx, rid), true],
   [/^\/admin\/round\/([^/]+)\/availability$/, rid => viewAvailabilityOverview(ctx, rid), true],
   [/^\/admin\/round\/([^/]+)\/report$/, rid => viewReport(ctx, rid), true],
@@ -38,16 +64,19 @@ function drawHeader() {
   setChildren(header,
     demo && h('div', { class: 'demo-banner' }, 'Demo mode — data is stored only in this browser. ',
       h('button', { class: 'link', type: 'button', onclick: async ev => {
+        if (!S.org || !S.isAdmin) { toast('Sign in as admin@demo.test first', 'err'); return; }
         const b = ev.currentTarget; b.disabled = true; b.textContent = 'Loading real PDCA fixtures…';
         try { const r = await seedDemo(S.store); toast(r.live ? `Loaded the real PDCA fixtures (${r.games} games) and sample umpires` : 'Play Cricket not reachable: loaded made-up sample fixtures'); } finally { render(); }
       } }, 'Load sample data'), ' · ',
-      h('button', { class: 'link', type: 'button', onclick: () => { if (confirm('Erase all demo data in this browser?')) { S.store.demoReset(); location.hash = '#/'; } } }, 'Reset')),
+      h('button', { class: 'link', type: 'button', onclick: () => { if (confirm('Erase all demo data in this browser?')) { localStorage.removeItem(ORG_KEY); S.store.demoReset(); location.hash = '#/'; } } }, 'Reset')),
     h('div', { class: 'bar' },
       h('a', { class: 'brand', href: '#/' }, '🏏 ', CONFIG.appName),
-      S.isAdmin && h('nav', { class: 'nav' }, link('#/admin', 'Rounds'), link('#/admin/availability', 'Availability'), link('#/admin/umpires', 'Umpires'), link('#/my', 'My availability')),
+      S.isAdmin && h('nav', { class: 'nav' }, link('#/admin', 'Rounds'), link('#/admin/availability', 'Availability'), link('#/admin/umpires', 'Umpires'), link('#/admin/settings', 'Settings'), link('#/my', 'My availability')),
       S.user && h('div', { class: 'who' },
+        S.org && h('a', { class: 'org-name', href: '#/associations', title: 'Switch association' }, S.org.name),
         h('a', { class: 'who-name', href: '#/profile', title: 'Edit my details' }, (S.umpire && S.umpire.name) || S.user.email),
-        h('button', { class: 'btn small', type: 'button', onclick: async () => { await S.store.signOut(); location.hash = '#/'; } }, 'Sign out'))));
+        h('button', { class: 'btn small', type: 'button', onclick: async () => { await S.store.signOut(); location.hash = '#/'; } }, 'Sign out'))),
+    S.org && S.org.plan === 'suspended' && h('div', { class: 'demo-banner' }, 'This association\'s subscription is paused, so changes cannot be saved.'));
 }
 
 async function render() {
@@ -55,11 +84,14 @@ async function render() {
   const id = ++renderId;
   drawHeader();
   const path = location.hash.slice(1) || '/';
-  if (S.user && S.isAdmin && path === '/') { go('/admin'); return; }
+  const join = /^\/join\/([^/]+)$/.exec(path);          // the link an association sends its umpires
+  if (join) { if (S.user) await chooseOrg(decodeURIComponent(join[1])); else { localStorage.setItem(ORG_KEY, decodeURIComponent(join[1])); localStorage.setItem(JOIN_KEY, '1'); go('/'); } return; }
+  if (S.user && S.org && S.isAdmin && path === '/') { go('/admin'); return; }
   setChildren(main, spinner());
   let view;
   try {
     if (!S.user) view = viewLogin(ctx);
+    else if (!S.org || path === '/associations') view = await viewAssociations(ctx);
     else if (!S.umpire && !S.isAdmin && path !== '/profile') view = await viewProfile(ctx);
     else {
       let matched = false;

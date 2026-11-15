@@ -134,13 +134,21 @@ export async function applyFresh(store, round, fresh, settings) {
   return { ...res, all };
 }
 
+// Each association has its own Play Cricket organisation id (set in Settings).
+function playCricketId(store) {
+  const id = store.org && store.org.playCricketId;
+  if (!id) throw new Error('Add your association\'s Play Cricket link in Settings first');
+  return id;
+}
+
 // Fetch the whole season, rebuild the umpires' date list, and create / update each competition's next round.
 export async function syncFromPlayCricket(store, { today, fetchFn, onProgress } = {}) {
+  const pc = playCricketId(store);
   const api = makeApi(CONFIG.apiBase, fetchFn);
-  const seasons = await fetchSeasons(api, CONFIG.orgId);
+  const seasons = await fetchSeasons(api, pc);
   const cur = seasons.find(x => x.current) || seasons[0];
   if (!cur) throw new Error('No season found on Play Cricket');
-  const comps = await fetchCompetitions(api, CONFIG.orgId, cur.id);
+  const comps = await fetchCompetitions(api, pc, cur.id);
   const games = await loadFixtures({ api, comps, from: '0000-01-01', to: '9999-12-31', onProgress });
   return saveSeasonAndRounds(store, { season: { id: cur.id, name: cur.name }, games, comps, today });
 }
@@ -172,7 +180,7 @@ export async function refreshRound(store, round, settings, { fetchFn } = {}) {
   const src = round.source || {};
   if (src.type !== 'playcricket') return null;
   const api = makeApi(CONFIG.apiBase, fetchFn);
-  const comps = (await fetchCompetitions(api, CONFIG.orgId, src.seasonId)).filter(c => (src.comps || []).includes(c.id));
+  const comps = (await fetchCompetitions(api, playCricketId(store), src.seasonId)).filter(c => (src.comps || []).includes(c.id));
   const fresh = await loadFixtures({ api, comps, from: src.from, to: src.to });
   return applyFresh(store, round, fresh, settings);
 }

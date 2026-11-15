@@ -1,14 +1,17 @@
 // Live back-end: Firebase Authentication (email link) + Cloud Firestore.
 // Loaded lazily from Google's CDN so demo mode needs no network at all.
 //
-// Collections (see firestore.rules):
-//   admins/{email}                 created by hand in the Firebase console
-//   umpires/{email}                one per umpire (id = lower-case email)
-//   config/season                  season calendar: the dates umpires answer for
-//   rounds/{roundId}               title, dates, published, stats
-//   rounds/{roundId}/games/{id}    fixture + slots + alloc
-//   availability/{seasonId__email} one per umpire per season
-//   settings/defaults              default umpires-per-game by grade
+// Every association (org) has its own data, kept apart by the rules in firestore.rules:
+//   users/{email}                            which associations a person has opened (their own list)
+//   platformAdmins/{email}                   the product owner(s); created by hand in the Firebase console
+//   orgs/{orgId}                             name, Play Cricket id, plan
+//   orgs/{orgId}/admins/{email}              appointments officers
+//   orgs/{orgId}/umpires/{email}             one per umpire (id = lower-case email)
+//   orgs/{orgId}/config/season               season calendar: the dates umpires answer for
+//   orgs/{orgId}/rounds/{roundId}            title, dates, published, stats
+//   orgs/{orgId}/rounds/{roundId}/games/{id} fixture + slots + alloc
+//   orgs/{orgId}/availability/{seasonId__email}
+//   orgs/{orgId}/settings/defaults           default umpires-per-game by grade
 
 import { FIREBASE_SDK } from './config.js';
 
@@ -30,6 +33,8 @@ export async function createFirebaseStore(cfg) {
     return snap.exists() ? snap.data() : null;
   };
   const putOne = (data, ...path) => fs.setDoc(fs.doc(db, ...path), clean(data), { merge: false });
+  let org = null;                                        // the association in use
+  const P = (...p) => { if (!org) throw new Error('No association selected'); return ['orgs', org.id, ...p]; };
 
   return {
     mode: 'firebase',
@@ -59,50 +64,72 @@ export async function createFirebaseStore(cfg) {
     // Google sign-in has no email-sending quota (email-link emails are capped at 5/day on Firebase's free plan).
     async signInGoogle() { await authM.signInWithPopup(auth, new authM.GoogleAuthProvider()); },
     signOut() { return authM.signOut(auth); },
-    async isAdmin(email) { return !!(await getOne('admins', email)); },
+
+    // ----- associations -----
+    get org() { return org; },
+    async useOrg(id) { org = id ? await getOne('orgs', id) : null; return org; },
+    getOrg: id => getOne('orgs', id),
+    async listMyOrgs(email) {
+      const u = await getOne('users', email);
+      const found = await Promise.all(((u && u.orgs) || []).map(id => getOne('orgs', id).catch(() => null)));
+      return found.filter(Boolean);
+    },
+    rememberOrg: (email, id) => fs.setDoc(fs.doc(db, 'users', email), { orgs: fs.arrayUnion(id) }, { merge: true }),
+    async createOrg(o, email) {
+      const doc = { ...clean(o), createdBy: email };
+      await fs.setDoc(fs.doc(db, 'orgs', o.id), doc);                                  // fails if the id is taken (no update permission)
+      await fs.setDoc(fs.doc(db, 'orgs', o.id, 'admins', email), { email, addedAt: new Date().toISOString() });
+      await this.rememberOrg(email, o.id);
+      return doc;
+    },
+    async saveOrg(patch) { await fs.setDoc(fs.doc(db, 'orgs', org.id), clean(patch), { merge: true }); Object.assign(org, clean(patch)); },
+    async listAdmins() { const s = await fs.getDocs(fs.collection(db, ...P('admins'))); return s.docs.map(d => d.id); },
+    addAdmin: email => fs.setDoc(fs.doc(db, ...P('admins', email)), { email, addedAt: new Date().toISOString() }),
+    removeAdmin: email => fs.deleteDoc(fs.doc(db, ...P('admins', email))),
+    async isAdmin(email) { return !!org && !!(await getOne(...P('admins', email))); },
 
     // ----- umpires -----
-    getUmpire: email => getOne('umpires', email),
-    saveUmpire: u => fs.setDoc(fs.doc(db, 'umpires', u.email), clean(u), { merge: true }),
+    getUmpire: email => getOne(...P('umpires', email)),
+    saveUmpire: u => fs.setDoc(fs.doc(db, ...P('umpires', u.email)), clean(u), { merge: true }),
     async listUmpires() {
-      const s = await fs.getDocs(fs.collection(db, 'umpires'));
+      const s = await fs.getDocs(fs.collection(db, ...P('umpires')));
       return s.docs.map(d => d.data());
     },
 
     // ----- rounds & games -----
     async listRounds() {
-      const s = await fs.getDocs(fs.query(fs.collection(db, 'rounds'), fs.orderBy('start', 'desc')));
+      const s = await fs.getDocs(fs.query(fs.collection(db, ...P('rounds')), fs.orderBy('start', 'desc')));
       return s.docs.map(d => d.data());
     },
-    getRound: id => getOne('rounds', id),
-    saveRound: r => fs.setDoc(fs.doc(db, 'rounds', r.id), clean(r), { merge: true }),
+    getRound: id => getOne(...P('rounds', id)),
+    saveRound: r => fs.setDoc(fs.doc(db, ...P('rounds', r.id)), clean(r), { merge: true }),
     async listGames(rid) {
-      const s = await fs.getDocs(fs.collection(db, 'rounds', rid, 'games'));
+      const s = await fs.getDocs(fs.collection(db, ...P('rounds', rid, 'games')));
       return s.docs.map(d => d.data());
     },
-    saveGame: (rid, g) => putOne(g, 'rounds', rid, 'games', g.id),
+    saveGame: (rid, g) => putOne(g, ...P('rounds', rid, 'games', g.id)),
     async saveGames(rid, games) {
       for (let i = 0; i < games.length; i += 400) {
         const batch = fs.writeBatch(db);
-        for (const g of games.slice(i, i + 400)) batch.set(fs.doc(db, 'rounds', rid, 'games', g.id), clean(g));
+        for (const g of games.slice(i, i + 400)) batch.set(fs.doc(db, ...P('rounds', rid, 'games', g.id)), clean(g));
         await batch.commit();
       }
     },
 
     // ----- season calendar (the dates umpires answer for) -----
-    getSeason: () => getOne('config', 'season'),
-    saveSeason: s => putOne(s, 'config', 'season'),
+    getSeason: () => getOne(...P('config', 'season')),
+    saveSeason: s => putOne(s, ...P('config', 'season')),
 
     // ----- availability: one document per umpire per season -----
-    getAvailability: (seasonId, email) => getOne('availability', `${seasonId}__${email}`),
-    saveAvailability: a => putOne(a, 'availability', `${a.seasonId}__${a.email}`),
+    getAvailability: (seasonId, email) => getOne(...P('availability', `${seasonId}__${email}`)),
+    saveAvailability: a => putOne(a, ...P('availability', `${a.seasonId}__${a.email}`)),
     async listAvailability(seasonId) {
-      const s = await fs.getDocs(fs.query(fs.collection(db, 'availability'), fs.where('seasonId', '==', seasonId)));
+      const s = await fs.getDocs(fs.query(fs.collection(db, ...P('availability')), fs.where('seasonId', '==', seasonId)));
       return s.docs.map(d => d.data());
     },
 
     // ----- settings -----
-    async getSettings() { return (await getOne('settings', 'defaults')) || {}; },
-    saveSettings: s => fs.setDoc(fs.doc(db, 'settings', 'defaults'), clean(s), { merge: true }),
+    async getSettings() { return (await getOne(...P('settings', 'defaults'))) || {}; },
+    saveSettings: s => fs.setDoc(fs.doc(db, ...P('settings', 'defaults')), clean(s), { merge: true }),
   };
 }

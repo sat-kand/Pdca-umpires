@@ -2,13 +2,21 @@ rules_version = '2';
 
 // Paste this into Firebase console > Firestore Database > Rules, then Publish.
 //
+// The app holds many associations ("orgs"). Each one's data lives under orgs/{orgId} and is
+// kept apart from every other association by these rules.
+//
 // Who can do what
-//   Appointments officers  = emails that have a document in the `admins` collection
-//                            (created by hand in the console; the app can never write it).
-//   Umpires                = any signed-in, email-verified user:
-//                              - read/write their own umpire profile (but cannot approve themselves)
-//                              - read/write their own season availability
-//                              - read the season calendar and rounds, and the games of PUBLISHED rounds only
+//   Product owner          = emails with a document in `platformAdmins` (created by hand in the
+//                            console; the app can never write it). May list associations and
+//                            change an association's plan (trial / active / suspended).
+//   Appointments officers  = emails with a document in orgs/{orgId}/admins. The person who
+//                            creates an association becomes its first officer; officers can add
+//                            and remove other officers of their own association only.
+//   Umpires                = any signed-in, email-verified user who opens an association's link:
+//                              - read/write their own umpire profile there (cannot approve themselves)
+//                              - read/write their own season availability there
+//                              - read its season calendar and rounds, and the games of PUBLISHED rounds only
+//   A suspended association is read-only.
 //   Everything else is denied.
 
 service cloud.firestore {
@@ -20,75 +28,119 @@ service cloud.firestore {
     function me() {
       return request.auth.token.email.lower();
     }
-    function isAdmin() {
-      return signedIn() && exists(/databases/$(database)/documents/admins/$(me()));
+    function isPlatformAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/platformAdmins/$(me()));
+    }
+    function isOrgAdmin(orgId) {
+      return signedIn() && exists(/databases/$(database)/documents/orgs/$(orgId)/admins/$(me()));
+    }
+    function orgData(orgId) {
+      return get(/databases/$(database)/documents/orgs/$(orgId)).data;
+    }
+    // Trial and paid associations can be changed; a suspended one cannot.
+    function orgOpen(orgId) {
+      return orgData(orgId).plan in ['trial', 'active'];
     }
     // Only these fields may change in an update
     function onlyChanges(keys) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
     }
 
-    // Officers list: you can only check whether YOU are on it.
-    match /admins/{id} {
+    // Product owners: you can only check whether YOU are one.
+    match /platformAdmins/{id} {
       allow get: if signedIn() && id == me();
       allow list, write: if false;
     }
 
-    // One document per umpire, id = lower-case email.
-    match /umpires/{id} {
-      allow get: if signedIn() && (id == me() || isAdmin());
-      allow list: if isAdmin();
-
-      // Self sign-up: starts inactive until an officer approves.
-      allow create: if signedIn() && (
-        isAdmin() || (
-          id == me()
-          && request.resource.data.email == me()
-          && request.resource.data.active == false
-          && request.resource.data.keys().hasOnly(['pid', 'email', 'name', 'phone', 'clubs', 'active', 'updatedAt'])
-        ));
-
-      // Umpires may edit their own details but never `active`, `pid` or `email`.
-      allow update: if signedIn() && (
-        isAdmin() || (
-          id == me()
-          && request.resource.data.email == me()
-          && onlyChanges(['name', 'phone', 'clubs', 'updatedAt'])
-        ));
+    // Each person's own list of the associations they have opened (a convenience, gives no access).
+    match /users/{id} {
+      allow read, write: if signedIn() && id == me();
     }
 
-    match /rounds/{roundId} {
-      allow read: if signedIn();
-      allow write: if isAdmin();
+    match /orgs/{orgId} {
+      // Anyone signed in can open an association by its id (the link); only the product owner can list them all.
+      allow get: if signedIn();
+      allow list: if isPlatformAdmin();
 
-      // Allocations are only visible to umpires once the round is published.
-      match /games/{gameId} {
-        allow read: if isAdmin()
-          || (signedIn() && get(/databases/$(database)/documents/rounds/$(roundId)).data.published == true);
-        allow write: if isAdmin();
+      // Sign-up: a new association always starts as a trial owned by its creator.
+      allow create: if signedIn()
+        && request.resource.data.id == orgId
+        && request.resource.data.createdBy == me()
+        && request.resource.data.plan == 'trial'
+        && request.resource.data.name is string && request.resource.data.name.size() > 0
+        && request.resource.data.keys().hasOnly(['id', 'name', 'playCricketId', 'plan', 'trialEnds', 'createdAt', 'createdBy']);
+
+      // Officers may rename it and set its Play Cricket link, never its plan.
+      allow update: if isPlatformAdmin()
+        || (isOrgAdmin(orgId) && onlyChanges(['name', 'playCricketId', 'updatedAt']));
+      allow delete: if false;
+
+      // Officers of this association.
+      match /admins/{id} {
+        allow get: if signedIn() && (id == me() || isOrgAdmin(orgId));
+        allow list: if isOrgAdmin(orgId);
+        allow create: if isOrgAdmin(orgId)
+          || (signedIn() && id == me() && orgData(orgId).createdBy == me());   // the creator becomes the first officer
+        allow delete: if isOrgAdmin(orgId) && id != me();                       // you cannot remove yourself, so one officer always remains
+        allow update: if false;
       }
-    }
 
-    // The season calendar (dates umpires answer for). Officers sync it from Play Cricket.
-    match /config/{id} {
-      allow read: if signedIn();
-      allow write: if isAdmin();
-    }
+      // One document per umpire, id = lower-case email.
+      match /umpires/{id} {
+        allow get: if signedIn() && (id == me() || isOrgAdmin(orgId));
+        allow list: if isOrgAdmin(orgId);
 
-    // One document per umpire per season. id = <seasonId>__<email>
-    match /availability/{id} {
-      allow get: if signedIn() && (id.split('__')[1] == me() || isAdmin());
-      allow list: if isAdmin();
-      allow create, update: if signedIn() && (
-        isAdmin() || (
-          id.split('__')[1] == me()
-          && request.resource.data.email == me()
-          && request.resource.data.seasonId == id.split('__')[0]
-        ));
-    }
+        // Self sign-up: starts inactive until an officer approves.
+        allow create: if signedIn() && orgOpen(orgId) && (
+          isOrgAdmin(orgId) || (
+            id == me()
+            && request.resource.data.email == me()
+            && request.resource.data.active == false
+            && request.resource.data.keys().hasOnly(['pid', 'email', 'name', 'phone', 'active', 'updatedAt'])
+          ));
 
-    match /settings/{id} {
-      allow read, write: if isAdmin();
+        // Umpires may edit their own details but never `active`, `pid` or `email`.
+        allow update: if signedIn() && orgOpen(orgId) && (
+          isOrgAdmin(orgId) || (
+            id == me()
+            && request.resource.data.email == me()
+            && onlyChanges(['name', 'phone', 'updatedAt'])
+          ));
+      }
+
+      match /rounds/{roundId} {
+        allow read: if signedIn();
+        allow write: if isOrgAdmin(orgId) && orgOpen(orgId);
+
+        // Allocations are only visible to umpires once the round is published.
+        match /games/{gameId} {
+          allow read: if isOrgAdmin(orgId)
+            || (signedIn() && get(/databases/$(database)/documents/orgs/$(orgId)/rounds/$(roundId)).data.published == true);
+          allow write: if isOrgAdmin(orgId) && orgOpen(orgId);
+        }
+      }
+
+      // The season calendar (dates umpires answer for). Officers sync it from Play Cricket.
+      match /config/{id} {
+        allow read: if signedIn();
+        allow write: if isOrgAdmin(orgId) && orgOpen(orgId);
+      }
+
+      // One document per umpire per season. id = <seasonId>__<email>
+      match /availability/{id} {
+        allow get: if signedIn() && (id.split('__')[1] == me() || isOrgAdmin(orgId));
+        allow list: if isOrgAdmin(orgId);
+        allow create, update: if signedIn() && orgOpen(orgId) && (
+          isOrgAdmin(orgId) || (
+            id.split('__')[1] == me()
+            && request.resource.data.email == me()
+            && request.resource.data.seasonId == id.split('__')[0]
+          ));
+      }
+
+      match /settings/{id} {
+        allow read, write: if isOrgAdmin(orgId);
+      }
     }
   }
 }

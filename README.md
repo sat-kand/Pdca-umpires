@@ -1,6 +1,6 @@
 # PDCA Umpire Allocation
 
-A small web app for the Parramatta District Cricket Association umpires.
+A small web app for cricket associations to collect umpire availability and allocate umpires. Built for the Parramatta District Cricket Association (PDCA) and set up so other associations can each have their own separate account.
 
 - **Umpires** sign in, tell us which days they can umpire, and later see their own appointments.
 - **The appointments officer** gets each competition's next round from Play Cricket automatically, picks the grades that need umpires, sees who is available for each game, allocates umpires (one or two per game, per day for two-day games), gets warnings for clashes, and publishes a report that matches the one emailed today.
@@ -19,7 +19,16 @@ It is a static site (no build step) that runs on **GitHub Pages**, with **Fireba
 
 **Umpire availability** is asked once for the whole season and is **separate per competition**, so an umpire can be available for Senior and not for Junior on the same date, and can be appointed to more than one competition on the same day without a warning. If every game in a competition is the same length (all two-day, or all one-day) umpires answer **by round** (Round 2 → Day 1 / Day 2); if lengths are mixed, as in Juniors, they answer from a **plain list of dates**.
 
-## One-time setup (about 20 minutes)
+## Associations (accounts)
+
+The app holds many associations, each completely separate: its own officers, umpires, Play Cricket link, fixtures, availability and allocations.
+
+- **Starting one:** sign in → *Your associations* → *Start a new association* (name + the address of its page on play.cricket.com.au). The creator becomes its first appointments officer and it starts on a free trial.
+- **Settings** (officers only): rename the association, set its Play Cricket link, add or remove officers, and copy the **link for umpires**. Umpires open that link, sign in, add their name and wait for approval.
+- **Switching:** the association name in the top bar opens the picker for people who belong to more than one.
+- **Plan:** each association has a plan (`trial`, `active` or `suspended`). A suspended association is read-only. There is no payment system yet: the product owner changes the `plan` field by hand in the Firebase console (see below). Trial length is shown but not enforced automatically.
+
+## One-time setup for the product owner (about 20 minutes)
 
 ### 1. Create the Firebase project
 1. Go to <https://console.firebase.google.com> → **Add project** (Analytics not needed).
@@ -32,26 +41,25 @@ It is a static site (no build step) that runs on **GitHub Pages**, with **Fireba
 - Enable **Google** (recommended — no sending limits).
 - Optionally enable **Email/Password** and tick **Email link (passwordless sign-in)**.
 
-> **Email-link limit:** on Firebase's free *Spark* plan only **5 email-link sign-in emails can be sent per day** (25,000 on the pay-as-you-go *Blaze* plan). That is why *Continue with Google* is the main button. If you want email links for everyone, upgrade to Blaze (needs a billing card; this app's usage stays inside the free quotas, and you can set a budget alert).
+> **Email-link limit:** on Firebase's free *Spark* plan only **5 email-link sign-in emails can be sent per day** (25,000 on the pay-as-you-go *Blaze* plan). That is why *Continue with Google* is the main button.
 
 Then **Authentication → Settings → Authorized domains → Add domain**: `YOUR-GITHUB-USERNAME.github.io`.
 
-### 3. Make yourself an appointments officer
-**Firestore → Start collection** → Collection ID `admins` → Document ID = **your email address in lower case** → add any field (e.g. `role` = `officer`) → Save. Repeat for each officer.
+### 3. Make yourself the product owner
+**Firestore → Start collection** → Collection ID `platformAdmins` → Document ID = **your email address in lower case** → add any field (e.g. `role` = `owner`) → Save. Product owners can change an association's `plan` (open `orgs/{id}` in the console and edit `plan`).
 
 ### 4. Publish on GitHub Pages
-1. Create a repository and push these files to the `main` branch.
+1. Push these files to the `main` branch.
 2. **Settings → Pages → Build and deployment → Deploy from a branch → `main` / `/ (root)`**.
-3. Open `https://YOUR-GITHUB-USERNAME.github.io/REPO-NAME/`.
 
 Free GitHub Pages needs a public repository. That is fine here: the code contains no secrets (the Firebase web config is meant to be public — security comes from the Firestore rules) and the data lives in Firebase, not in the repo.
 
-### 5. First run
-Sign in → **Umpires → Add umpires** → paste `Name, email, mobile` lines (for example from your Google Form responses) → **Rounds** (fixtures load on their own).
+### 5. Create the first association
+Open the site → sign in → **Start a new association** (PDCA, with its Play Cricket page link) → **Umpires → Add umpires** → send umpires the link from **Settings**.
 
 ## Notes
 
-- **Fixtures** come from Play Cricket's own website service (`grassrootsapiproxy.cricket.com.au`), the same one the Play Cricket pages use. It is not an officially documented API and Cricket Australia could change it, and its terms ask for written permission before systematically collecting data into a database. Ask the PDCA secretary to confirm this is OK. If it ever stops working the Rounds page says so and offers a retry.
+- **Fixtures** come from Play Cricket's own website service (`grassrootsapiproxy.cricket.com.au`), the same one the Play Cricket pages use. It is not an officially documented API and Cricket Australia could change it, and its terms ask for written permission before systematically collecting data into a database. PDCA's secretary has agreed to PDCA's use; offering the tool to other associations needs Cricket Australia / PlayHQ's permission first. If it ever stops working the Rounds page says so and offers a retry.
 - **Privacy:** other umpires see names on a published round (as on the emailed report) but never email addresses or mobiles. Unpublished allocations are only visible to officers. Umpires cannot approve themselves.
 - **Sending allocation emails automatically** would need Firebase Cloud Functions (Blaze plan) or an email service. For now the app prepares the report, the BCC list and a draft; you send it.
 - Published rounds update live: if you change an allocation after publishing, umpires see the change.

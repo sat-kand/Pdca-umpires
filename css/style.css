@@ -184,3 +184,9 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; }
 .past-rounds { margin-top: 1.5rem; } .past-rounds summary { cursor: pointer; font-weight: 600; }
 .past-row { display: flex; flex-wrap: wrap; gap: .4rem .9rem; align-items: center; text-decoration: none; color: inherit; }
 .past-row strong { min-width: 6.5rem; }
+.org-name { color: #fff; opacity: .9; font-size: .85rem; text-decoration: none; border: 1px solid rgba(255,255,255,.4); border-radius: 999px; padding: .15rem .6rem; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-name:hover { opacity: 1; background: rgba(255,255,255,.12); }
+.org-tile { text-align: left; cursor: pointer; font: inherit; } .org-tile h2 { margin: 0 0 .3rem; }
+.join-link { word-break: break-all; background: #f1f3f1; padding: .3rem .5rem; border-radius: 6px; display: inline-block; }
+.inline-form { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .75rem; } .inline-form input { margin: 0; max-width: 20rem; }
+.card.narrow.left { margin-left: 0; }
