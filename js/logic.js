@@ -93,10 +93,10 @@ export function compareGrades(a, b) {
   return ra[0] - rb[0] || ra[1] - rb[1] || ra[2].localeCompare(rb[2], undefined, { numeric: true });
 }
 
-// "One day games", "Two day games" or "One & Two day games": taken straight from the fixtures' length.
+// The match types Play Cricket gives the games ("One Day", "Two Day", "T20"), joined with " & ".
 export function formatSummary(games) {
-  const n = [...new Set(games.map(g => ((g.days || []).length >= 2 ? 2 : 1)))].sort();
-  return n.length ? n.map(x => (x === 1 ? 'One' : 'Two')).join(' & ') + ' day games' : '';
+  const order = t => { const i = ['One Day', 'Two Day', 'T20'].indexOf(t); return i < 0 ? 9 : i; };
+  return [...new Set(games.map(g => g.matchType).filter(Boolean))].sort((a, b) => order(a) - order(b) || a.localeCompare(b)).join(' & ');
 }
 
 // ---------- sections (how the report groups games) ------------------------

@@ -3,7 +3,7 @@
 import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './ui.js';
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
-  slotOptions, recount, summarise, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
+  slotOptions, recount, summarise, formatSummary, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
   availStatus, compLabel, compKeyOf, roundColumns, COMPS,
 } from './logic.js';
 import { syncFromPlayCricket, refreshRound, currentRound, needsSync } from './rounds.js';
@@ -32,16 +32,15 @@ async function openGradesModal({ store, round, onDone }) {
   const count = gr => live.filter(g => g.grade === gr).length;
   const perGame = g => ((g.slots || 0) || 1);                                          // umpires per game: what the board has, else 1
   const want = Object.fromEntries(grades.map(gr => [gr, live.some(g => g.grade === gr && isPicked(g))]));
-  const roundOf = gr => (live.find(g => g.grade === gr) || {}).roundName;
+  const typeOf = gr => formatSummary(live.filter(g => g.grade === gr));              // Play Cricket's match type: One Day / Two Day / T20
 
   const dlg = h('dialog', { class: 'modal', 'aria-label': 'Select grades' });
   const total = h('span', { class: 'muted' });
   const rows = grades.map(gr => {
     const cb = h('input', { type: 'checkbox', checked: want[gr], id: 'g-' + gr.replace(/\W+/g, '_') });
     cb.onchange = () => { want[gr] = cb.checked; showTotal(); };
-    const rn = roundOf(gr);
     return { gr, cb, row: h('label', { class: 'grade-row' }, cb, h('span', { class: 'chip grade' }, gradeShort(gr)), h('span', { class: 'muted' }, `${count(gr)} game${count(gr) === 1 ? '' : 's'}`),
-      rn && rn !== round.title && h('span', { class: 'muted' }, rn)) };
+      h('span', { class: 'muted' }, typeOf(gr))) };
   });
   function showTotal() {
     const picked = grades.filter(gr => want[gr]);

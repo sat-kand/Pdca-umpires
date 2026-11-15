@@ -147,13 +147,13 @@ test('round title follows the picked grades; a grade on another round is listed 
   assert.equal(summarise(games).title, 'Round 4');                             // only Women picked: Round 4
 });
 
-test('tile format line comes from the games: One, Two or One & Two day games', async () => {
+test('tile format line uses Play Cricket\'s own match types', async () => {
   const { formatSummary } = await import('../js/logic.js');
-  const G = (n, slots = 0) => ({ id: 'x' + n + slots, grade: 'g' + n, roundName: 'Round 1', slots, days: Array.from({ length: n }, (_, i) => ({ date: '2026-11-2' + (1 + i) })), alloc: {} });
-  assert.equal(formatSummary([G(2), G(2)]), 'Two day games');
-  assert.equal(formatSummary([G(1)]), 'One day games');
-  assert.equal(formatSummary([G(1), G(2)]), 'One & Two day games');
-  assert.equal(formatSummary([]), '');
-  assert.equal(summarise([G(1), G(2)]).formats, 'One & Two day games');            // nothing picked: all games
-  assert.equal(summarise([G(1), G(2, 1)]).formats, 'Two day games');               // only the picked grades count
+  const G = (matchType, slots = 0) => ({ id: matchType + slots, grade: matchType, roundName: 'Round 1', matchType, slots, days: [{ date: '2026-11-21' }], alloc: {} });
+  assert.equal(formatSummary([G('Two Day'), G('Two Day')]), 'Two Day');
+  assert.equal(formatSummary([G('T20')]), 'T20');
+  assert.equal(formatSummary([G('Two Day'), G('One Day')]), 'One Day & Two Day');
+  assert.equal(formatSummary([{ days: [] }]), '');
+  assert.equal(summarise([G('One Day'), G('Two Day')]).formats, 'One Day & Two Day');          // nothing picked: all games
+  assert.equal(summarise([G('One Day'), G('Two Day', 1)]).formats, 'Two Day');                  // only the picked grades count
 });
