@@ -96,7 +96,7 @@ export async function viewAdminHome(ctx) {
         h('button', { class: 'btn small', type: 'button', onclick: () => openGradesModal({ store, round: r, onDone: async () => { await load(); draw(); } }) }, 'Select grades')),
       h('a', { class: 'tile-body', href: `#/admin/round/${r.id}` },
         h('div', { class: 'tile-round' }, fmtRange(r.dates || [])),
-        h('div', { class: 'muted' }, picked ? (r.formats || '') : 'No grades selected'),
+        h('div', { class: 'muted' }, r.formats || ''),
         h('div', { class: 'tile-stats' },
           h('span', { class: 'chip' }, `${picked} grade${picked === 1 ? '' : 's'}`),
           h('span', { class: 'chip ' + (st.needed && st.filled >= st.needed ? 'ok' : 'warn') }, `${st.filled}/${st.needed} slots filled`),

@@ -93,36 +93,10 @@ export function compareGrades(a, b) {
   return ra[0] - rb[0] || ra[1] - rb[1] || ra[2].localeCompare(rb[2], undefined, { numeric: true });
 }
 
-// One short word for the kind of grade, used to summarise a selection on the round tile.
-// Play Cricket gives only the grade name (no stage / gender field), so this reads the name:
-//   Senior: Mens / Women.  T20: T20.  Junior: "Stage N" if the name says so (U12 Girls Stage 1, U15 Girls Stage 2),
-//   otherwise by age: U10-U11 = Stage 1, U12-U13 = Stage 2, U14 and over = Stage 3.
-export function gradeGroup(game) {
-  const name = game.grade || '';
-  const key = compKeyOf(game);
-  if (key === 'junior') {
-    const st = /stage\s*(\d)/i.exec(name);
-    if (st) return `Stage ${st[1]}`;
-    const u = /^U\s?(\d{1,2})\b/i.exec(name);
-    if (u) return Number(u[1]) <= 11 ? 'Stage 1' : Number(u[1]) <= 13 ? 'Stage 2' : 'Stage 3';
-    return 'Junior';
-  }
-  if (/women|girls/i.test(name)) return 'Women';
-  return key === 't20' ? 'T20' : 'Mens';
-}
-
-// "1 day", "2 day" or "1 & 2 day" for the games of one group.
-export function dayLabel(games) {
-  const n = [...new Set(games.map(g => (g.days || []).length >= 2 ? 2 : 1))].sort();
-  return `${n.join(' & ')} day`;
-}
-
-// "Mens – 2 day & Women – 1 day" for the picked games.
+// "One day games", "Two day games" or "One & Two day games": taken straight from the fixtures' length.
 export function formatSummary(games) {
-  const by = new Map();
-  for (const g of games) { const k = gradeGroup(g); if (!by.has(k)) by.set(k, []); by.get(k).push(g); }
-  const order = k => (k === 'Mens' ? 0 : k === 'Women' ? 1 : 2);
-  return [...by.entries()].sort((a, b) => order(a[0]) - order(b[0]) || a[0].localeCompare(b[0])).map(([k, list]) => `${k} \u2013 ${dayLabel(list)}`).join(' & ');
+  const n = [...new Set(games.map(g => ((g.days || []).length >= 2 ? 2 : 1)))].sort();
+  return n.length ? n.map(x => (x === 1 ? 'One' : 'Two')).join(' & ') + ' day games' : '';
 }
 
 // ---------- sections (how the report groups games) ------------------------
@@ -259,7 +233,7 @@ export function summarise(games) {
   for (const g of basis) counts.set(g.roundName || '', (counts.get(g.roundName || '') || 0) + 1);
   const title = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], undefined, { numeric: true }))[0];
   const other = [...new Set(basis.filter(g => g.roundName && title && g.roundName !== title[0]).map(g => `${gradeShort(g.grade)}: ${g.roundName}`))].join(' · ');
-  return { stats: recount(games), picked: new Set(picked.map(g => g.grade)).size, formats: formatSummary(picked), ...(title && title[0] ? { title: title[0] } : {}), other };
+  return { stats: recount(games), picked: new Set(picked.map(g => g.grade)).size, formats: formatSummary(basis), ...(title && title[0] ? { title: title[0] } : {}), other };
 }
 
 // Sum of appointments per umpire across stats from other rounds + this one.
