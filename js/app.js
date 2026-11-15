@@ -2,7 +2,7 @@ import { CONFIG } from './config.js';
 import { h, setChildren, spinner, toast } from './ui.js';
 import { createDemoStore } from './store-demo.js';
 import { seedDemo } from './demo-seed.js';
-import { viewLogin, viewProfile, viewHome, viewAvailability } from './views-umpire.js';
+import { viewLogin, viewProfile, viewMy } from './views-umpire.js';
 import { viewAdminHome, viewNewRound, viewBoard, viewAvailabilityOverview, viewReport, viewUmpires } from './views-admin.js';
 
 const S = { store: null, user: null, isAdmin: false, umpire: null };
@@ -21,9 +21,9 @@ async function loadUser(user) {
 const ctx = { get store() { return S.store; }, S, go, refreshUser: () => loadUser(S.user) };
 
 const ROUTES = [
-  [/^\/$/, () => viewHome(ctx)],
+  [/^\/$/, () => viewMy(ctx)],
+  [/^\/my$/, () => viewMy(ctx)],
   [/^\/profile$/, () => viewProfile(ctx)],
-  [/^\/availability\/([^/]+)$/, rid => viewAvailability(ctx, rid)],
   [/^\/admin$/, () => viewAdminHome(ctx), true],
   [/^\/admin\/new$/, () => viewNewRound(ctx), true],
   [/^\/admin\/umpires$/, () => viewUmpires(ctx), true],
@@ -41,9 +41,9 @@ function drawHeader() {
       h('button', { class: 'link', type: 'button', onclick: () => { if (confirm('Erase all demo data in this browser?')) { S.store.demoReset(); location.hash = '#/'; } } }, 'Reset')),
     h('div', { class: 'bar' },
       h('a', { class: 'brand', href: '#/' }, '🏏 ', CONFIG.appName),
-      S.user && h('nav', { class: 'nav' },
-        link('#/', 'Home'), S.isAdmin && link('#/admin', 'Rounds'), S.isAdmin && link('#/admin/umpires', 'Umpires'), link('#/profile', 'My details')),
-      S.user && h('div', { class: 'who' }, h('span', { class: 'muted' }, S.user.email, S.isAdmin ? ' (admin)' : ''),
+      S.isAdmin && h('nav', { class: 'nav' }, link('#/admin', 'Rounds'), link('#/admin/umpires', 'Umpires'), link('#/my', 'My availability')),
+      S.user && h('div', { class: 'who' },
+        h('a', { class: 'who-name', href: '#/profile', title: 'Edit my details' }, (S.umpire && S.umpire.name) || S.user.email),
         h('button', { class: 'btn small', type: 'button', onclick: async () => { await S.store.signOut(); location.hash = '#/'; } }, 'Sign out'))));
 }
 
@@ -52,6 +52,7 @@ async function render() {
   const id = ++renderId;
   drawHeader();
   const path = location.hash.slice(1) || '/';
+  if (S.user && S.isAdmin && path === '/') { go('/admin'); return; }
   setChildren(main, spinner());
   let view;
   try {

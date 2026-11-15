@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   fmtRange, gradeShort, compareGrades, groupSections, clubConflict, normClub, allocFor, buildBusyMap,
-  assignmentWarnings, slotOptions, recount, autoAllocate, applyChanges, umpireText, seasonLoads,
+  assignmentWarnings, slotOptions, recount, autoAllocate, applyChanges, umpireText, seasonLoads, buildCalendar, upcomingCalendar,
 } from '../js/logic.js';
 
 const mk = (id, grade, home, away, days, slots = 1, alloc = {}, extra = {}) => ({
@@ -150,4 +150,36 @@ test('report text: one day, two slots, and a different umpire each day', () => {
   assert.equal(umpireText(same), 'M VERMA');
   assert.equal(umpireText(mk('4', 'Senior B02', 'A', 'B', [D1], 1)), '—');
   assert.equal(umpireText(mk('5', 'Senior B02', 'A', 'B', [D1], 0)), '');
+});
+
+test('buildCalendar: two-day rounds become Day 1 / Day 2, one-day games on the same Saturdays are absorbed', () => {
+  const [S1, S2, S3, S4, S5] = ['2026-10-10', '2026-10-17', '2026-10-24', '2026-10-31', '2026-11-07'];
+  const games = [
+    mk('1', 'Senior A Grade', 'A', 'B', [S1, S2]),
+    mk('2', 'Senior Women', 'C', 'D', [S1], 1, {}, { roundName: 'Round 3' }),   // same Saturday as Round 2 Day 1
+    mk('3', 'Senior Women', 'C', 'D', [S2], 1, {}, { roundName: 'Round 4' }),   // same Saturday as Round 2 Day 2
+    mk('4', 'Senior Women', 'C', 'D', [S3], 1, {}, { roundName: 'Round 5' }),   // a Saturday with only one-day games
+    mk('5', 'Senior A Grade', 'A', 'B', [S4, S5], 1, {}, { roundName: 'Round 3' }),
+  ];
+  const cal = buildCalendar(games);
+  assert.deepEqual(cal, [
+    { label: 'Round 2', dates: [S1, S2] },
+    { label: 'Round 5', dates: [S3] },
+    { label: 'Round 3', dates: [S4, S5] },
+  ]);
+});
+
+test('buildCalendar: duplicate round names stay distinguishable', () => {
+  const games = [mk('1', 'Senior A Grade', 'A', 'B', ['2026-10-10', '2026-10-17']), mk('2', 'Senior Women', 'C', 'D', ['2026-12-05'])];
+  assert.deepEqual(buildCalendar(games).map(r => r.label), ['Round 2', 'Round 2 (2)']);
+});
+
+test('upcomingCalendar hides past dates but keeps Day numbers', () => {
+  const cal = [{ label: 'Round 2', dates: ['2026-10-10', '2026-10-17'] }, { label: 'Round 3', dates: ['2026-10-24', '2026-10-31'] }];
+  assert.deepEqual(upcomingCalendar(cal, '2026-10-17'), [
+    { label: 'Round 2', rows: [{ date: '2026-10-17', dayNo: 2, of: 2 }] },
+    { label: 'Round 3', rows: [{ date: '2026-10-24', dayNo: 1, of: 2 }, { date: '2026-10-31', dayNo: 2, of: 2 }] },
+  ]);
+  assert.deepEqual(upcomingCalendar(cal, '2027-01-01'), []);
+  assert.deepEqual(upcomingCalendar(null, '2026-10-17'), []);
 });

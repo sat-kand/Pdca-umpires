@@ -1,7 +1,7 @@
 // Screens for umpires: sign-in, profile, availability, my appointments.
 
-import { h, toast, spinner, busy, todayLocal, mapsLink } from './ui.js';
-import { fmtDay, fmtRange, gradeShort, allocFor, newPid, emailKey } from './logic.js';
+import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
+import { fmtDay, gradeShort, allocFor, newPid, emailKey, upcomingCalendar } from './logic.js';
 
 export function viewLogin(ctx) {
   const { store } = ctx;
@@ -40,7 +40,7 @@ export async function viewProfile(ctx) {
     });
     await refreshUser();
     toast('Details saved');
-    go('/');
+    go(S.isAdmin ? '/my' : '/');
   }) },
   h('h1', {}, existing ? 'Your details' : 'Welcome — tell us who you are'),
   !existing && h('p', { class: 'muted' }, 'This is a one-off step. The appointments officer will approve your account before you can be allocated.'),
@@ -51,89 +51,94 @@ export async function viewProfile(ctx) {
   btn);
 }
 
-export async function viewHome(ctx) {
+// The umpire's one and only page: upcoming appointments (if any) and the
+// season's availability, answered with two buttons per day and one Save.
+export async function viewMy(ctx) {
   const { store, S } = ctx;
   const u = S.umpire;
-  const root = h('div');
   if (!u) {
-    root.append(h('div', { class: 'card' }, h('h1', {}, 'Appointments officer'),
-      h('p', {}, 'Use the Rounds menu above to manage rounds and allocations. If you also umpire, add your own details so you can give availability:'),
-      h('a', { class: 'btn', href: '#/profile' }, 'Add my umpire details')));
-    return root;
+    return h('div', { class: 'card narrow' }, h('h1', {}, 'Add your umpire details'),
+      h('p', { class: 'muted' }, 'You are signed in as an appointments officer. To give your own availability, add your details first.'),
+      h('a', { class: 'btn primary', href: '#/profile' }, 'Add my details'));
   }
-  if (!u.active) root.append(h('p', { class: 'notice warn' }, 'Your account is waiting for approval by the appointments officer. You can already submit availability.'));
+  const [season, rounds] = await Promise.all([store.getSeason(), store.listRounds()]);
+  const root = h('div', { class: 'narrow-page' });
+  if (!u.active) root.append(h('p', { class: 'notice warn' }, 'Your account is waiting for approval by the appointments officer. You can already give your availability.'));
 
-  const rounds = await store.listRounds();
-  const open = rounds.filter(r => r.availabilityOpen);
-  const published = rounds.filter(r => r.published).slice(0, 4);
-
-  // --- appointments
+  // ---- appointments (only shown when there are some)
+  const today = todayLocal();
   const mine = [];
-  for (const r of published) {
+  for (const r of rounds.filter(r => r.published).slice(0, 4)) {
     for (const g of await store.listGames(r.id)) {
       if (g.removed) continue;
-      for (const d of g.days) if (allocFor(g, d.date).some(a => a && a.p === u.pid)) mine.push({ r, g, d });
+      for (const d of g.days) if (d.date >= today && allocFor(g, d.date).some(a => a && a.p === u.pid)) mine.push({ g, d });
     }
   }
-  const today = todayLocal();
-  const upcoming = mine.filter(x => x.d.date >= today).sort((a, b) => a.d.date.localeCompare(b.d.date) || gradeShort(a.g.grade).localeCompare(gradeShort(b.g.grade), undefined, { numeric: true }));
-  root.append(h('section', { class: 'card' }, h('h2', {}, 'My upcoming appointments'),
-    upcoming.length ? h('ul', { class: 'plain' }, upcoming.map(({ r, g, d }) => {
-      const link = mapsLink(g);
-      return h('li', { class: 'appt' },
-        h('div', { class: 'appt-date' }, h('strong', {}, fmtDay(d.date)), d.time && h('span', { class: 'muted' }, ' ' + d.time),
-          g.days.length > 1 && h('span', { class: 'chip' }, `Day ${d.day} of ${g.days.length}`)),
-        h('div', {}, h('span', { class: 'chip grade' }, gradeShort(g.grade)), ` ${g.home.name} v ${g.away.name}`),
-        h('div', { class: 'muted' }, link ? h('a', { href: link, target: '_blank', rel: 'noopener' }, g.ground || 'Ground TBC') : (g.ground || 'Ground TBC'), ' · ', r.title));
-    })) : h('p', { class: 'muted' }, 'Nothing allocated yet. Allocations appear here once the appointments officer publishes a round.')));
+  mine.sort((a, b) => a.d.date.localeCompare(b.d.date) || gradeShort(a.g.grade).localeCompare(gradeShort(b.g.grade), undefined, { numeric: true }));
+  if (mine.length) {
+    root.append(h('section', { class: 'card' }, h('h2', {}, 'My appointments'),
+      h('ul', { class: 'plain' }, mine.map(({ g, d }) => {
+        const link = mapsLink(g);
+        return h('li', { class: 'appt' },
+          h('div', { class: 'appt-date' }, h('strong', {}, fmtDay(d.date)), d.time && h('span', { class: 'muted' }, d.time),
+            g.days.length > 1 && h('span', { class: 'chip' }, `Day ${d.day}`)),
+          h('div', {}, h('span', { class: 'chip grade' }, gradeShort(g.grade)), `${g.home.name} v ${g.away.name}`),
+          h('div', { class: 'muted' }, link ? h('a', { href: link, target: '_blank', rel: 'noopener' }, g.ground || 'Ground TBC') : (g.ground || 'Ground TBC')));
+      }))));
+  }
 
-  // --- availability
-  const rows = await Promise.all(open.map(async r => ({ r, a: await store.getAvailability(r.id, u.email) })));
-  root.append(h('section', { class: 'card' }, h('h2', {}, 'Availability'),
-    rows.length ? h('ul', { class: 'plain' }, rows.map(({ r, a }) => h('li', { class: 'row-between' },
-      h('div', {}, h('strong', {}, r.title), h('div', { class: 'muted' }, fmtRange(r.dates))),
-      h('div', {}, a ? h('span', { class: 'chip ok' }, 'Submitted') : h('span', { class: 'chip warn' }, 'Needed'),
-        h('a', { class: 'btn', href: `#/availability/${r.id}` }, a ? 'Edit' : 'Give availability'))))) :
-      h('p', { class: 'muted' }, 'No round is open for availability right now.')));
-  return root;
-}
+  // ---- availability
+  const groups = season ? upcomingCalendar(season.calendar, today) : [];
+  const card = h('section', { class: 'card' });
+  if (!season) {
+    card.append(h('h2', {}, 'Availability'), h('p', { class: 'muted' }, 'The season dates have not been set up yet. Please check back soon.'));
+    root.append(card);
+    return root;
+  }
+  const existing = await store.getAvailability(season.id, u.email);
+  const days = { ...((existing && existing.days) || {}) };
+  const shown = groups.flatMap(g => g.rows.map(r => r.date));
+  let saved = !!existing, dirty = false;
 
-export async function viewAvailability(ctx, rid) {
-  const { store, S, go } = ctx;
-  const [round, existing] = await Promise.all([store.getRound(rid), store.getAvailability(rid, S.user.email)]);
-  if (!round) return h('p', { class: 'notice warn' }, 'Round not found.');
-  const days = { ...(existing?.days || {}) };
-  const locked = !round.availabilityOpen;
-  const note = h('textarea', { rows: 2, placeholder: 'Anything the appointments officer should know (optional)' }, existing?.note || '');
-  if (locked) note.disabled = true;
-
-  const OPTIONS = [['yes', 'Available'], ['maybe', 'Maybe'], ['no', 'Not available']];
-  const rowFor = date => {
-    const name = 'd-' + date;
-    return h('fieldset', { class: 'day', disabled: locked }, h('legend', {}, fmtDay(date)),
-      h('div', { class: 'seg' }, OPTIONS.map(([v, label]) => h('label', { class: 'seg-opt ' + v },
-        h('input', { type: 'radio', name, value: v, checked: days[date] === v, onchange: () => { days[date] = v; } }),
-        h('span', {}, label)))));
+  const chip = h('span', { class: 'chip' });
+  const hint = h('span', { class: 'muted' });
+  const drawStatus = () => {
+    chip.className = 'chip ' + (dirty ? 'warn' : saved ? 'ok' : 'warn');
+    chip.textContent = dirty ? 'Unsaved changes' : saved ? '✓ Submitted' : 'Not submitted';
+    const left = shown.filter(d => !days[d]).length;
+    hint.textContent = left ? `${left} date${left > 1 ? 's' : ''} not answered yet` : 'All dates answered';
   };
-  const saveBtn = h('button', { class: 'btn primary', type: 'submit', disabled: locked }, 'Save availability');
-  const setAll = v => () => {
-    round.dates.forEach(d => { days[d] = v; });
-    document.querySelectorAll(`.day input[value="${v}"]`).forEach(i => { i.checked = true; });
+
+  const buttons = {};
+  const paint = date => buttons[date].forEach(([v, b]) => { b.classList.toggle('on', days[date] === v); b.setAttribute('aria-pressed', String(days[date] === v)); });
+  const choose = (date, v) => {
+    if (days[date] === v) delete days[date]; else days[date] = v;
+    dirty = true; paint(date); drawStatus();
   };
-  return h('form', { class: 'card narrow', onsubmit: busy(saveBtn, async e => {
-    e.preventDefault();
-    const missing = round.dates.filter(d => !days[d]);
-    if (missing.length) { toast('Please answer for every day: ' + missing.map(fmtDay).join(', '), 'err'); return; }
-    await store.saveAvailability({
-      roundId: rid, email: S.user.email, name: S.umpire.name, days, note: note.value.trim(), updatedAt: new Date().toISOString(),
-    });
+  const optBtn = (date, v, label) => h('button', { type: 'button', class: `opt ${v}`, 'aria-pressed': String(days[date] === v), onclick: () => choose(date, v) }, label);
+
+  const tiles = groups.map(g => h('div', { class: 'tile' }, h('h3', {}, g.label),
+    g.rows.map(r => {
+      const yes = optBtn(r.date, 'yes', 'Available'), no = optBtn(r.date, 'no', 'Not available');
+      buttons[r.date] = [['yes', yes], ['no', no]];
+      yes.classList.toggle('on', days[r.date] === 'yes'); no.classList.toggle('on', days[r.date] === 'no');
+      return h('div', { class: 'drow' }, h('span', { class: 'dlabel' }, r.of > 1 ? `Day ${r.dayNo} · ${fmtDay(r.date)}` : fmtDay(r.date)), h('div', { class: 'opts' }, yes, no));
+    })));
+
+  const saveBtn = h('button', { class: 'btn primary', type: 'button' }, 'Save');
+  saveBtn.onclick = busy(saveBtn, async () => {
+    await store.saveAvailability({ seasonId: season.id, email: u.email, name: u.name, days, updatedAt: new Date().toISOString() });
+    saved = true; dirty = false; drawStatus();
     toast('Availability saved');
-    go('/');
-  }) },
-  h('h1', {}, round.title),
-  h('p', { class: 'muted' }, locked ? 'This round is no longer open for availability.' : 'Tell us which days you can umpire.'),
-  !locked && h('p', {}, h('button', { class: 'btn small', type: 'button', onclick: setAll('yes') }, 'All available'), ' ',
-    h('button', { class: 'btn small', type: 'button', onclick: setAll('no') }, 'None available')),
-  round.dates.map(rowFor),
-  h('label', {}, 'Note', note), !locked && saveBtn);
+  });
+  const allBtn = h('button', { class: 'link', type: 'button', onclick: () => { shown.forEach(d => { days[d] = 'yes'; paint(d); }); dirty = true; drawStatus(); } }, 'Mark all available');
+
+  setChildren(card,
+    h('div', { class: 'row-between' }, h('h2', {}, 'Availability'), chip),
+    h('p', { class: 'muted' }, 'Tap your answer for each day, then press Save. It applies to the whole season. ', allBtn),
+    tiles.length ? tiles : h('p', { class: 'muted' }, 'No upcoming dates.'),
+    tiles.length > 0 && h('div', { class: 'savebar' }, hint, saveBtn));
+  drawStatus();
+  root.append(card);
+  return root;
 }

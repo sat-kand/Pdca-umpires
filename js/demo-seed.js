@@ -53,22 +53,31 @@ export async function seedDemo(store) {
   }
   const [D1, D2] = demoDates();
   const games = demoGames([D1, D2]);
+  const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+
+  // Season calendar: six two-Saturday rounds starting with the sample round.
+  const calendar = Array.from({ length: 6 }, (_, k) => ({
+    label: `Round ${k + 2}`, dates: [addDays(D1, 14 * k), addDays(D2, 14 * k)],
+  }));
+  const season = { id: 'demo', name: 'Summer 2026/27', calendar, updatedAt: new Date().toISOString() };
+  await store.saveSeason(season);
+
   const round = {
     id: 'r-' + D1, title: `Round 2 Seniors – ${fmtRange([D1, D2])}`, start: D1, end: D2,
-    dates: [D1, D2], availabilityOpen: true, published: false,
-    season: { id: 'demo', name: 'Summer 2026/27' },
+    dates: [D1, D2], published: false,
+    season: { id: season.id, name: season.name },
     source: { type: 'demo' }, stats: recount(games),
   };
   await store.saveRound(round);
   await store.saveGames(round.id, games);
-  // a mix of responses; umpires 9 and 10 have not replied
-  const pat = [
-    ['yes', 'yes'], ['yes', 'maybe'], ['yes', 'yes'], ['no', 'yes'], ['yes', 'no'],
-    ['maybe', 'yes'], ['yes', 'yes'], ['yes', 'yes'],
-  ];
-  for (const [i, [a, b]] of pat.entries()) {
+
+  // Umpires 1-8 have answered for the first three rounds; 9 and 10 have not replied.
+  const first = [['yes', 'yes'], ['yes', 'no'], ['yes', 'yes'], ['no', 'yes'], ['yes', 'no'], ['no', 'yes'], ['yes', 'yes'], ['yes', 'yes']];
+  for (const [i, [a, b]] of first.entries()) {
     const email = `umpire${i + 1}@demo.test`;
     const u = await store.getUmpire(email);
-    await store.saveAvailability({ roundId: round.id, email, name: u.name, days: { [D1]: a, [D2]: b }, note: '', updatedAt: new Date().toISOString() });
+    const days = { [D1]: a, [D2]: b };
+    calendar.slice(1, 3).forEach((r, k) => r.dates.forEach((d, j) => { days[d] = (i + k + j) % 4 === 0 ? 'no' : 'yes'; }));
+    await store.saveAvailability({ seasonId: season.id, email, name: u.name, days, updatedAt: new Date().toISOString() });
   }
 }

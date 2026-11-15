@@ -4,9 +4,10 @@
 // Collections (see firestore.rules):
 //   admins/{email}                 created by hand in the Firebase console
 //   umpires/{email}                one per umpire (id = lower-case email)
-//   rounds/{roundId}               title, dates, availabilityOpen, published, stats
+//   config/season                  season calendar: the dates umpires answer for
+//   rounds/{roundId}               title, dates, published, stats
 //   rounds/{roundId}/games/{id}    fixture + slots + alloc
-//   availability/{roundId__email}  one per umpire per round
+//   availability/{seasonId__email} one per umpire per season
 //   settings/defaults              default umpires-per-game by grade
 
 import { FIREBASE_SDK } from './config.js';
@@ -88,11 +89,15 @@ export async function createFirebaseStore(cfg) {
       }
     },
 
-    // ----- availability -----
-    getAvailability: (rid, email) => getOne('availability', `${rid}__${email}`),
-    saveAvailability: a => putOne(a, 'availability', `${a.roundId}__${a.email}`),
-    async listAvailability(rid) {
-      const s = await fs.getDocs(fs.query(fs.collection(db, 'availability'), fs.where('roundId', '==', rid)));
+    // ----- season calendar (the dates umpires answer for) -----
+    getSeason: () => getOne('config', 'season'),
+    saveSeason: s => putOne(s, 'config', 'season'),
+
+    // ----- availability: one document per umpire per season -----
+    getAvailability: (seasonId, email) => getOne('availability', `${seasonId}__${email}`),
+    saveAvailability: a => putOne(a, 'availability', `${a.seasonId}__${a.email}`),
+    async listAvailability(seasonId) {
+      const s = await fs.getDocs(fs.query(fs.collection(db, 'availability'), fs.where('seasonId', '==', seasonId)));
       return s.docs.map(d => d.data());
     },
 

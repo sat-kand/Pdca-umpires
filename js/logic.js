@@ -262,6 +262,43 @@ export function umpireText(game) {
   return per.map((p, i) => `${p.map(n => n || '—').join(' & ')} (Day ${days[i].day})`).join(' / ').toUpperCase();
 }
 
+// ---------- season calendar (what umpires see) ----------------------------
+
+// From every fixture in the season build the list of dates umpires answer for,
+// grouped the way umpires think of them: Round 2 -> Day 1, Day 2.
+// Two-day rounds win over one-day games that fall on the same Saturday.
+export function buildCalendar(games) {
+  const info = new Map(); // date -> { round, two }
+  const put = (date, round, two) => {
+    const cur = info.get(date);
+    if (!cur || (two && !cur.two)) info.set(date, { round, two });
+  };
+  for (const g of games) if (g.days.length > 1) for (const d of g.days) put(d.date, g.roundName, true);
+  for (const g of games) if (g.days.length === 1) put(g.days[0].date, g.roundName, false);
+  const groups = new Map();
+  for (const [date, { round, two }] of info) {
+    const key = `${round}|${two}`;
+    if (!groups.has(key)) groups.set(key, { round, dates: [] });
+    groups.get(key).dates.push(date);
+  }
+  const list = [...groups.values()].map(g => ({ ...g, dates: g.dates.sort() }));
+  list.sort((a, b) => a.dates[0].localeCompare(b.dates[0]));
+  const seen = {};
+  return list.map(g => {
+    const base = g.round || 'Games';
+    seen[base] = (seen[base] || 0) + 1;
+    return { label: seen[base] > 1 ? `${base} (${seen[base]})` : base, dates: g.dates };
+  });
+}
+
+// Only dates from `today` on, but keep each date's Day number within its round.
+export function upcomingCalendar(calendar, today) {
+  return (calendar || []).map(r => ({
+    label: r.label,
+    rows: r.dates.map((date, i) => ({ date, dayNo: i + 1, of: r.dates.length })).filter(x => x.date >= today),
+  })).filter(r => r.rows.length);
+}
+
 // ---------- ids -----------------------------------------------------------
 
 export function newPid() {

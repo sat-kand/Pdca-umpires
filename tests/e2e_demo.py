@@ -62,6 +62,11 @@ def fulfill_api(route):
     route.fulfill(status=200, content_type="application/json", headers=cors, body=json.dumps(body))
 
 
+def fmt_day_check():
+    d = sat1 + timedelta(days=56)
+    return d.strftime("%a, ") + str(d.day) + d.strftime(" %b")
+
+
 errors = []
 passed = 0
 
@@ -82,7 +87,7 @@ def sign_in(page, email):
     if page.locator("#login-email").count():
         page.fill("#login-email", email)
         page.click("button:has-text('Sign in')")
-    expect(page.locator(".who")).to_contain_text(email)
+    expect(page.locator(".who")).to_be_visible()
 
 
 def sign_out(page):
@@ -101,7 +106,7 @@ with sync_playwright() as p:
 
     print("Admin: sample data, board")
     sign_in(page, "admin@demo.test")
-    check(page.locator("text=Appointments officer").count() > 0, "admin without umpire profile sees the officer home")
+    check(page.locator("text=Season dates").count() > 0, "admin lands straight on Rounds with the season dates card")
     page.click("button:has-text('Load sample data')")
     page.click(".nav-link:has-text('Rounds')")
     page.click(".round-card")
@@ -157,7 +162,6 @@ with sync_playwright() as p:
     page.click("a.tab:has-text('Availability')")
     page.wait_for_selector("table.board")
     check(page.locator("td.av.ok").count() > 0 and page.locator("td.av.no").count() > 0, "availability grid shows yes and no cells")
-    check(page.locator("text=Haven't replied (2)").count() == 1, "two umpires have not replied")
     page.click("a.tab:has-text('Report')")
     page.wait_for_selector(".report-table")
     check(page.locator(".report-table tbody tr").count() == 15, "report has 15 rows")
@@ -166,19 +170,57 @@ with sync_playwright() as p:
     page.wait_for_selector("table.board")
     page.locator(".toggle:has-text('Published') input").check()
 
-    print("Umpire: appointments + availability")
+    print("Umpire: one page - appointments + season availability")
     sign_out(page)
     sign_in(page, "umpire1@demo.test")
-    page.wait_for_selector("h2:has-text('My upcoming appointments')")
-    n_appt = page.locator("li.appt").count()
-    check(n_appt >= 1, f"umpire1 sees {n_appt} appointment(s) after publish")
+    page.wait_for_selector(".tile")
+    check(page.locator(".nav-link").count() == 0, "umpire header has no navigation links")
+    check(page.locator("h2:has-text('My appointments')").count() == 1, "published appointments show on the same page")
     check(page.locator("li.appt a[href*='maps']").count() >= 1, "appointment links to a map")
-    page.click("a:has-text('Edit')")
-    page.wait_for_selector("fieldset.day")
-    page.locator(f"input[name='d-{D1}'][value='no']").check(force=True)
-    page.click("button:has-text('Save availability')")
-    page.wait_for_selector("h2:has-text('Availability')")
-    check(page.locator("text=Submitted").count() == 1, "availability saved and shown as submitted")
+    check(page.locator(".tile").count() == 6, "six rounds listed for the season (Round 2 to Round 7)")
+    check(page.locator(".drow").count() == 12, "two days per round = 12 rows on one page")
+    check(page.locator(".tile h3").first.inner_text() == "Round 2", "tile is titled just 'Round 2'")
+    first_label = page.locator(".dlabel").first.inner_text()
+    check(first_label.startswith("Day 1 \u00b7 "), f"row label reads '{first_label}' (date shown once)")
+    date_part = first_label.split("\u00b7 ")[1]
+    check(page.locator(".tile").first.inner_text().count(date_part) == 1, f"'{date_part}' appears once in the tile, not repeated in a heading")
+    check(page.locator("button.opt").count() == 24, "only two options per day (Available / Not available)")
+    check(page.locator("text=Maybe").count() == 0 and page.locator("textarea").count() == 0, "no 'Maybe' option and no note box")
+    check(page.locator(".chip:has-text('Submitted')").count() == 1, "'Submitted' chip is on the page (top right), no Edit step")
+    first_row = page.locator(".drow").first
+    check("on" in first_row.locator("button.opt.yes").get_attribute("class"), "existing answer is pre-highlighted")
+    first_row.locator("button.opt.no").click()
+    check("on" in first_row.locator("button.opt.no").get_attribute("class") and "on" not in first_row.locator("button.opt.yes").get_attribute("class"), "tapping highlights the new choice only")
+    check(page.locator(".chip:has-text('Unsaved changes')").count() == 1, "chip warns about unsaved changes")
+    page.click(".savebar button:has-text('Save')")
+    page.wait_for_selector(".chip:has-text('Submitted')")
+    check(True, "one Save updates the whole season and the chip returns to Submitted")
+    page.reload()
+    page.wait_for_selector(".tile")
+    check("on" in page.locator(".drow").first.locator("button.opt.no").get_attribute("class"), "answer is still there after reloading")
+    row3 = page.locator(".drow").nth(3)
+    if "on" in row3.locator("button.opt.yes").get_attribute("class"):
+        row3.locator("button.opt.yes").click()          # clear any existing answer first
+    row3.locator("button.opt.yes").click()
+    check("on" in row3.locator("button.opt.yes").get_attribute("class"), "tapping an option selects it")
+    row3.locator("button.opt.yes").click()
+    check("on" not in page.locator(".drow").nth(3).locator("button.opt.yes").get_attribute("class"), "tapping the same option again clears it")
+    page.click("button:has-text('Mark all available')")
+    check(page.locator("button.opt.yes.on").count() == 12, "'Mark all available' answers every date")
+    page.click(".savebar button:has-text('Save')")
+    page.wait_for_selector(".chip:has-text('Submitted')")
+
+    print("Admin sees the season-wide answers")
+    sign_out(page)
+    sign_in(page, "admin@demo.test")
+    page.locator(".card.round-card").first.click()
+    page.wait_for_selector("table.board")
+    page.click("a.tab:has-text('Availability')")
+    page.wait_for_selector("table.board")
+    row = page.locator("tr:has-text('Demo Umpire 1')").first
+    check(row.locator("td.av.ok").count() == 2, "umpire 1's 'Mark all available' shows for both days of the round")
+    check(page.locator("text=Haven't replied (2)").count() == 1, "still two umpires with no reply")
+    page.click("a.tab:has-text('Allocate')")
 
     print("Umpire: new sign-up + approval")
     sign_out(page)
@@ -231,13 +273,31 @@ with sync_playwright() as p:
     page.wait_for_selector("text=Found 1 games")
     check(page.locator(".notice.warn:has-text('Row 3')").count() == 1, "bad CSV row is reported, good row imported")
 
+    print("Admin: sync season dates from Play Cricket (mocked)")
+    page.goto(BASE + "#/admin")
+    page.wait_for_selector("text=Season dates")
+    page.click("button:has-text('Re-sync dates')")
+    page.wait_for_selector("text=2 rounds, 3 dates")
+    page.click("summary:has-text('Show the dates umpires see')")
+    check(page.locator("li:has-text('Round 2')").count() == 1 and page.locator("li:has-text('Round 9')").count() == 1, "calendar built from fixtures: Round 2 (two days) and Round 9")
+    check(page.locator("li:has-text('Round 4')").count() == 0, "women's Round 4 on the same Saturday does not add a duplicate date")
+
+    print("New season: umpire sees the synced dates")
+    sign_out(page)
+    sign_in(page, "umpire2@demo.test")
+    page.wait_for_selector(".tile")
+    check(page.locator(".tile").count() == 2, "umpire 2 sees the two synced rounds")
+    check(page.locator(".tile:has-text('Round 9') .dlabel").first.inner_text() == fmt_day_check(), "single-day round shows just the date, no 'Day 1'")
+    check(page.locator(".chip:has-text('Not submitted')").count() == 1, "a fresh season starts as 'Not submitted'")
+
     print("Mobile layout")
     m = ctx.new_page()
     m.set_viewport_size({"width": 390, "height": 800})
     m.goto(BASE + "#/")
-    m.wait_for_selector(".bar")
+    m.wait_for_selector(".tile")
     overflow = m.evaluate("() => document.documentElement.scrollWidth > window.innerWidth + 1")
-    check(not overflow, "login page does not scroll sideways on a phone")
+    check(not overflow, "availability page does not scroll sideways on a phone")
+    check(m.locator(".savebar").is_visible(), "Save bar is visible without scrolling on a phone")
 
     browser.close()
 

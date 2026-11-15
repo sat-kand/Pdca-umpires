@@ -20,7 +20,7 @@ small { display: block; }
 .brand { color: #fff; font-weight: 700; text-decoration: none; font-size: 1.05rem; }
 .nav { display: flex; gap: .25rem; flex: 1; flex-wrap: wrap; }
 .nav-link { color: #e6f4ec; text-decoration: none; padding: .3rem .6rem; border-radius: 6px; } .nav-link:hover { background: rgba(255,255,255,.15); color: #fff; }
-.who { display: flex; align-items: center; gap: .6rem; font-size: .9rem; } .who .muted { color: #cfe8d9; }
+.who { display: flex; align-items: center; gap: .6rem; font-size: .9rem; margin-left: auto; } .who .muted, .who-name { color: #cfe8d9; } .who-name { text-decoration: none; } .who-name:hover { color: #fff; text-decoration: underline; }
 .demo-banner { background: #ffe9a8; color: #5c4300; font-size: .88rem; padding: .35rem 1rem; text-align: center; }
 .demo-banner .link { color: #5c4300; }
 
@@ -84,6 +84,20 @@ select.slot { min-width: 13rem; margin: 0; } select.slot.empty { border-color: #
 .change { font-size: .82rem; color: var(--amber); margin-top: .15rem; }
 td.av { text-align: center; font-weight: 700; } td.av.ok { color: var(--green); background: var(--green-l); } td.av.maybe { color: var(--amber); background: var(--amber-l); } td.av.no { color: var(--red); background: var(--red-l); } td.av.none { color: #aaa; }
 
+/* availability page */
+.narrow-page { max-width: 640px; margin: 0 auto; }
+.tile { border: 1px solid var(--line); border-radius: 10px; padding: .7rem .9rem .3rem; margin: .8rem 0; background: #fff; }
+.tile h3 { margin: 0 0 .3rem; font-size: 1.05rem; }
+.drow { display: flex; justify-content: space-between; align-items: center; gap: .6rem; padding: .55rem 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.dlabel { font-weight: 500; }
+.opts { display: flex; gap: .4rem; }
+.opt { font: inherit; padding: .55rem .9rem; min-width: 7.5rem; border: 1px solid #c8d1cb; border-radius: 8px; background: #fff; color: var(--ink); cursor: pointer; }
+.opt.yes.on { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
+.opt.no.on { background: var(--red); border-color: var(--red); color: #fff; font-weight: 600; }
+.savebar { position: sticky; bottom: 0; display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+  background: rgba(255,255,255,.97); border-top: 1px solid var(--line); margin: .8rem -1rem -1rem; padding: .7rem 1rem; border-radius: 0 0 10px 10px; }
+.savebar .btn { padding: .6rem 1.6rem; font-weight: 600; }
+
 /* appointments */
 .appt { display: grid; gap: .15rem; } .appt-date { display: flex; align-items: baseline; gap: .4rem; flex-wrap: wrap; }
 
@@ -98,6 +112,7 @@ td.av { text-align: center; font-weight: 700; } td.av.ok { color: var(--green); 
 .toast { background: #1c2a22; color: #fff; padding: .6rem .9rem; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.25); white-space: pre-line; } .toast.err { background: var(--red); }
 
 @media (max-width: 640px) {
+  .opts { width: 100%; } .opt { flex: 1; min-width: 0; }
   .wrap { padding: .6rem; } .grid2 { grid-template-columns: 1fr; } select.slot { min-width: 10rem; }
   .who { width: 100%; justify-content: space-between; } .nav { flex-basis: 100%; }
 }

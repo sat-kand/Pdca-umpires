@@ -38,9 +38,12 @@ export function createDemoStore() {
     async saveGame(rid, g) { (db.games[rid] ||= {})[g.id] = clone(g); save(); },
     async saveGames(rid, games) { for (const g of games) (db.games[rid] ||= {})[g.id] = clone(g); save(); },
 
-    async getAvailability(rid, email) { return clone(db.availability[`${rid}__${email}`]) || null; },
-    async saveAvailability(a) { db.availability[`${a.roundId}__${a.email}`] = clone(a); save(); },
-    async listAvailability(rid) { return Object.values(clone(db.availability)).filter(a => a.roundId === rid); },
+    async getSeason() { return clone(db.season) || null; },
+    async saveSeason(s) { db.season = clone(s); save(); },
+
+    async getAvailability(seasonId, email) { return clone(db.availability[`${seasonId}__${email}`]) || null; },
+    async saveAvailability(a) { db.availability[`${a.seasonId}__${a.email}`] = clone(a); save(); },
+    async listAvailability(seasonId) { return Object.values(clone(db.availability)).filter(a => a.seasonId === seasonId); },
 
     async getSettings() { return clone(db.settings); },
     async saveSettings(s) { db.settings = { ...db.settings, ...clone(s) }; save(); },

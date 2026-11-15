@@ -7,8 +7,8 @@ rules_version = '2';
 //                            (created by hand in the console; the app can never write it).
 //   Umpires                = any signed-in, email-verified user:
 //                              - read/write their own umpire profile (but cannot approve themselves)
-//                              - read/write their own availability while a round is open
-//                              - read rounds, and the games of PUBLISHED rounds only
+//                              - read/write their own season availability
+//                              - read the season calendar and rounds, and the games of PUBLISHED rounds only
 //   Everything else is denied.
 
 service cloud.firestore {
@@ -69,7 +69,13 @@ service cloud.firestore {
       }
     }
 
-    // id = <roundId>__<email>
+    // The season calendar (dates umpires answer for). Officers sync it from Play Cricket.
+    match /config/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // One document per umpire per season. id = <seasonId>__<email>
     match /availability/{id} {
       allow get: if signedIn() && (id.split('__')[1] == me() || isAdmin());
       allow list: if isAdmin();
@@ -77,8 +83,7 @@ service cloud.firestore {
         isAdmin() || (
           id.split('__')[1] == me()
           && request.resource.data.email == me()
-          && request.resource.data.roundId == id.split('__')[0]
-          && get(/databases/$(database)/documents/rounds/$(id.split('__')[0])).data.availabilityOpen == true
+          && request.resource.data.seasonId == id.split('__')[0]
         ));
     }
 

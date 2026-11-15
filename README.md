@@ -11,10 +11,11 @@ It is a static site (no build step) that runs on **GitHub Pages**, with **Fireba
 
 ## How a round works
 
+0. **Set up season dates (once per season)** → on the Rounds page press *Set up season dates*. The app reads the whole Senior fixture list and builds the date list umpires see (two-day rounds show as Day 1 / Day 2). Press *Re-sync dates* if the fixture list changes. Umpires answer once for the whole season, so there is no "open availability" step per round.
 1. **New round** → pick the season, competitions and the date window (games are included when their *first day* falls in the window). Tick the groups that belong in the round (e.g. *Round 2 Seniors* and *Round 4 Women*).
-2. **Availability open** → umpires get a "Needed" item on their home page and answer per day (Available / Maybe / Not available).
-3. **Which grades need umpires** → set 0, 1 or 2 umpires per grade as the secretary requests (changeable per game). Your choice is remembered for the next round.
-4. **Allocate** → each slot's drop-down is sorted: available umpires first, then maybe, then no reply, then unavailable/already busy. ⚠ appears for anything questionable (unavailable, double-booked that day, belongs to the home/away club). **Suggest allocations** fills only empty slots using umpires who said *Available*, least-used first.
+2. **Which grades need umpires** → set 0, 1 or 2 umpires per grade as the secretary requests (changeable per game). Your choice is remembered for the next round.
+3. **Allocate** → each slot's drop-down is sorted: available umpires first, then no reply, then unavailable/already busy. ⚠ appears for anything questionable (unavailable, double-booked that day, belongs to the home/away club). **Suggest allocations** fills only empty slots using umpires who said *Available*, least-used first.
+4. **Availability tab** shows everyone's answers for the round and who hasn't replied yet.
 5. **Update fixtures** pulls changes from Play Cricket; changed grounds/times are flagged on the game and allocations are kept.
 6. **Published** → umpires can see their appointments. **Report & email** → print/save as PDF, copy the BCC list, or open an email draft.
 
@@ -46,7 +47,7 @@ Then **Authentication → Settings → Authorized domains → Add domain**: `YOU
 Free GitHub Pages needs a public repository. That is fine here: the code contains no secrets (the Firebase web config is meant to be public — security comes from the Firestore rules) and the data lives in Firebase, not in the repo.
 
 ### 5. First run
-Sign in → **Umpires → Add umpires** → paste `Name, email, club` lines (for example from your Google Form responses) → **Rounds → + New round**.
+Sign in → **Umpires → Add umpires** → paste `Name, email, club` lines (for example from your Google Form responses) → **Rounds → Set up season dates** → **+ New round**.
 
 ## Notes
 
