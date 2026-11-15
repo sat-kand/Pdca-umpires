@@ -95,13 +95,11 @@ export async function viewAdminHome(ctx) {
       h('div', { class: 'row-between' }, h('h2', {}, c.label),
         h('button', { class: 'btn small', type: 'button', onclick: () => openGradesModal({ store, round: r, onDone: async () => { await load(); draw(); } }) }, 'Select grades')),
       h('a', { class: 'tile-body', href: `#/admin/round/${r.id}` },
-        h('div', { class: 'tile-round' }, r.title),
-        r.other && h('div', { class: 'muted' }, r.other),
-        h('div', { class: 'muted' }, fmtRange(r.dates || [])),
+        h('div', { class: 'tile-round' }, fmtRange(r.dates || [])),
+        h('div', { class: 'muted' }, picked ? (r.formats || '') : 'No grades selected'),
         h('div', { class: 'tile-stats' },
-          picked
-            ? [h('span', { class: 'chip' }, `${picked} grade${picked === 1 ? '' : 's'}`), h('span', { class: 'chip ' + (st.filled >= st.needed && st.needed ? 'ok' : 'warn') }, `${st.filled}/${st.needed} slots filled`)]
-            : h('span', { class: 'muted' }, 'No grades selected yet · 0/0 slots filled'),
+          h('span', { class: 'chip' }, `${picked} grade${picked === 1 ? '' : 's'}`),
+          h('span', { class: 'chip ' + (st.needed && st.filled >= st.needed ? 'ok' : 'warn') }, `${st.filled}/${st.needed} slots filled`),
           r.published && h('span', { class: 'chip ok' }, 'Published'))));
   }
 

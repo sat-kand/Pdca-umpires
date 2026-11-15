@@ -146,3 +146,19 @@ test('round title follows the picked grades; a grade on another round is listed 
   games[0].slots = 0; games[1].slots = 0;
   assert.equal(summarise(games).title, 'Round 4');                             // only Women picked: Round 4
 });
+
+test('grade groups and the format line for the tile', async () => {
+  const { gradeGroup, formatSummary } = await import('../js/logic.js');
+  const G = (grade, comp, days = 2) => ({ grade, comp, days: Array.from({ length: days }, (_, i) => ({ date: '2026-11-2' + (1 + i) })) });
+  assert.equal(gradeGroup(G('Senior A Grade', 'PDCA Senior Competition')), 'Mens');
+  assert.equal(gradeGroup(G('Senior Women', 'PDCA Senior Competition')), 'Women');
+  assert.equal(gradeGroup(G('Sunday  T20 Spring 2026', 'PDCA Sunday T20')), 'T20');
+  const J = n => gradeGroup(G(n, 'PDCA Junior Competition'));
+  assert.deepEqual(['U10 Blue North', 'U11 Red South', 'U12 Girls Stage 1'].map(J), ['Stage 1', 'Stage 1', 'Stage 1']);
+  assert.deepEqual(['U12 Division 1', 'U13 Division 3', 'U15 Girls Stage 2'].map(J), ['Stage 2', 'Stage 2', 'Stage 2']);
+  assert.deepEqual(['U14 Division 1', 'U15 Division 2', 'U17 Division 1'].map(J), ['Stage 3', 'Stage 3', 'Stage 3']);
+  const sen = 'PDCA Senior Competition';
+  assert.equal(formatSummary([G('Senior A Grade', sen), G('Senior B01', sen), G('Senior Women', sen, 1)]), 'Mens \u2013 2 day & Women \u2013 1 day');
+  assert.equal(formatSummary([G('U14 Division 1', 'PDCA Junior Competition', 2), G('U15 Division 1', 'PDCA Junior Competition', 1), G('U12 Division 1', 'PDCA Junior Competition', 1)]), 'Stage 2 \u2013 1 day & Stage 3 \u2013 1 & 2 day');
+  assert.equal(formatSummary([]), '');
+});
