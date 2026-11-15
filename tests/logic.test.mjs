@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   fmtRange, gradeShort, compareGrades, groupSections, clubConflict, normClub, allocFor, buildBusyMap,
   assignmentWarnings, slotOptions, recount, autoAllocate, applyChanges, umpireText, seasonLoads, buildCalendar, upcomingCalendar,
+  compKeyOf, availKey, availStatus, groupByComp, roundColumns,
 } from '../js/logic.js';
 
 const mk = (id, grade, home, away, days, slots = 1, alloc = {}, extra = {}) => ({
@@ -13,7 +14,10 @@ const mk = (id, grade, home, away, days, slots = 1, alloc = {}, extra = {}) => (
 });
 const U = (pid, name, clubs = '', active = true) => ({ pid, email: pid + '@x.test', name, clubs, active });
 const D1 = '2026-10-10', D2 = '2026-10-17';
-const avail = (map) => Object.fromEntries(Object.entries(map).map(([pid, days]) => [pid + '@x.test', { days }]));
+// avail({ u1: { [D1]: 'yes' } }) answers for the Senior competition; pass comp for Junior / T20.
+const avail = (map, comp = 'senior') => Object.fromEntries(Object.entries(map).map(([pid, days]) =>
+  [pid + '@x.test', { days: Object.fromEntries(Object.entries(days).map(([d, v]) => [availKey(comp, d), v])) }]));
+const JUN = 'PDCA Junior Competition', T20C = 'PDCA T20 Competition';
 
 test('fmtRange matches the report heading style', () => {
   assert.equal(fmtRange([D2, D1]), '10/17 OCT');
@@ -65,22 +69,22 @@ test('warnings: unavailable, no response, double-booked, club conflict, same ump
   const busy = buildBusyMap([g1, g2]);
   const ann = U('u1', 'Ann');
   const w = assignmentWarnings({ game: g2, date: D1, slotIndex: 0, umpire: ann, availByEmail: avail({ u1: { [D1]: 'no' } }), busy });
-  assert.deepEqual(w, ['Marked unavailable for this day', 'Already umpiring another game this day']);
+  assert.deepEqual(w, ['Marked unavailable for Senior on this day', 'Already umpiring another Senior game this day']);
   const bob = U('u2', 'Bob', 'Kings Langley');
   assert.deepEqual(assignmentWarnings({ game: g1, date: D1, slotIndex: 1, umpire: bob, availByEmail: {}, busy }),
-    ['No availability submitted', 'Belongs to the home or away club']);
+    ['No Senior availability submitted', 'Belongs to the home or away club']);
   assert.ok(assignmentWarnings({ game: g1, date: D1, slotIndex: 1, umpire: ann, availByEmail: avail({ u1: { [D1]: 'yes' } }), busy }).includes('Already in this game'));
   assert.deepEqual(assignmentWarnings({ game: g1, date: D1, slotIndex: 0, umpire: ann, availByEmail: avail({ u1: { [D1]: 'yes' } }), busy: buildBusyMap([g1]) }), []);
 });
 
-test('slotOptions groups yes / maybe / no response / avoid and skips inactive umpires', () => {
+test('slotOptions groups yes / no response / avoid and skips inactive umpires', () => {
   const g = mk('1', 'Senior A Grade', 'A', 'B', [D1]);
   const g2 = mk('2', 'Senior B02', 'C', 'D', [D1], 1, { [D1]: [{ p: 'u4', n: 'Dee' }] });
   const umpires = [U('u1', 'Ann'), U('u2', 'Bob'), U('u3', 'Cat'), U('u4', 'Dee'), U('u5', 'Eve'), U('u6', 'Fay', '', false)];
-  const a = avail({ u1: { [D1]: 'yes' }, u2: { [D1]: 'maybe' }, u4: { [D1]: 'yes' }, u5: { [D1]: 'no' }, u6: { [D1]: 'yes' } });
+  const a = avail({ u1: { [D1]: 'yes' }, u2: { [D1]: 'yes' }, u4: { [D1]: 'yes' }, u5: { [D1]: 'no' }, u6: { [D1]: 'yes' } });
   const opts = slotOptions({ game: g, date: D1, slotIndex: 0, umpires, availByEmail: a, busy: buildBusyMap([g, g2]), loads: {} });
   const by = Object.fromEntries(opts.map(o => [o.umpire.name, o.group]));
-  assert.deepEqual(by, { Ann: 'ok', Bob: 'maybe', Cat: 'none', Dee: 'avoid', Eve: 'avoid' });
+  assert.deepEqual(by, { Ann: 'ok', Bob: 'ok', Cat: 'none', Dee: 'avoid', Eve: 'avoid' });
 });
 
 test('recount counts slot-days and per-umpire appointments', () => {
@@ -106,7 +110,7 @@ test('autoAllocate: only "yes", no double-booking, no club conflict, balances lo
   const umpires = [U('u1', 'Ann', 'Kings Langley'), U('u2', 'Bob'), U('u3', 'Cat'), U('u4', 'Dan')];
   const a = avail({
     u1: { [D1]: 'yes', [D2]: 'yes' }, u2: { [D1]: 'yes', [D2]: 'yes' },
-    u3: { [D1]: 'yes', [D2]: 'maybe' }, u4: { [D1]: 'no', [D2]: 'yes' },
+    u3: { [D1]: 'yes', [D2]: 'no' }, u4: { [D1]: 'no', [D2]: 'yes' },
   });
   const ch = autoAllocate({ games, umpires, availByEmail: a });
   const apply = g => ({ ...g, alloc: applyChanges(g, ch) });
@@ -120,7 +124,7 @@ test('autoAllocate: only "yes", no double-booking, no club conflict, balances lo
   assert.ok(!allocFor(done[0], D1).some(x => x?.p === 'u4'));  // Dan said no on D1
   assert.ok(!pid('3', D2));                                // game 3 is one-day, nothing on D2
   assert.ok(pid('1', D1) && pid('2', D1) && pid('3', D1));
-  // day 2: Cat is only "maybe" so must not be picked
+  // day 2: Cat said no so must not be picked
   assert.ok(![pid('1', D2), pid('2', D2)].some(x => x?.p === 'u3'));
 });
 
@@ -138,7 +142,7 @@ test('autoAllocate never overwrites an existing allocation and respects slot cou
 
 test('autoAllocate leaves a slot empty when nobody is free', () => {
   const games = [mk('1', 'Senior A Grade', 'A', 'B', [D1])];
-  assert.deepEqual(autoAllocate({ games, umpires: [U('u1', 'Ann')], availByEmail: avail({ u1: { [D1]: 'maybe' } }) }), []);
+  assert.deepEqual(autoAllocate({ games, umpires: [U('u1', 'Ann')], availByEmail: avail({ u1: { [D1]: 'no' } }) }), []);
 });
 
 test('report text: one day, two slots, and a different umpire each day', () => {
@@ -163,9 +167,9 @@ test('buildCalendar: two-day rounds become Day 1 / Day 2, one-day games on the s
   ];
   const cal = buildCalendar(games);
   assert.deepEqual(cal, [
-    { label: 'Round 2', dates: [S1, S2] },
-    { label: 'Round 5', dates: [S3] },
-    { label: 'Round 3', dates: [S4, S5] },
+    { comp: 'senior', label: 'Round 2', dates: [S1, S2] },
+    { comp: 'senior', label: 'Round 5', dates: [S3] },
+    { comp: 'senior', label: 'Round 3', dates: [S4, S5] },
   ]);
 });
 
@@ -175,11 +179,90 @@ test('buildCalendar: duplicate round names stay distinguishable', () => {
 });
 
 test('upcomingCalendar hides past dates but keeps Day numbers', () => {
-  const cal = [{ label: 'Round 2', dates: ['2026-10-10', '2026-10-17'] }, { label: 'Round 3', dates: ['2026-10-24', '2026-10-31'] }];
+  const cal = [{ comp: 'senior', label: 'Round 2', dates: ['2026-10-10', '2026-10-17'] }, { comp: 'senior', label: 'Round 3', dates: ['2026-10-24', '2026-10-31'] }];
   assert.deepEqual(upcomingCalendar(cal, '2026-10-17'), [
-    { label: 'Round 2', rows: [{ date: '2026-10-17', dayNo: 2, of: 2 }] },
-    { label: 'Round 3', rows: [{ date: '2026-10-24', dayNo: 1, of: 2 }, { date: '2026-10-31', dayNo: 2, of: 2 }] },
+    { comp: 'senior', label: 'Round 2', rows: [{ date: '2026-10-17', dayNo: 2, of: 2 }] },
+    { comp: 'senior', label: 'Round 3', rows: [{ date: '2026-10-24', dayNo: 1, of: 2 }, { date: '2026-10-31', dayNo: 2, of: 2 }] },
   ]);
   assert.deepEqual(upcomingCalendar(cal, '2027-01-01'), []);
   assert.deepEqual(upcomingCalendar(null, '2026-10-17'), []);
+});
+
+// ---------- competitions: separate availability, overlapping dates ---------
+
+test('compKeyOf recognises Senior, T20 and Junior competitions', () => {
+  assert.equal(compKeyOf('PDCA Senior Competition'), 'senior');
+  assert.equal(compKeyOf('PDCA Junior Competition'), 'junior');
+  assert.equal(compKeyOf('PDCA T20 Competition'), 't20');
+  assert.equal(compKeyOf('Twenty20 Cup'), 't20');
+  assert.equal(compKeyOf({ comp: 'PDCA Junior Competition' }), 'junior');
+  assert.equal(compKeyOf('Imported'), 'senior');
+  // a T20 *match* inside the Senior competition (e.g. Women) is still Senior
+  assert.equal(compKeyOf(mk('1', 'Senior Women', 'A', 'B', [D1])), 'senior');
+});
+
+test('availability is separate per competition for the same date', () => {
+  const a = { 'u1@x.test': { days: { [availKey('senior', D1)]: 'yes', [availKey('junior', D1)]: 'no' } } };
+  assert.equal(availStatus(a, U('u1', 'Ann'), 'senior', D1), 'yes');
+  assert.equal(availStatus(a, U('u1', 'Ann'), 'junior', D1), 'no');
+  assert.equal(availStatus(a, U('u1', 'Ann'), 't20', D1), 'none');
+});
+
+test('an umpire can be appointed to a Senior and a Junior game on the same day without a warning', () => {
+  const sen = mk('1', 'Senior A Grade', 'A', 'B', [D1], 1, { [D1]: [{ p: 'u1', n: 'Ann' }] });
+  const jun = mk('2', 'U12 Gold', 'C', 'D', [D1], 1, { [D1]: [{ p: 'u1', n: 'Ann' }] }, { comp: JUN });
+  const a = { 'u1@x.test': { days: { [availKey('senior', D1)]: 'yes', [availKey('junior', D1)]: 'yes' } } };
+  const busy = buildBusyMap([sen, jun]);
+  const ann = U('u1', 'Ann');
+  assert.deepEqual(assignmentWarnings({ game: sen, date: D1, slotIndex: 0, umpire: ann, availByEmail: a, busy }), []);
+  assert.deepEqual(assignmentWarnings({ game: jun, date: D1, slotIndex: 0, umpire: ann, availByEmail: a, busy }), []);
+});
+
+test('but two games in the SAME competition on one day still clash, and availability must match the competition', () => {
+  const s1 = mk('1', 'Senior A Grade', 'A', 'B', [D1], 1, { [D1]: [{ p: 'u1', n: 'Ann' }] });
+  const s2 = mk('2', 'Senior B02', 'C', 'D', [D1], 1, { [D1]: [{ p: 'u1', n: 'Ann' }] });
+  const busy = buildBusyMap([s1, s2]);
+  const onlyJunior = { 'u1@x.test': { days: { [availKey('junior', D1)]: 'yes' } } };
+  const w = assignmentWarnings({ game: s2, date: D1, slotIndex: 0, umpire: U('u1', 'Ann'), availByEmail: onlyJunior, busy });
+  assert.deepEqual(w, ['No Senior availability submitted', 'Already umpiring another Senior game this day']);
+});
+
+test('autoAllocate uses each competition\'s own availability and can use one umpire for two competitions on a day', () => {
+  const games = [
+    mk('1', 'Senior A Grade', 'A', 'B', [D1]),
+    mk('2', 'U12 Gold', 'C', 'D', [D1], 1, {}, { comp: JUN }),
+    mk('3', 'T20 Mens', 'E', 'F', [D1], 1, {}, { comp: T20C }),
+  ];
+  const umpires = [U('u1', 'Ann'), U('u2', 'Bob')];
+  const a = {
+    'u1@x.test': { days: { [availKey('senior', D1)]: 'yes', [availKey('junior', D1)]: 'yes', [availKey('t20', D1)]: 'no' } },
+    'u2@x.test': { days: { [availKey('senior', D1)]: 'no', [availKey('junior', D1)]: 'no', [availKey('t20', D1)]: 'yes' } },
+  };
+  const ch = autoAllocate({ games, umpires, availByEmail: a });
+  const who = Object.fromEntries(ch.map(c => [c.gameId, c.entry.p]));
+  assert.deepEqual(who, { 1: 'u1', 2: 'u1', 3: 'u2' });   // Ann does Senior and Junior on the same day
+});
+
+test('buildCalendar keeps competitions apart even when their dates overlap', () => {
+  const games = [
+    mk('1', 'Senior A Grade', 'A', 'B', [D1, D2]),
+    mk('2', 'U12 Gold', 'C', 'D', [D1], 1, {}, { comp: JUN, roundName: 'Round 5' }),
+    mk('3', 'U10 Red', 'E', 'F', [D1], 1, {}, { comp: JUN, roundName: 'Round 5' }),
+    mk('4', 'U14 Blue', 'G', 'H', [D1], 1, {}, { comp: JUN, roundName: 'Round 4' }),   // minority name for that date
+    mk('5', 'T20 Mens', 'I', 'J', [D2], 1, {}, { comp: T20C, roundName: 'Round 1' }),
+  ];
+  assert.deepEqual(buildCalendar(games), [
+    { comp: 'senior', label: 'Round 2', dates: [D1, D2] },
+    { comp: 't20', label: 'Round 1', dates: [D2] },
+    { comp: 'junior', label: 'Round 5', dates: [D1] },
+  ]);
+});
+
+test('groupByComp orders Senior, T20, Junior and hides empty competitions; roundColumns lists comp+date pairs', () => {
+  const up = upcomingCalendar([
+    { comp: 'junior', label: 'Round 5', dates: [D1] }, { comp: 'senior', label: 'Round 2', dates: [D1, D2] },
+  ], '2000-01-01');
+  assert.deepEqual(groupByComp(up).map(g => [g.label, g.rounds.length]), [['Senior', 1], ['Junior', 1]]);
+  const games = [mk('1', 'Senior A Grade', 'A', 'B', [D1, D2]), mk('2', 'U12 Gold', 'C', 'D', [D1], 1, {}, { comp: JUN }), mk('3', 'x', 'C', 'D', [D1], 1, {}, { removed: true, comp: T20C })];
+  assert.deepEqual(roundColumns(games).map(c => c.key), [availKey('senior', D1), availKey('junior', D1), availKey('senior', D2)]);
 });

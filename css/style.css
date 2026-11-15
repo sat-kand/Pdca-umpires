@@ -123,3 +123,9 @@ td.av { text-align: center; font-weight: 700; } td.av.ok { color: var(--green); 
   .report-table th { background: #d9e8f7 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .report-table td.gap { background: #ffe9e6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* availability: one section per competition */
+.comp-section + .comp-section { margin-top: 28px; }
+.comp-head { align-items: baseline; margin: 4px 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--green); }
+.comp-title { margin: 0; font-size: 1.15rem; color: var(--green); }
+.comp-head .link { font-size: .9rem; }

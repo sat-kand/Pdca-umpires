@@ -44,10 +44,16 @@ API = {
             {"id": "bye", "matchType": "BYE", "matchSchedule": [], "teams": []}],
     "g-b": [match("m3", "Round 2", "Two Day", [D1, D2], "Wenty Leagues", "Parramatta", "Darling Street")],
     "g-w": [match("m4", "Round 4", "T20", [D2], "Perry", "Gold", "School Oval")],
+    "g-j": [match("m5", "Round 2", "One Day", [D1], "Juniors Red", "Juniors Blue", "Kids Park")],
+    "g-t": [match("m6", "Round 1", "T20", [D2], "Twenty A", "Twenty B", "Short Oval")],
 }
+API_DOWN = True   # the first "Load sample data" runs with Play Cricket unreachable -> made-up fixtures
 
 
 def fulfill_api(route):
+    if API_DOWN:
+        route.abort()
+        return
     url = route.request.url
     cors = {"access-control-allow-origin": "*"}
     if "/seasons" in url:
@@ -55,7 +61,8 @@ def fulfill_api(route):
     elif "competition-seasons" in url:
         body = {"competitionSeasons": [
             {"competition": {"id": "c-sen", "name": "PDCA Senior Competition"}, "grades": [{"id": "g-a", "name": "Senior A Grade"}, {"id": "g-b", "name": "Senior B01"}, {"id": "g-w", "name": "Senior Women"}]},
-            {"competition": {"id": "c-jun", "name": "PDCA Junior Competition"}, "grades": [{"id": "g-j", "name": "U10 Blue North"}]}]}
+            {"competition": {"id": "c-jun", "name": "PDCA Junior Competition"}, "grades": [{"id": "g-j", "name": "U10 Blue North"}]},
+            {"competition": {"id": "c-t20", "name": "PDCA T20 Competition"}, "grades": [{"id": "g-t", "name": "T20 Mens"}]}]}
     else:
         m = re.search(r"/scores/grades/([^/]+)/matches", url)
         body = {"matches": API.get(m.group(1), [])} if m else {}
@@ -111,9 +118,9 @@ with sync_playwright() as p:
     page.click(".nav-link:has-text('Rounds')")
     page.click(".round-card")
     page.wait_for_selector("table.board")
-    check(page.locator("table.board tbody tr").count() == 15, "board lists all 15 sample games")
-    check(page.locator("text=0 of 28 slots filled").count() == 1, "28 slot-days needed (13 two-day games x2 + 2 women)")
-    check(page.locator("section.card h2").count() == 2, "two report sections: Seniors and Women")
+    check(page.locator("table.board tbody tr").count() == 22, "board lists all 22 sample games (Senior, Junior and T20)")
+    check(page.locator("text=0 of 35 slots filled").count() == 1, "35 slot-days needed (28 senior + 5 junior + 2 T20)")
+    check(page.locator("section.card h2").count() == 5, "five report sections: Seniors, Women, two Junior rounds, T20")
 
     print("Admin: manual allocation + warnings")
     first = page.locator("select.slot").first
@@ -125,11 +132,29 @@ with sync_playwright() as p:
     page.locator("select.slot").first.select_option(value="")
     check(page.locator(".warn-icon").count() == 0, "clearing the slot clears the warning")
 
+    print("Admin: one umpire, Senior and Junior game on the same day")
+    d1_label = sat1.strftime("%a, ") + str(sat1.day) + sat1.strftime(" %b")
+    def slot_for(pattern):
+        return page.locator("select.slot").evaluate_all(
+            "(els, [pat, day]) => els.findIndex(e => new RegExp(pat).test(e.getAttribute('aria-label')) && e.getAttribute('aria-label').endsWith(day))", [pattern, d1_label])
+    i_sen = slot_for(r"^Umpire 1, A GLCC Senior Maroon")
+    i_jun = slot_for(r"^Umpire 1, U14 Blue Winston Hills")
+    check(i_sen >= 0 and i_jun >= 0, "found a Senior and a Junior slot on the same day")
+    def pick(idx, name):
+        sel = page.locator("select.slot").nth(idx)
+        val = sel.evaluate("(s, n) => { const o = [...s.options].find(o => o.text.startsWith(n)); return o ? o.value : null }", name)
+        sel.select_option(value=val)
+    pick(i_sen, "Demo Umpire 2")
+    pick(i_jun, "Demo Umpire 2")
+    check(page.locator(".warn-icon").count() == 0, "same umpire on a Senior and a Junior game the same day: no warning")
+    page.locator("select.slot").nth(i_sen).select_option(value="")
+    page.locator("select.slot").nth(i_jun).select_option(value="")
+
     print("Admin: suggest allocations")
     page.click("button:has-text('Suggest allocations')")
-    m = re.search(r"(\d+) of 28 slots filled", page.locator(".summary").inner_text())
+    m = re.search(r"(\d+) of 35 slots filled", page.locator(".summary").inner_text())
     filled = int(m.group(1))
-    check(filled > 10, f"auto-suggest filled {filled} of 28 slots")
+    check(filled > 10, f"auto-suggest filled {filled} of 35 slots")
     check(page.locator(".warn-icon").count() == 0, "auto-suggested allocations have no warnings")
     # nobody on two games the same day
     for day in (D1, D2):
@@ -142,12 +167,14 @@ with sync_playwright() as p:
     for lab, val in labels:
         if not val:
             continue
+        if not re.match(r"^Umpire \d, (A|Ar|B\d+|Women) ", lab):
+            continue   # only Senior games must not clash with each other
         day = lab.split(", ")[-1]
         by_day.setdefault(day, []).append(val)
     for day, vals in by_day.items():
         if len(vals) != len(set(vals)):
             dup = True
-    check(not dup, "no umpire is allocated twice on the same day")
+    check(not dup, "no umpire is allocated to two Senior games on the same day")
 
     print("Admin: slots per grade + per game")
     page.click("summary:has-text('Which grades need umpires')")
@@ -155,17 +182,18 @@ with sync_playwright() as p:
     grade_sel.select_option(value="2")
     check(page.locator("text=slots filled").count() == 1, "grade panel changes slot count without breaking the board")
     m = re.search(r"of (\d+) slots", page.locator(".summary").inner_text())
-    check(int(m.group(1)) == 28 + 4 + 4 + 0, f"setting grade A to 2 umpires raises needed slots (now {m.group(1)})")
+    check(int(m.group(1)) == 35 + 8, f"setting grade A to 2 umpires raises needed slots (now {m.group(1)})")
     grade_sel.select_option(value="1")
 
     print("Admin: availability tab, report tab, publish")
     page.click("a.tab:has-text('Availability')")
     page.wait_for_selector("table.board")
     check(page.locator("td.av.ok").count() > 0 and page.locator("td.av.no").count() > 0, "availability grid shows yes and no cells")
+    check(page.locator("th", has_text=re.compile("^junior ·", re.I)).count() >= 1 and page.locator("th", has_text=re.compile("^senior ·", re.I)).count() >= 1, "grid has separate Senior and Junior columns for the same date")
     page.click("a.tab:has-text('Report')")
     page.wait_for_selector(".report-table")
-    check(page.locator(".report-table tbody tr").count() == 15, "report has 15 rows")
-    check(page.locator(".report-table th:has-text('UMPIRES')").count() == 2, "report headers match the emailed format")
+    check(page.locator(".report-table tbody tr").count() == 22, "report has 22 rows")
+    check(page.locator(".report-table th:has-text('UMPIRES')").count() == 5, "report headers match the emailed format, one table per section")
     page.click("a.tab:has-text('Allocate')")
     page.wait_for_selector("table.board")
     page.locator(".toggle:has-text('Published') input").check()
@@ -177,36 +205,47 @@ with sync_playwright() as p:
     check(page.locator(".nav-link").count() == 0, "umpire header has no navigation links")
     check(page.locator("h2:has-text('My appointments')").count() == 1, "published appointments show on the same page")
     check(page.locator("li.appt a[href*='maps']").count() >= 1, "appointment links to a map")
-    check(page.locator(".tile").count() == 6, "six rounds listed for the season (Round 2 to Round 7)")
-    check(page.locator(".drow").count() == 12, "two days per round = 12 rows on one page")
-    check(page.locator(".tile h3").first.inner_text() == "Round 2", "tile is titled just 'Round 2'")
+    titles = page.locator(".comp-title").all_inner_texts()
+    check(titles == ["Senior", "T20", "Junior"], f"one section per competition: {titles}")
+    sen = page.locator(".comp-section:has(h2:has-text('Senior'))")
+    jun = page.locator(".comp-section:has(h2:has-text('Junior'))")
+    check(sen.locator(".tile").count() == 6 and sen.locator(".drow").count() == 12, "Senior: six two-day rounds = 12 rows")
+    check(sen.locator(".tile h3").first.inner_text() == "Round 2", "tile is titled just 'Round 2'")
     first_label = page.locator(".dlabel").first.inner_text()
     check(first_label.startswith("Day 1 \u00b7 "), f"row label reads '{first_label}' (date shown once)")
     date_part = first_label.split("\u00b7 ")[1]
-    check(page.locator(".tile").first.inner_text().count(date_part) == 1, f"'{date_part}' appears once in the tile, not repeated in a heading")
-    check(page.locator("button.opt").count() == 24, "only two options per day (Available / Not available)")
+    check(sen.locator(".tile").first.inner_text().count(date_part) == 1, f"'{date_part}' appears once in the tile, not repeated in a heading")
+    check(page.locator(".dlabel", has_text=date_part).count() >= 2, "the same date is listed under more than one competition (overlapping dates)")
+    check(page.locator("button.opt").count() == 2 * page.locator(".drow").count(), "only two options per day (Available / Not available)")
     check(page.locator("text=Maybe").count() == 0 and page.locator("textarea").count() == 0, "no 'Maybe' option and no note box")
     check(page.locator(".chip:has-text('Submitted')").count() == 1, "'Submitted' chip is on the page (top right), no Edit step")
-    first_row = page.locator(".drow").first
-    check("on" in first_row.locator("button.opt.yes").get_attribute("class"), "existing answer is pre-highlighted")
-    first_row.locator("button.opt.no").click()
-    check("on" in first_row.locator("button.opt.no").get_attribute("class") and "on" not in first_row.locator("button.opt.yes").get_attribute("class"), "tapping highlights the new choice only")
+    sen_first = sen.locator(".drow").first
+    jun_first = jun.locator(".drow", has_text=date_part).first
+    check("on" in sen_first.locator("button.opt.yes").get_attribute("class"), "existing Senior answer is pre-highlighted")
+    jun_before = jun_first.locator("button.opt.no").get_attribute("class")
+    sen_first.locator("button.opt.no").click()
+    check("on" in sen_first.locator("button.opt.no").get_attribute("class") and "on" not in sen_first.locator("button.opt.yes").get_attribute("class"), "tapping highlights the new choice only")
+    check(jun_first.locator("button.opt.no").get_attribute("class") == jun_before, "changing Senior leaves the Junior answer for the same day alone")
     check(page.locator(".chip:has-text('Unsaved changes')").count() == 1, "chip warns about unsaved changes")
     page.click(".savebar button:has-text('Save')")
     page.wait_for_selector(".chip:has-text('Submitted')")
     check(True, "one Save updates the whole season and the chip returns to Submitted")
     page.reload()
     page.wait_for_selector(".tile")
-    check("on" in page.locator(".drow").first.locator("button.opt.no").get_attribute("class"), "answer is still there after reloading")
-    row3 = page.locator(".drow").nth(3)
+    sen = page.locator(".comp-section:has(h2:has-text('Senior'))")
+    jun = page.locator(".comp-section:has(h2:has-text('Junior'))")
+    check("on" in sen.locator(".drow").first.locator("button.opt.no").get_attribute("class"), "answer is still there after reloading")
+    check("on" in jun.locator(".drow", has_text=date_part).first.locator("button.opt.no").get_attribute("class"), "Junior 'not available' for the same day was kept separately")
+    row3 = sen.locator(".drow").nth(3)
     if "on" in row3.locator("button.opt.yes").get_attribute("class"):
         row3.locator("button.opt.yes").click()          # clear any existing answer first
     row3.locator("button.opt.yes").click()
     check("on" in row3.locator("button.opt.yes").get_attribute("class"), "tapping an option selects it")
     row3.locator("button.opt.yes").click()
-    check("on" not in page.locator(".drow").nth(3).locator("button.opt.yes").get_attribute("class"), "tapping the same option again clears it")
-    page.click("button:has-text('Mark all available')")
-    check(page.locator("button.opt.yes.on").count() == 12, "'Mark all available' answers every date")
+    check("on" not in sen.locator(".drow").nth(3).locator("button.opt.yes").get_attribute("class"), "tapping the same option again clears it")
+    sen.locator("button:has-text('Mark all available')").click()
+    check(sen.locator("button.opt.yes.on").count() == 12, "'Mark all available' answers every Senior date")
+    check(jun.locator("button.opt.yes.on").count() < jun.locator(".drow").count(), "...and leaves the other competitions alone")
     page.click(".savebar button:has-text('Save')")
     page.wait_for_selector(".chip:has-text('Submitted')")
 
@@ -217,8 +256,11 @@ with sync_playwright() as p:
     page.wait_for_selector("table.board")
     page.click("a.tab:has-text('Availability')")
     page.wait_for_selector("table.board")
-    row = page.locator("tr:has-text('Demo Umpire 1')").first
-    check(row.locator("td.av.ok").count() == 2, "umpire 1's 'Mark all available' shows for both days of the round")
+    heads = page.locator("table.board thead th").all_inner_texts()
+    i_s = next(i for i, t in enumerate(heads) if t.lower().startswith("senior") and date_part.lower() in t.lower())
+    i_j = next(i for i, t in enumerate(heads) if t.lower().startswith("junior") and date_part.lower() in t.lower())
+    cells = page.locator("tr:has-text('Demo Umpire 1')").first.locator("td")
+    check("ok" in cells.nth(i_s).get_attribute("class") and "no" in cells.nth(i_j).get_attribute("class"), "umpire 1 is available for Senior but not Junior on the same day")
     check(page.locator("text=Haven't replied (2)").count() == 1, "still two umpires with no reply")
     page.click("a.tab:has-text('Allocate')")
 
@@ -243,6 +285,7 @@ with sync_playwright() as p:
     page.wait_for_selector("td:has-text('pat@example.com')")
     check(page.locator("text=pat@example.com").count() == 1, "bulk add creates the umpire")
 
+    API_DOWN = False
     print("Admin: new round from Play Cricket (mocked service)")
     page.goto(BASE + "#/admin/new")
     page.wait_for_selector("input[type=checkbox]")
@@ -277,16 +320,18 @@ with sync_playwright() as p:
     page.goto(BASE + "#/admin")
     page.wait_for_selector("text=Season dates")
     page.click("button:has-text('Re-sync dates')")
-    page.wait_for_selector("text=2 rounds, 3 dates")
+    page.wait_for_selector("text=4 rounds, 5 dates across 3 competition(s)")
     page.click("summary:has-text('Show the dates umpires see')")
-    check(page.locator("li:has-text('Round 2')").count() == 1 and page.locator("li:has-text('Round 9')").count() == 1, "calendar built from fixtures: Round 2 (two days) and Round 9")
+    check(page.locator("li:has-text('Round 2'):has-text('Senior')").count() == 1 and page.locator("li:has-text('Round 9')").count() == 1, "calendar built from fixtures: Senior Round 2 (two days) and Round 9")
+    check(page.locator("li:has-text('Junior'):has-text('Round 2')").count() == 1 and page.locator("li:has-text('T20'):has-text('Round 1')").count() == 1, "Junior and T20 rounds are in the calendar too")
     check(page.locator("li:has-text('Round 4')").count() == 0, "women's Round 4 on the same Saturday does not add a duplicate date")
 
     print("New season: umpire sees the synced dates")
     sign_out(page)
     sign_in(page, "umpire2@demo.test")
     page.wait_for_selector(".tile")
-    check(page.locator(".tile").count() == 2, "umpire 2 sees the two synced rounds")
+    check(page.locator(".comp-title").all_inner_texts() == ["Senior", "T20", "Junior"], "umpire 2 sees Senior, T20 and Junior sections")
+    check(page.locator(".tile").count() == 4, "umpire 2 sees the four synced rounds")
     check(page.locator(".tile:has-text('Round 9') .dlabel").first.inner_text() == fmt_day_check(), "single-day round shows just the date, no 'Day 1'")
     check(page.locator(".chip:has-text('Not submitted')").count() == 1, "a fresh season starts as 'Not submitted'")
 
@@ -298,6 +343,17 @@ with sync_playwright() as p:
     overflow = m.evaluate("() => document.documentElement.scrollWidth > window.innerWidth + 1")
     check(not overflow, "availability page does not scroll sideways on a phone")
     check(m.locator(".savebar").is_visible(), "Save bar is visible without scrolling on a phone")
+
+    print("Sample data pulls real fixtures when Play Cricket is reachable (mocked)")
+    sign_out(page)
+    sign_in(page, "admin@demo.test")
+    page.click("button:has-text('Load sample data')")
+    page.wait_for_selector("text=real PDCA games")
+    check(page.locator("text=Loaded 3 real PDCA games").count() == 1, "sample data uses the fixtures from the service (3 games in the next week)")
+    page.click(".nav-link:has-text('Rounds')")
+    page.locator(".round-card").first.click()
+    page.wait_for_selector("table.board")
+    check(page.locator("td:has-text('Kids Park') , td:has-text('Pearce Reserve')").count() >= 1, "board shows the real (mocked) grounds")
 
     browser.close()
 

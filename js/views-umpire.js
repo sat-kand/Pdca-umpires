@@ -1,7 +1,7 @@
 // Screens for umpires: sign-in, profile, availability, my appointments.
 
 import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
-import { fmtDay, gradeShort, allocFor, newPid, emailKey, upcomingCalendar } from './logic.js';
+import { fmtDay, gradeShort, allocFor, newPid, emailKey, upcomingCalendar, groupByComp, availKey, compKeyOf, compLabel } from './logic.js';
 
 export function viewLogin(ctx) {
   const { store } = ctx;
@@ -82,13 +82,13 @@ export async function viewMy(ctx) {
         return h('li', { class: 'appt' },
           h('div', { class: 'appt-date' }, h('strong', {}, fmtDay(d.date)), d.time && h('span', { class: 'muted' }, d.time),
             g.days.length > 1 && h('span', { class: 'chip' }, `Day ${d.day}`)),
-          h('div', {}, h('span', { class: 'chip grade' }, gradeShort(g.grade)), `${g.home.name} v ${g.away.name}`),
+          h('div', {}, h('span', { class: 'chip' }, compLabel(compKeyOf(g))), ' ', h('span', { class: 'chip grade' }, gradeShort(g.grade)), `${g.home.name} v ${g.away.name}`),
           h('div', { class: 'muted' }, link ? h('a', { href: link, target: '_blank', rel: 'noopener' }, g.ground || 'Ground TBC') : (g.ground || 'Ground TBC')));
       }))));
   }
 
   // ---- availability
-  const groups = season ? upcomingCalendar(season.calendar, today) : [];
+  const comps = season ? groupByComp(upcomingCalendar(season.calendar, today)) : [];
   const card = h('section', { class: 'card' });
   if (!season) {
     card.append(h('h2', {}, 'Availability'), h('p', { class: 'muted' }, 'The season dates have not been set up yet. Please check back soon.'));
@@ -97,7 +97,8 @@ export async function viewMy(ctx) {
   }
   const existing = await store.getAvailability(season.id, u.email);
   const days = { ...((existing && existing.days) || {}) };
-  const shown = groups.flatMap(g => g.rows.map(r => r.date));
+  const keysOf = c => c.rounds.flatMap(g => g.rows.map(r => availKey(c.comp, r.date)));
+  const shown = comps.flatMap(keysOf);
   let saved = !!existing, dirty = false;
 
   const chip = h('span', { class: 'chip' });
@@ -110,20 +111,27 @@ export async function viewMy(ctx) {
   };
 
   const buttons = {};
-  const paint = date => buttons[date].forEach(([v, b]) => { b.classList.toggle('on', days[date] === v); b.setAttribute('aria-pressed', String(days[date] === v)); });
-  const choose = (date, v) => {
-    if (days[date] === v) delete days[date]; else days[date] = v;
-    dirty = true; paint(date); drawStatus();
+  const paint = key => buttons[key].forEach(([v, b]) => { b.classList.toggle('on', days[key] === v); b.setAttribute('aria-pressed', String(days[key] === v)); });
+  const choose = (key, v) => {
+    if (days[key] === v) delete days[key]; else days[key] = v;
+    dirty = true; paint(key); drawStatus();
   };
-  const optBtn = (date, v, label) => h('button', { type: 'button', class: `opt ${v}`, 'aria-pressed': String(days[date] === v), onclick: () => choose(date, v) }, label);
+  const optBtn = (key, v, label) => h('button', { type: 'button', class: `opt ${v}`, 'aria-pressed': String(days[key] === v), onclick: () => choose(key, v) }, label);
 
-  const tiles = groups.map(g => h('div', { class: 'tile' }, h('h3', {}, g.label),
-    g.rows.map(r => {
-      const yes = optBtn(r.date, 'yes', 'Available'), no = optBtn(r.date, 'no', 'Not available');
-      buttons[r.date] = [['yes', yes], ['no', no]];
-      yes.classList.toggle('on', days[r.date] === 'yes'); no.classList.toggle('on', days[r.date] === 'no');
-      return h('div', { class: 'drow' }, h('span', { class: 'dlabel' }, r.of > 1 ? `Day ${r.dayNo} · ${fmtDay(r.date)}` : fmtDay(r.date)), h('div', { class: 'opts' }, yes, no));
-    })));
+  // One section per competition: availability is separate for Senior, T20 and Junior,
+  // even when the dates overlap.
+  const sections = comps.map(c => {
+    const markAll = h('button', { class: 'link', type: 'button', onclick: () => { keysOf(c).forEach(k => { days[k] = 'yes'; paint(k); }); dirty = true; drawStatus(); } }, 'Mark all available');
+    const tiles = c.rounds.map(g => h('div', { class: 'tile' }, h('h3', {}, g.label),
+      g.rows.map(r => {
+        const key = availKey(c.comp, r.date);
+        const yes = optBtn(key, 'yes', 'Available'), no = optBtn(key, 'no', 'Not available');
+        buttons[key] = [['yes', yes], ['no', no]];
+        yes.classList.toggle('on', days[key] === 'yes'); no.classList.toggle('on', days[key] === 'no');
+        return h('div', { class: 'drow' }, h('span', { class: 'dlabel' }, r.of > 1 ? `Day ${r.dayNo} · ${fmtDay(r.date)}` : fmtDay(r.date)), h('div', { class: 'opts' }, yes, no));
+      })));
+    return h('div', { class: 'comp-section' }, h('div', { class: 'row-between comp-head' }, h('h2', { class: 'comp-title' }, c.label), markAll), tiles);
+  });
 
   const saveBtn = h('button', { class: 'btn primary', type: 'button' }, 'Save');
   saveBtn.onclick = busy(saveBtn, async () => {
@@ -131,13 +139,12 @@ export async function viewMy(ctx) {
     saved = true; dirty = false; drawStatus();
     toast('Availability saved');
   });
-  const allBtn = h('button', { class: 'link', type: 'button', onclick: () => { shown.forEach(d => { days[d] = 'yes'; paint(d); }); dirty = true; drawStatus(); } }, 'Mark all available');
 
   setChildren(card,
     h('div', { class: 'row-between' }, h('h2', {}, 'Availability'), chip),
-    h('p', { class: 'muted' }, 'Tap your answer for each day, then press Save. It applies to the whole season. ', allBtn),
-    tiles.length ? tiles : h('p', { class: 'muted' }, 'No upcoming dates.'),
-    tiles.length > 0 && h('div', { class: 'savebar' }, hint, saveBtn));
+    h('p', { class: 'muted' }, 'Tap your answer for each day, then press Save. It applies to the whole season. Each competition has its own answers, so you can say yes to Senior and no to Junior on the same day.'),
+    sections.length ? sections : h('p', { class: 'muted' }, 'No upcoming dates.'),
+    sections.length > 0 && h('div', { class: 'savebar' }, hint, saveBtn));
   drawStatus();
   root.append(card);
   return root;

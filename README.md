@@ -7,11 +7,13 @@ A small web app for the Parramatta District Cricket Association umpires.
 
 It is a static site (no build step) that runs on **GitHub Pages**, with **Firebase** (free tier) storing the data.
 
-> **Try it first, no setup.** With the default config the app runs in *demo mode*: data stays in your own browser, "sign in" just asks for an email address, and *Load sample data* creates a sample round and ten sample umpires. Open `index.html` through any web server (e.g. `python3 -m http.server`) and use `admin@demo.test`.
+> **Try it first, no setup.** With the default config the app runs in *demo mode*: data stays in your own browser, "sign in" just asks for an email address, and *Load sample data* pulls PDCA's real Senior, T20 and Junior fixtures from Play Cricket (falling back to made-up fixtures if it can't be reached) and adds ten sample umpires with made-up availability. Open `index.html` through any web server (e.g. `python3 -m http.server`) and use `admin@demo.test`.
 
 ## How a round works
 
-0. **Set up season dates (once per season)** → on the Rounds page press *Set up season dates*. The app reads the whole Senior fixture list and builds the date list umpires see (two-day rounds show as Day 1 / Day 2). Press *Re-sync dates* if the fixture list changes. Umpires answer once for the whole season, so there is no "open availability" step per round.
+0. **Set up season dates (once per season)** → on the Rounds page press *Set up season dates*. The app reads the whole fixture list for **Senior, T20 and Junior** and builds the date list umpires see, one section per competition (two-day rounds show as Day 1 / Day 2). Press *Re-sync dates* if the fixture list changes. Umpires answer once for the whole season, so there is no "open availability" step per round.
+   - **Availability is separate per competition.** An umpire can be available for Senior and not for Junior on the same date.
+   - **Dates can overlap.** An umpire can be appointed to a Senior and a Junior (or T20) game on the same day with no warning. The warnings only flag a clash between two games in the *same* competition on the same day, or an umpire who said no / hasn't answered for that competition.
 1. **New round** → pick the season, competitions and the date window (games are included when their *first day* falls in the window). Tick the groups that belong in the round (e.g. *Round 2 Seniors* and *Round 4 Women*).
 2. **Which grades need umpires** → set 0, 1 or 2 umpires per grade as the secretary requests (changeable per game). Your choice is remembered for the next round.
 3. **Allocate** → each slot's drop-down is sorted: available umpires first, then no reply, then unavailable/already busy. ⚠ appears for anything questionable (unavailable, double-booked that day, belongs to the home/away club). **Suggest allocations** fills only empty slots using umpires who said *Available*, least-used first.

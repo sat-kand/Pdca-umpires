@@ -5,9 +5,44 @@
 //   game   : { id, comp, grade, roundName, matchType, days:[{day,date,time}],
 //              home:{name,org}, away:{name,org}, ground, slots, alloc, ... }
 //   alloc  : { '2026-10-10': [ {p:pid, n:name} | null, ... ] }   (one entry per slot)
-//   avail  : { [email]: { days: { '2026-10-10': 'yes'|'maybe'|'no' }, note } }
+//   avail  : { [email]: { days: { 'senior:2026-10-10': 'yes'|'no' } } }
+//            Availability is given separately per competition (senior / t20 / junior),
+//            so a key is `${competition}:${date}`.
 
 export const AVAIL = { YES: 'yes', MAYBE: 'maybe', NO: 'no' };
+
+// ---------- competitions ---------------------------------------------------
+
+// PDCA runs three competitions. Umpires give availability for each one separately,
+// and may be appointed to more than one on the same day.
+export const COMPS = [
+  { key: 'senior', label: 'Senior' },
+  { key: 't20', label: 'T20' },
+  { key: 'junior', label: 'Junior' },
+];
+
+// 'PDCA Junior Competition' -> 'junior', anything with T20/Twenty20 -> 't20', else 'senior'.
+export function compKeyOf(x) {
+  const name = (typeof x === 'string' ? x : (x && x.comp)) || '';
+  if (/junior|\bu\s?\d{1,2}\b|under\s?\d/i.test(name)) return 'junior';
+  if (/t\s?20|twenty\s?20/i.test(name)) return 't20';
+  return 'senior';
+}
+
+export function compLabel(key) { return (COMPS.find(c => c.key === key) || { label: key }).label; }
+export function availKey(comp, date) { return `${comp}:${date}`; }
+
+// The (competition, date) pairs a set of games needs availability for.
+export function roundColumns(games) {
+  const seen = new Map();
+  for (const g of games) {
+    if (g.removed) continue;
+    const comp = compKeyOf(g);
+    for (const d of g.days) seen.set(availKey(comp, d.date), { comp, date: d.date, key: availKey(comp, d.date) });
+  }
+  const order = k => COMPS.findIndex(c => c.key === k);
+  return [...seen.values()].sort((a, b) => a.date.localeCompare(b.date) || order(a.comp) - order(b.comp));
+}
 
 // ---------- dates ---------------------------------------------------------
 
@@ -122,36 +157,38 @@ export function allocFor(game, date) {
   return Array.from({ length: n }, (_, i) => cur[i] || null);
 }
 
-// Who is already umpiring on each date: { date: { pid: [gameId, ...] } }
+// Who is already umpiring in each competition on each date: { 'senior:date': { pid: [gameId, ...] } }
+// Games in different competitions never clash: an umpire may do a Senior and a Junior game on one day.
 export function buildBusyMap(games) {
   const busy = {};
   for (const g of games) {
     if (g.removed) continue;
+    const comp = compKeyOf(g);
     for (const d of g.days) {
       for (const a of allocFor(g, d.date)) {
         if (!a) continue;
-        ((busy[d.date] ||= {})[a.p] ||= []).push(g.id);
+        ((busy[availKey(comp, d.date)] ||= {})[a.p] ||= []).push(g.id);
       }
     }
   }
   return busy;
 }
 
-export function availStatus(availByEmail, umpire, date) {
+export function availStatus(availByEmail, umpire, comp, date) {
   const rec = availByEmail && availByEmail[umpire.email];
   if (!rec || !rec.days) return 'none';
-  return rec.days[date] || 'none';
+  return rec.days[availKey(comp, date)] || 'none';
 }
 
 // Warnings for one umpire in one slot. Empty array = clean.
 export function assignmentWarnings({ game, date, slotIndex, umpire, availByEmail, busy }) {
   const w = [];
-  const st = availStatus(availByEmail, umpire, date);
-  if (st === 'no') w.push('Marked unavailable for this day');
-  else if (st === 'maybe') w.push('Only "maybe" available');
-  else if (st === 'none') w.push('No availability submitted');
-  const others = ((busy[date] || {})[umpire.pid] || []).filter(id => id !== game.id);
-  if (others.length) w.push('Already umpiring another game this day');
+  const comp = compKeyOf(game);
+  const st = availStatus(availByEmail, umpire, comp, date);
+  if (st === 'no') w.push(`Marked unavailable for ${compLabel(comp)} on this day`);
+  else if (st === 'none') w.push(`No ${compLabel(comp)} availability submitted`);
+  const others = ((busy[availKey(comp, date)] || {})[umpire.pid] || []).filter(id => id !== game.id);
+  if (others.length) w.push(`Already umpiring another ${compLabel(comp)} game this day`);
   const here = allocFor(game, date).filter((a, i) => a && a.p === umpire.pid && i !== slotIndex);
   if (here.length) w.push('Already in this game');
   if (clubConflict(umpire, game)) w.push('Belongs to the home or away club');
@@ -163,12 +200,12 @@ export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy
   const rows = [];
   for (const u of umpires) {
     if (!u.active) continue;
-    const st = availStatus(availByEmail, u, date);
-    const others = ((busy[date] || {})[u.pid] || []).filter(id => id !== game.id);
+    const st = availStatus(availByEmail, u, compKeyOf(game), date);
+    const others = ((busy[availKey(compKeyOf(game), date)] || {})[u.pid] || []).filter(id => id !== game.id);
     const dup = allocFor(game, date).some((a, i) => a && a.p === u.pid && i !== slotIndex);
     const club = clubConflict(u, game);
     const avoid = st === 'no' || others.length > 0 || dup;
-    const group = avoid ? 'avoid' : st === 'yes' ? 'ok' : st === 'maybe' ? 'maybe' : 'none';
+    const group = avoid ? 'avoid' : st === 'yes' ? 'ok' : 'none';
     rows.push({ umpire: u, status: st, busy: others.length > 0, dup, club, group, load: (loads && loads[u.pid]) || 0 });
   }
   rows.sort((a, b) => a.load - b.load || a.umpire.name.localeCompare(b.umpire.name));
@@ -212,13 +249,15 @@ export function autoAllocate({ games, umpires, availByEmail, baseLoads = {} }) {
   for (const orig of ordered) {
     const g = working.get(orig.id);
     let prevPid = null;
+    const comp = compKeyOf(g);
     for (const d of g.days) {
+      const bk = availKey(comp, d.date);
       const cur = allocFor(g, d.date);
       for (let i = 0; i < cur.length; i++) {
         if (cur[i]) { prevPid = cur[i].p; continue; }
         const cands = active.filter(u =>
-          availStatus(availByEmail, u, d.date) === 'yes' &&
-          !((busy[d.date] || {})[u.pid] || []).length &&
+          availStatus(availByEmail, u, comp, d.date) === 'yes' &&
+          !((busy[bk] || {})[u.pid] || []).length &&
           !allocFor(g, d.date).some(a => a && a.p === u.pid) &&
           !clubConflict(u, g));
         if (!cands.length) continue;
@@ -231,7 +270,7 @@ export function autoAllocate({ games, umpires, availByEmail, baseLoads = {} }) {
         const pick = same && (loads[same.pid] || 0) <= (loads[cands[0].pid] || 0) + 1 ? same : cands[0];
         const entry = { p: pick.pid, n: pick.name };
         (g.alloc[d.date] ||= [])[i] = entry;
-        ((busy[d.date] ||= {})[pick.pid] ||= []).push(g.id);
+        ((busy[bk] ||= {})[pick.pid] ||= []).push(g.id);
         loads[pick.pid] = (loads[pick.pid] || 0) + 1;
         changes.push({ gameId: g.id, date: d.date, slot: i, entry });
         prevPid = pick.pid;
@@ -264,39 +303,57 @@ export function umpireText(game) {
 
 // ---------- season calendar (what umpires see) ----------------------------
 
-// From every fixture in the season build the list of dates umpires answer for,
-// grouped the way umpires think of them: Round 2 -> Day 1, Day 2.
-// Two-day rounds win over one-day games that fall on the same Saturday.
+// From every fixture in the season build the list of dates umpires answer for, per competition,
+// grouped the way umpires think of them: Senior -> Round 2 -> Day 1, Day 2.
+// Within a competition, two-day rounds win over one-day games on the same Saturday, and when
+// grades disagree about the round number for a date the most common name wins.
 export function buildCalendar(games) {
-  const info = new Map(); // date -> { round, two }
-  const put = (date, round, two) => {
-    const cur = info.get(date);
-    if (!cur || (two && !cur.two)) info.set(date, { round, two });
-  };
-  for (const g of games) if (g.days.length > 1) for (const d of g.days) put(d.date, g.roundName, true);
-  for (const g of games) if (g.days.length === 1) put(g.days[0].date, g.roundName, false);
-  const groups = new Map();
-  for (const [date, { round, two }] of info) {
-    const key = `${round}|${two}`;
-    if (!groups.has(key)) groups.set(key, { round, dates: [] });
-    groups.get(key).dates.push(date);
+  const byComp = new Map();
+  for (const g of games) { const k = compKeyOf(g); if (!byComp.has(k)) byComp.set(k, []); byComp.get(k).push(g); }
+  const out = [];
+  for (const { key } of COMPS) {
+    const list = byComp.get(key);
+    if (!list) continue;
+    const info = new Map(); // date -> { two, names: Map(name -> n) }
+    const note = (date, name, two) => {
+      let c = info.get(date);
+      if (!c) info.set(date, (c = { two, names: new Map() }));
+      if (two && !c.two) { c.two = true; c.names = new Map(); }
+      if (two === c.two) c.names.set(name, (c.names.get(name) || 0) + 1);
+    };
+    for (const g of list) if (g.days.length > 1) for (const d of g.days) note(d.date, g.roundName, true);
+    for (const g of list) if (g.days.length === 1) note(g.days[0].date, g.roundName, false);
+    const groups = new Map();
+    for (const [date, { two, names }] of info) {
+      const round = [...names.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], undefined, { numeric: true }))[0][0];
+      const gk = `${round}|${two}`;
+      if (!groups.has(gk)) groups.set(gk, { round, dates: [] });
+      groups.get(gk).dates.push(date);
+    }
+    const rounds = [...groups.values()].map(g => ({ ...g, dates: g.dates.sort() }));
+    rounds.sort((a, b) => a.dates[0].localeCompare(b.dates[0]));
+    const seen = {};
+    for (const g of rounds) {
+      const base = g.round || 'Games';
+      seen[base] = (seen[base] || 0) + 1;
+      out.push({ comp: key, label: seen[base] > 1 ? `${base} (${seen[base]})` : base, dates: g.dates });
+    }
   }
-  const list = [...groups.values()].map(g => ({ ...g, dates: g.dates.sort() }));
-  list.sort((a, b) => a.dates[0].localeCompare(b.dates[0]));
-  const seen = {};
-  return list.map(g => {
-    const base = g.round || 'Games';
-    seen[base] = (seen[base] || 0) + 1;
-    return { label: seen[base] > 1 ? `${base} (${seen[base]})` : base, dates: g.dates };
-  });
+  return out;
 }
 
 // Only dates from `today` on, but keep each date's Day number within its round.
 export function upcomingCalendar(calendar, today) {
   return (calendar || []).map(r => ({
+    comp: r.comp || 'senior',
     label: r.label,
     rows: r.dates.map((date, i) => ({ date, dayNo: i + 1, of: r.dates.length })).filter(x => x.date >= today),
   })).filter(r => r.rows.length);
+}
+
+// [{ comp, label: 'Senior', rounds: [...] }] in Senior, T20, Junior order; empty competitions left out.
+export function groupByComp(upcoming) {
+  return COMPS.map(c => ({ comp: c.key, label: c.label, rounds: upcoming.filter(r => r.comp === c.key) })).filter(g => g.rounds.length);
 }
 
 // ---------- ids -----------------------------------------------------------

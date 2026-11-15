@@ -37,7 +37,10 @@ function drawHeader() {
   const link = (href, label) => h('a', { href, class: 'nav-link' }, label);
   setChildren(header,
     demo && h('div', { class: 'demo-banner' }, 'Demo mode — data is stored only in this browser. ',
-      h('button', { class: 'link', type: 'button', onclick: async () => { await seedDemo(S.store); toast('Sample round and umpires loaded'); render(); } }, 'Load sample data'), ' · ',
+      h('button', { class: 'link', type: 'button', onclick: async ev => {
+        const b = ev.currentTarget; b.disabled = true; b.textContent = 'Loading real PDCA fixtures…';
+        try { const r = await seedDemo(S.store); toast(r.live ? `Loaded ${r.games} real PDCA games and sample umpires` : 'Play Cricket not reachable: loaded made-up sample fixtures'); } finally { render(); }
+      } }, 'Load sample data'), ' · ',
       h('button', { class: 'link', type: 'button', onclick: () => { if (confirm('Erase all demo data in this browser?')) { S.store.demoReset(); location.hash = '#/'; } } }, 'Reset')),
     h('div', { class: 'bar' },
       h('a', { class: 'brand', href: '#/' }, '🏏 ', CONFIG.appName),

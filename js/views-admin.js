@@ -4,7 +4,7 @@ import { CONFIG } from './config.js';
 import { h, toast, setChildren, busy, copyText, mapsLink } from './ui.js';
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, sectionKey, allocFor, buildBusyMap, assignmentWarnings,
-  slotOptions, recount, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, newPid, emailKey, availStatus, buildCalendar,
+  slotOptions, recount, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, newPid, emailKey, availStatus, buildCalendar, compLabel, compKeyOf, roundColumns, COMPS,
 } from './logic.js';
 import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures, gamesFromCsv, mergeFixtures } from './fixtures.js';
 
@@ -30,8 +30,8 @@ async function syncSeason(store) {
   const cur = seasons.find(x => x.current) || seasons[0];
   if (!cur) throw new Error('No season found on Play Cricket');
   const comps = await fetchCompetitions(api, CONFIG.orgId, cur.id);
-  const senior = comps.filter(c => /senior/i.test(c.name));
-  const games = await loadFixtures({ api, comps: senior.length ? senior : comps.filter(c => !/junior/i.test(c.name)), from: '0000-01-01', to: '9999-12-31' });
+  // Senior, T20 and Junior: umpires give availability for each one separately.
+  const games = await loadFixtures({ api, comps, from: '0000-01-01', to: '9999-12-31' });
   const season = { id: cur.id, name: cur.name, calendar: buildCalendar(games), updatedAt: new Date().toISOString() };
   await store.saveSeason(season);
   return season;
@@ -50,11 +50,11 @@ export async function viewAdminHome(ctx) {
     h('div', { class: 'row-between' }, h('h1', {}, 'Rounds'), h('a', { class: 'btn primary', href: '#/admin/new' }, '+ New round')),
     h('div', { class: 'card' },
       h('div', { class: 'row-between' },
-        h('div', {}, h('strong', {}, 'Season dates'), ' ', season ? h('span', { class: 'muted' }, `${season.name} · ${season.calendar.length} rounds, ${nDates} dates · umpires answer for these`) : h('span', { class: 'chip warn' }, 'Not set up — umpires cannot give availability yet')),
+        h('div', {}, h('strong', {}, 'Season dates'), ' ', season ? h('span', { class: 'muted' }, `${season.name} · ${season.calendar.length} rounds, ${nDates} dates across ${new Set(season.calendar.map(r => r.comp || 'senior')).size} competition(s) · umpires answer for these`) : h('span', { class: 'chip warn' }, 'Not set up — umpires cannot give availability yet')),
         syncBtn),
       season && h('details', {}, h('summary', {}, 'Show the dates umpires see'),
-        h('ul', { class: 'plain' }, season.calendar.map(r => h('li', {}, h('strong', {}, r.label), ' — ', r.dates.map(fmtDay).join(' and ')))),
-        h('p', { class: 'muted' }, 'Built from the Senior competition fixtures. Re-sync if the fixture list changes.'))),
+        h('ul', { class: 'plain' }, season.calendar.map(r => h('li', {}, h('span', { class: 'chip' }, compLabel(r.comp || 'senior')), ' ', h('strong', {}, r.label), ' — ', r.dates.map(fmtDay).join(' and ')))),
+        h('p', { class: 'muted' }, 'Built from the Senior, T20 and Junior fixtures. Umpires answer each competition separately, and can be appointed to more than one on the same day. Re-sync if the fixture list changes.'))),
     rounds.length ? h('div', { class: 'cards' }, rounds.map(r => {
       const st = r.stats || { needed: 0, filled: 0 };
       return h('a', { class: 'card round-card', href: `#/admin/round/${r.id}` },
@@ -222,7 +222,7 @@ export async function viewBoard(ctx, rid) {
   }
 
   // Active umpires who have not answered for any date of this round.
-  const noReply = () => B.umpires.filter(u => u.active && B.round.dates.every(d => availStatus(B.availByEmail, u, d) === 'none'));
+  const noReply = () => { const cols = roundColumns(B.games); return B.umpires.filter(u => u.active && cols.every(c => availStatus(B.availByEmail, u, c.comp, c.date) === 'none')); };
 
   function collectWarnings() {
     const busy = buildBusyMap(B.games), out = [];
@@ -244,7 +244,7 @@ export async function viewBoard(ctx, rid) {
   function slotSelect(g, date, i, busyMap, loads) {
     const cur = allocFor(g, date)[i];
     const opts = slotOptions({ game: g, date, slotIndex: i, umpires: B.umpires, availByEmail: B.availByEmail, busy: busyMap, loads });
-    const GROUPS = [['ok', 'Available'], ['maybe', 'Maybe'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']];
+    const GROUPS = [['ok', 'Available'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']];
     const label = o => `${o.umpire.name}${o.load ? ` · ${o.load}` : ''}${o.club ? ' · club' : ''}${o.busy ? ' · busy' : ''}`;
     const sel = h('select', { class: 'slot' + (cur ? '' : ' empty'), 'aria-label': `Umpire ${i + 1}, ${gradeShort(g.grade)} ${g.home.name}, ${fmtDay(date)}`,
       onchange: guard(async () => {
@@ -410,23 +410,26 @@ export async function viewAvailabilityOverview(ctx, rid) {
   const { store } = ctx;
   const round = await store.getRound(rid);
   if (!round) return h('p', { class: 'notice warn' }, 'Round not found.');
-  const [umpires, availList] = await Promise.all([store.listUmpires(), store.listAvailability((round.season && round.season.id) || 'manual')]);
+  const [umpires, availList, games] = await Promise.all([store.listUmpires(), store.listAvailability((round.season && round.season.id) || 'manual'), store.listGames(rid)]);
   const by = Object.fromEntries(availList.map(a => [a.email, a]));
   const active = umpires.filter(u => u.active).sort((a, b) => a.name.localeCompare(b.name));
-  const missing = active.filter(u => round.dates.every(d => availStatus(by, u, d) === 'none'));
-  const ICON = { yes: ['✓', 'ok'], maybe: ['?', 'maybe'], no: ['✗', 'no'], none: ['–', 'none'] };
-  const counts = d => { const c = { yes: 0, maybe: 0, no: 0, none: 0 }; active.forEach(u => { c[availStatus(by, u, d)]++; }); return c; };
+  const cols = roundColumns(games);
+  const multi = new Set(cols.map(c => c.comp)).size > 1;
+  const colName = c => (multi ? `${compLabel(c.comp)} · ` : '') + fmtDay(c.date);
+  const missing = active.filter(u => cols.every(c => availStatus(by, u, c.comp, c.date) === 'none'));
+  const ICON = { yes: ['✓', 'ok'], no: ['✗', 'no'], none: ['–', 'none'] };
+  const counts = c => { const n = { yes: 0, no: 0, none: 0 }; active.forEach(u => { n[availStatus(by, u, c.comp, c.date)]++; }); return n; };
   const emails = missing.map(u => u.email);
 
   return h('div', {},
     h('div', { class: 'row-between' }, h('h1', {}, round.title), h('span', { class: 'muted' }, fmtRange(round.dates))),
     tabs(rid, '/availability'),
     h('div', { class: 'card' },
-      h('div', { class: 'summary' }, round.dates.map(d => { const c = counts(d); return h('span', { class: 'chip' }, `${fmtDay(d)}: ${c.yes} available · ${c.no} not available · ${c.none} no reply`); })),
+      h('div', { class: 'summary' }, cols.map(c => { const n = counts(c); return h('span', { class: 'chip' }, `${colName(c)}: ${n.yes} available · ${n.no} not available · ${n.none} no reply`); })),
       h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
-        h('thead', {}, h('tr', {}, h('th', {}, 'Umpire'), round.dates.map(d => h('th', {}, fmtDay(d))), h('th', {}, ''))),
+        h('thead', {}, h('tr', {}, h('th', {}, 'Umpire'), cols.map(c => h('th', {}, colName(c))), h('th', {}, ''))),
         h('tbody', {}, active.map(u => h('tr', {}, h('td', {}, u.name, u.clubs && h('div', { class: 'muted' }, u.clubs)),
-          round.dates.map(d => { const [t, k] = ICON[availStatus(by, u, d)]; return h('td', { class: 'av ' + k }, t); }),
+          cols.map(c => { const [t, k] = ICON[availStatus(by, u, c.comp, c.date)]; return h('td', { class: 'av ' + k }, t); }),
           h('td', {}))))))),
     h('div', { class: 'card' }, h('h2', {}, `Haven't replied (${missing.length})`),
       missing.length ? [h('p', {}, missing.map(u => u.name).join(', ')),
