@@ -41,12 +41,12 @@ export const demoGames = ([D1, D2]) => { const two = [D1, D2]; return [
   fx(11, 'Senior B02', 'Greystanes CC Senior', 'KSS Team 2 Senior', 'Roberta Street Park', two),
   fx(12, 'Senior B02', 'Box Hill Bears', 'Seven Hills Seniors A', 'Stringer Road Reserve - Oval 2', two),
   fx(13, 'Senior B09', 'KSS Team Senior', 'Wenty Waratahs Senior Men', 'Eric Mobbs Reserve - Oval 1', two),
-  fx(14, 'Senior Women', 'WPHCCC Perry', 'Kellyville TWL Gold', 'John Purchase Public School', [D2], 'Round 4', 'T20'),
-  fx(15, 'Senior Women', 'Kellyville TWL Blue', 'Winston Hills TWL', 'Bella Vista Oval', [D2], 'Round 4', 'T20'),
+  fx(14, 'Senior Women', 'WPHCCC Perry', 'Kellyville TWL Gold', 'John Purchase Public School', [D2], 'Round 1', 'T20', T20),
+  fx(15, 'Senior Women', 'Kellyville TWL Blue', 'Winston Hills TWL', 'Bella Vista Oval', [D2], 'Round 1', 'T20', T20),
   // Junior and T20 play on the same days as Seniors: an umpire can be appointed to both.
   fx(16, 'U12 Gold', 'Kings Langley', 'Wenty Leagues', 'Pearce Reserve', [D1], 'Round 2', 'One Day', JUN),
   fx(17, 'U12 Gold', 'Parramatta', 'GLCC', 'Darling Street', [D1], 'Round 2', 'One Day', JUN),
-  fx(18, 'U14 Blue', 'Winston Hills', 'Baulkham Hills', 'Bella Vista Oval', [D1], 'Round 2', 'One Day', JUN),
+  fx(18, 'U14 Blue', 'Winston Hills', 'Baulkham Hills', 'Bella Vista Oval', [D1, D2], 'Round 2', 'Two Day', JUN),   // juniors mix two-day and one-day games
   fx(19, 'U10 Red', 'Greystanes', 'Box Hill Bears', 'Roberta Street Park', [D2], 'Round 3', 'One Day', JUN),
   fx(20, 'U10 Red', 'Seven Hills', 'Hills Barbarians', 'Harold West Reserve', [D2], 'Round 3', 'One Day', JUN),
   fx(21, 'T20 Mens', 'Wenty Leagues', 'Kings Langley', 'Monty Bennett', [D2], 'Round 1', 'T20', T20),

@@ -122,15 +122,19 @@ export async function viewMy(ctx) {
   // even when the dates overlap.
   const sections = comps.map(c => {
     const markAll = h('button', { class: 'link', type: 'button', onclick: () => { keysOf(c).forEach(k => { days[k] = 'yes'; paint(k); }); dirty = true; drawStatus(); } }, 'Mark all available');
-    // A plain list of dates in order, grouped by month. No round names or Day 1/Day 2.
-    const tiles = byMonth(c.dates).map(m => h('div', { class: 'tile' }, h('h3', {}, m.month),
-      m.dates.map(date => {
-        const key = availKey(c.comp, date);
-        const yes = optBtn(key, 'yes', 'Available'), no = optBtn(key, 'no', 'Not available');
-        buttons[key] = [['yes', yes], ['no', no]];
-        yes.classList.toggle('on', days[key] === 'yes'); no.classList.toggle('on', days[key] === 'no');
-        return h('div', { class: 'drow' }, h('span', { class: 'dlabel' }, fmtDay(date)), h('div', { class: 'opts' }, yes, no));
-      })));
+    const row = (date, label, key = availKey(c.comp, date)) => {
+      const yes = optBtn(key, 'yes', 'Available'), no = optBtn(key, 'no', 'Not available');
+      buttons[key] = [['yes', yes], ['no', no]];
+      yes.classList.toggle('on', days[key] === 'yes'); no.classList.toggle('on', days[key] === 'no');
+      return h('div', { class: 'drow' }, h('span', { class: 'dlabel' }, label), h('div', { class: 'opts' }, yes, no));
+    };
+    // Same-length competitions: Round 2 -> Day 1 / Day 2. Mixed lengths (Juniors): a plain list of
+    // dates grouped by month, because the same Saturday can be Day 2 for one grade and a one-day
+    // round for another.
+    const tiles = c.mode === 'rounds'
+      ? c.rounds.map(g => h('div', { class: 'tile' }, h('h3', {}, g.label),
+          g.rows.map(r => row(r.date, r.of > 1 ? `Day ${r.dayNo} · ${fmtDay(r.date)}` : fmtDay(r.date)))))
+      : byMonth(c.dates).map(m => h('div', { class: 'tile' }, h('h3', {}, m.month), m.dates.map(date => row(date, fmtDay(date)))));
     return h('div', { class: 'comp-section' }, h('div', { class: 'row-between comp-head' }, h('h2', { class: 'comp-title' }, c.label), markAll), tiles);
   });
 

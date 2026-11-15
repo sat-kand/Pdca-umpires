@@ -54,8 +54,8 @@ export async function viewAdminHome(ctx) {
         h('div', {}, h('strong', {}, 'Season dates'), ' ', season ? h('span', { class: 'muted' }, `${season.name} · ${nDates} dates across ${perComp.length} competition(s) · umpires answer for these`) : h('span', { class: 'chip warn' }, 'Not set up — umpires cannot give availability yet')),
         syncBtn),
       season && h('details', {}, h('summary', {}, 'Show the dates umpires see'),
-        h('ul', { class: 'plain' }, perComp.map(c => h('li', {}, h('span', { class: 'chip' }, c.label), ' ', h('strong', {}, `${c.dates.length} dates`), ' — ', c.dates.map(fmtDay).join(' · ')))),
-        h('p', { class: 'muted' }, 'Built from the Senior, T20 and Junior fixtures: every date a competition has games. Umpires answer date by date for each competition, and can be appointed to more than one on the same day. Re-sync if the fixture list changes.'))),
+        h('ul', { class: 'plain' }, perComp.map(c => h('li', {}, h('span', { class: 'chip' }, c.label), ' ', h('strong', {}, `${c.dates.length} dates`), ' ', h('span', { class: 'muted' }, c.mode === 'rounds' ? '(shown by round: all games are the same length)' : '(shown as a date list: mixed game lengths)'), h('div', { class: 'muted' }, c.dates.map(fmtDay).join(' · '))))),
+        h('p', { class: 'muted' }, 'Built from the Senior, T20 and Junior fixtures: every date a competition has games. A competition whose games are all the same length (all two-day or all one-day) is shown by round, with Day 1 / Day 2; one with mixed lengths is shown as a plain list of dates. Umpires answer date by date for each competition, and can be appointed to more than one on the same day. Re-sync if the fixture list changes.'))),
     rounds.length ? h('div', { class: 'cards' }, rounds.map(r => {
       const st = r.stats || { needed: 0, filled: 0 };
       return h('a', { class: 'card round-card', href: `#/admin/round/${r.id}` },

@@ -122,7 +122,7 @@ with sync_playwright() as p:
     page.click(".round-card")
     page.wait_for_selector("table.board")
     check(page.locator("table.board tbody tr").count() == 22, "board lists all 22 sample games (Senior, Junior and T20)")
-    check(page.locator("text=0 of 35 slots filled").count() == 1, "35 slot-days needed (28 senior + 5 junior + 2 T20)")
+    check(page.locator("text=0 of 36 slots filled").count() == 1, "36 slot-days needed (26 senior + 6 junior + 4 T20)")
     check(page.locator("section.card h2").count() == 5, "five report sections: Seniors, Women, two Junior rounds, T20")
 
     print("Admin: manual allocation + warnings")
@@ -147,13 +147,19 @@ with sync_playwright() as p:
         sel = page.locator("select.slot").nth(idx)
         val = sel.evaluate("(s, n) => { const o = [...s.options].find(o => o.text.startsWith(n)); return o ? o.value : null }", name)
         sel.select_option(value=val)
+        page.wait_for_timeout(250)
     pick(i_sen, "Demo Umpire 2")
     pick(i_jun, "Demo Umpire 2")
     check(page.locator(".warn-icon").count() == 0, "same umpire on a Senior and a Junior game the same day: no warning")
     check(page.locator("select.slot").nth(i_sen + 1).evaluate("s => s.value") == "", "Umpire 2 is not free on Day 2, so Day 2 is left empty")
     page.locator("select.slot").nth(i_sen).select_option(value="")
+    page.wait_for_timeout(250)
     page.locator("select.slot").nth(i_sen + 1).select_option(value="")
+    page.wait_for_timeout(250)
     page.locator("select.slot").nth(i_jun).select_option(value="")
+    page.wait_for_timeout(250)
+    page.locator("select.slot").nth(i_jun + 1).select_option(value="")     # the U14 game is two-day: clear its Day 2 too
+    page.wait_for_timeout(250)
 
     print("Admin: two-day game lists umpires free on both days first")
     sel0 = page.locator("select.slot").nth(i_sen)
@@ -168,14 +174,16 @@ with sync_playwright() as p:
     check(d2_val.startswith(first_name), f"choosing {first_name} for Day 1 also fills Day 2 ({d2_val})")
     check(page.locator(".warn-icon").count() == 0, "...with no warnings")
     page.locator("select.slot").nth(i_sen + 1).select_option(value="")
+    page.wait_for_timeout(250)
     check(page.locator("select.slot").nth(i_sen + 1).evaluate("s => s.value") == "", "Day 2 can still be changed separately")
     page.locator("select.slot").nth(i_sen).select_option(value="")
+    page.wait_for_timeout(250)
 
     print("Admin: suggest allocations")
     page.click("button:has-text('Suggest allocations')")
-    m = re.search(r"(\d+) of 35 slots filled", page.locator(".summary").inner_text())
+    m = re.search(r"(\d+) of 36 slots filled", page.locator(".summary").inner_text())
     filled = int(m.group(1))
-    check(filled > 10, f"auto-suggest filled {filled} of 35 slots")
+    check(filled > 10, f"auto-suggest filled {filled} of 36 slots")
     check(page.locator(".warn-icon").count() == 0, "auto-suggested allocations have no warnings")
     # nobody on two games the same day
     for day in (D1, D2):
@@ -188,7 +196,7 @@ with sync_playwright() as p:
     for lab, val in labels:
         if not val:
             continue
-        if not re.match(r"^Umpire \d, (A|Ar|B\d+|Women) ", lab):
+        if not re.match(r"^Umpire \d, (A|Ar|B\d+) ", lab):
             continue   # only Senior games must not clash with each other
         day = lab.split(", ")[-1]
         by_day.setdefault(day, []).append(val)
@@ -198,12 +206,19 @@ with sync_playwright() as p:
     check(not dup, "no umpire is allocated to two Senior games on the same day")
 
     print("Admin: slots per grade + per game")
-    page.click("summary:has-text('Which grades need umpires')")
+    page.wait_for_timeout(500)   # let any pending board redraw finish first
+    for _ in range(3):
+        page.click("summary:has-text('Which grades need umpires')")
+        try:
+            page.locator(".grade-grid label:has-text('A') select").first.wait_for(state="visible", timeout=2000)
+            break
+        except Exception:
+            pass   # a redraw closed the panel again: open it once more
     grade_sel = page.locator(".grade-grid label:has-text('A') select").first
     grade_sel.select_option(value="2")
     check(page.locator("text=slots filled").count() == 1, "grade panel changes slot count without breaking the board")
     m = re.search(r"of (\d+) slots", page.locator(".summary").inner_text())
-    check(int(m.group(1)) == 35 + 8, f"setting grade A to 2 umpires raises needed slots (now {m.group(1)})")
+    check(int(m.group(1)) == 36 + 8, f"setting grade A to 2 umpires raises needed slots (now {m.group(1)})")
     grade_sel.select_option(value="1")
 
     print("Admin: availability tab, report tab, publish")
@@ -230,13 +245,19 @@ with sync_playwright() as p:
     check(titles == ["Senior", "T20", "Junior"], f"one section per competition: {titles}")
     sen = page.locator(".comp-section:has(h2:has-text('Senior'))")
     jun = page.locator(".comp-section:has(h2:has-text('Junior'))")
-    check(sen.locator(".drow").count() == 12, "Senior: 12 dates in one list")
-    check(re.fullmatch(r"[A-Z][a-z]+ 20\d\d", sen.locator(".tile h3").first.inner_text()) is not None, "dates are grouped under month headings")
-    labels = sen.locator(".dlabel").all_inner_texts()
-    date_part = labels[0]
-    check(re.fullmatch(r"[A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]{2}", date_part) is not None, f"row label is just the date: '{date_part}'")
-    check(not any("Round" in t or "Day" in t for t in labels), "no round names or Day 1 / Day 2 text on the page")
-    check(labels == sorted(labels, key=lambda t: sen.locator(".dlabel").all_inner_texts().index(t)) and sen.locator(".tile").first.inner_text().count(date_part) == 1, "dates appear once, in order")
+    # Senior and T20 games are all the same length -> by round with Day 1 / Day 2; Junior mixes lengths -> date list
+    check(sen.locator(".tile").count() == 6 and sen.locator(".drow").count() == 12, "Senior (all two-day): six rounds, 12 rows")
+    check(sen.locator(".tile h3").first.inner_text() == "Round 2", "Senior tile is titled 'Round 2'")
+    first_label = sen.locator(".dlabel").first.inner_text()
+    check(first_label.startswith("Day 1 \u00b7 "), f"Senior row label reads '{first_label}' (date shown once)")
+    date_part = first_label.split("\u00b7 ")[1]
+    check(sen.locator(".tile").first.inner_text().count(date_part) == 1, f"'{date_part}' appears once in the tile")
+    tt = [t for t in page.locator(".comp-section:has(h2:has-text('T20')) .tile h3").all_inner_texts()]
+    check(tt and tt[0] == "Round 1", f"T20 (all one-day) is also by round: {tt[:2]}")
+    jtxt = jun.inner_text()
+    check("Round" not in jtxt and "Day 1" not in jtxt and "Day 2" not in jtxt, "Junior (mixed lengths) has no round or Day 1 / Day 2 text")
+    jlabels = jun.locator(".dlabel").all_inner_texts()
+    check(re.fullmatch(r"[A-Z][a-z]+ 20\d\d", jun.locator(".tile h3").first.inner_text()) is not None and all(re.fullmatch(r"[A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]{2}", t) for t in jlabels), f"Junior is a date list under month headings: {jlabels[:2]}")
     check(page.locator(".dlabel", has_text=date_part).count() >= 2, "the same date is listed under more than one competition (overlapping dates)")
     check(page.locator("button.opt").count() == 2 * page.locator(".drow").count(), "only two options per day (Available / Not available)")
     check(page.locator("text=Maybe").count() == 0 and page.locator("textarea").count() == 0, "no 'Maybe' option and no note box")
@@ -344,9 +365,10 @@ with sync_playwright() as p:
     page.click("button:has-text('Re-sync dates')")
     page.wait_for_selector("text=7 dates across 3 competition(s)")
     page.click("summary:has-text('Show the dates umpires see')")
-    check(page.locator("li:has-text('Senior'):has-text('3 dates')").count() == 1, "Senior calendar: 3 dates (women's Saturday not counted twice)")
-    check(page.locator("li:has-text('Junior'):has-text('3 dates')").count() == 1 and page.locator("li:has-text('T20'):has-text('1 dates')").count() == 1, "Junior and T20 dates are in the calendar too")
-    check(page.locator("li", has_text="Round").count() == 0, "the season list shows dates only, no round names")
+    check(page.locator("li:has-text('Senior'):has-text('3 dates'):has-text('date list')").count() == 1, "Senior here has one-day Women games next to two-day games: mixed, so a date list")
+    check(page.locator("li:has-text('Junior'):has-text('3 dates'):has-text('date list')").count() == 1, "Junior: mixed lengths, date list")
+    check(page.locator("li:has-text('T20'):has-text('1 dates'):has-text('by round')").count() == 1, "T20: all one-day, shown by round")
+    check(page.locator("li", has_text=re.compile(r"Round \d")).count() == 0, "the season list shows dates only, no round names")
 
     print("New season: umpire sees the synced dates")
     sign_out(page)
@@ -355,7 +377,8 @@ with sync_playwright() as p:
     check(page.locator(".comp-title").all_inner_texts() == ["Senior", "T20", "Junior"], "umpire 2 sees Senior, T20 and Junior sections")
     check(page.locator(".drow").count() == 7, "umpire 2 sees the 7 synced dates")
     check(page.locator(".comp-section:has(h2:has-text('Junior')) .drow").count() == 3, "Junior: its 3 dates, even though U14 is two-day and U13 one-day")
-    check(page.locator(".dnote").count() == 0 and page.locator(".comp-section").get_by_text("Round").count() == 0, "no round or note text on the page")
+    check(page.locator(".comp-section:has(h2:has-text('Senior'))").get_by_text("Round").count() == 0 and page.locator(".comp-section:has(h2:has-text('Junior'))").get_by_text("Round").count() == 0, "mixed-length competitions have no round text")
+    check(page.locator(".comp-section:has(h2:has-text('T20'))").get_by_text("Round 1").count() == 1, "the all-one-day T20 competition is shown by round")
     check(page.locator(".dlabel", has_text=fmt_day_check()).count() == 1, "a date plays out as just the date")
     check(page.locator(".chip:has-text('Not submitted')").count() == 1, "a fresh season starts as 'Not submitted'")
 

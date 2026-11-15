@@ -309,30 +309,76 @@ export function umpireText(game) {
 
 // ---------- season calendar (what umpires see) ----------------------------
 
-// Umpires answer date by date, separately for each competition, so the calendar is simply
-// the sorted list of dates on which each competition has games. Round names and day numbers
-// are left out on purpose: the same Saturday can be Day 2 of a two-day round for one grade
-// and a one-day round for another, and umpires only need to know whether they can work that day.
+// Each competition is shown to umpires in one of two layouts, chosen from its fixtures:
+//  * "rounds": when every game in the competition has the same length (all two-day, or all
+//    one-day) the familiar Round 2 -> Day 1 / Day 2 layout is clear, so it is used.
+//  * "dates":  when game lengths are mixed (Juniors: day 2 of a U14 two-day round can be a
+//    one-day round for U13) round labels would be ambiguous, so umpires just get a plain list
+//    of dates. Availability is per date either way.
+// Calendar entries: rounds layout -> { comp, label, dates } per round; dates layout -> one
+// { comp, dates } entry with no label.
 export function buildCalendar(games) {
   const byComp = new Map();
-  for (const g of games) {
-    const k = compKeyOf(g);
-    const set = byComp.get(k) || byComp.set(k, new Set()).get(k);
-    for (const d of g.days) set.add(d.date);
+  for (const g of games) { const k = compKeyOf(g); if (!byComp.has(k)) byComp.set(k, []); byComp.get(k).push(g); }
+  const out = [];
+  for (const { key } of COMPS) {
+    const list = byComp.get(key);
+    if (!list) continue;
+    const uniform = new Set(list.map(g => g.days.length)).size === 1;
+    if (!uniform) {
+      out.push({ comp: key, dates: [...new Set(list.flatMap(g => g.days.map(d => d.date)))].sort() });
+      continue;
+    }
+    // Uniform: group dates into rounds. When grades disagree about a date's round number
+    // (byes shift numbering) the most common name wins.
+    const names = new Map(); // date -> Map(name -> n)
+    for (const g of list) for (const d of g.days) {
+      const m = names.get(d.date) || names.set(d.date, new Map()).get(d.date);
+      m.set(g.roundName, (m.get(g.roundName) || 0) + 1);
+    }
+    const groups = new Map();
+    for (const [date, m] of names) {
+      const round = [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], undefined, { numeric: true }))[0][0];
+      if (!groups.has(round)) groups.set(round, []);
+      groups.get(round).push(date);
+    }
+    // Every game is `n` days long, so a round is `n` consecutive dates (a name reused later in the
+    // season starts a new round rather than extending this one).
+    const n = list[0].days.length;
+    const rounds = [];
+    for (const [round, dates] of groups) {
+      dates.sort();
+      for (let i = 0; i < dates.length; i += n) rounds.push({ round, dates: dates.slice(i, i + n) });
+    }
+    rounds.sort((a, b) => a.dates[0].localeCompare(b.dates[0]));
+    const seen = {};
+    for (const r of rounds) {
+      const base = r.round || 'Games';
+      seen[base] = (seen[base] || 0) + 1;
+      out.push({ comp: key, label: seen[base] > 1 ? `${base} (${seen[base]})` : base, dates: r.dates });
+    }
   }
-  return COMPS.filter(c => byComp.has(c.key)).map(c => ({ comp: c.key, dates: [...byComp.get(c.key)].sort() }));
+  return out;
 }
 
-// Dates from `today` on, per competition in Senior, T20, Junior order: [{ comp, label, dates }].
-// Also accepts older calendars that were split into rounds.
+// What the umpire page needs, per competition in Senior, T20, Junior order, from `today` on:
+//   { comp, label, mode: 'rounds', rounds: [{ label, rows: [{ date, dayNo, of }] }], dates }
+//   { comp, label, mode: 'dates',  rounds: [],                                       dates }
 export function upcomingDates(calendar, today) {
   const by = new Map();
-  for (const r of calendar || []) {
-    const k = r.comp || 'senior';
-    const set = by.get(k) || by.set(k, new Set()).get(k);
-    for (const d of r.dates || []) if (d >= today) set.add(d);
-  }
-  return COMPS.filter(c => by.has(c.key) && by.get(c.key).size).map(c => ({ comp: c.key, label: c.label, dates: [...by.get(c.key)].sort() }));
+  for (const r of calendar || []) { const k = r.comp || 'senior'; if (!by.has(k)) by.set(k, []); by.get(k).push(r); }
+  return COMPS.filter(c => by.has(c.key)).map(c => {
+    const entries = by.get(c.key);
+    if (entries.every(e => e.label)) {
+      const rounds = entries.map(e => ({
+        label: e.label,
+        rows: e.dates.map((date, i) => ({ date, dayNo: i + 1, of: e.dates.length })).filter(x => x.date >= today),
+      })).filter(r => r.rows.length);
+      return { comp: c.key, label: c.label, mode: 'rounds', rounds, dates: rounds.flatMap(r => r.rows.map(x => x.date)) };
+    }
+    const dates = [...new Set(entries.flatMap(e => e.dates))].filter(d => d >= today).sort();
+    return { comp: c.key, label: c.label, mode: 'dates', rounds: [], dates };
+  }).filter(c => c.dates.length);
 }
 
 // [{ month: 'November 2026', dates: [...] }] for a sorted list of ISO dates.

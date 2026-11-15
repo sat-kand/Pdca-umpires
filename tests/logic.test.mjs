@@ -212,32 +212,60 @@ test('autoAllocate uses each competition\'s own availability and can use one ump
 
 // ---------- season calendar: plain dates per competition ------------------
 
-test('buildCalendar lists every date each competition plays, sorted, with no round or day labels', () => {
-  const [X, Y, Z] = ['2026-11-21', '2026-11-28', '2026-12-05'];
+test('same-length competition is shown by round with Day 1 / Day 2; mixed lengths fall back to a date list', () => {
+  const [X, Y, Z, W] = ['2026-11-21', '2026-11-28', '2026-12-05', '2026-12-12'];
   const j = (id, grade, days, roundName) => mk(id, grade, 'A', 'B', days, 1, {}, { comp: JUN, roundName });
   const games = [
+    // Senior: every game two-day -> rounds layout, ordered by date (Round 9 is played before Round 10)
     mk('1', 'Senior A Grade', 'A', 'B', [X, Y], 1, {}, { roundName: 'Round 9' }),
-    mk('2', 'Senior Women', 'C', 'D', [Y], 1, {}, { roundName: 'Round 4' }),
-    mk('3', 'Senior B02', 'E', 'F', [Z, '2026-12-12'], 1, {}, { roundName: 'Round 7' }),   // Round 7 after Round 9 on purpose
+    mk('2', 'Senior B02', 'E', 'F', [Z, W], 1, {}, { roundName: 'Round 10' }),
+    // Junior: U14 two-day, U13 one-day on day 2 -> date list
     j('4', 'U14 Blue', [X, Y], 'Round 3'),
-    j('5', 'U13 Gold', [Y], 'Round 4'),             // day 2 of U14 is a one-day round for U13
+    j('5', 'U13 Gold', [Y], 'Round 4'),
+    // T20: every game one-day -> rounds layout
     mk('6', 'T20 Mens', 'G', 'H', [Y], 1, {}, { comp: T20C, roundName: 'Round 1' }),
+    mk('7', 'T20 Mens', 'G', 'H', [Z], 1, {}, { comp: T20C, roundName: 'Round 2' }),
   ];
   assert.deepEqual(buildCalendar(games), [
-    { comp: 'senior', dates: [X, Y, Z, '2026-12-12'] },
-    { comp: 't20', dates: [Y] },
+    { comp: 'senior', label: 'Round 9', dates: [X, Y] },
+    { comp: 'senior', label: 'Round 10', dates: [Z, W] },
+    { comp: 't20', label: 'Round 1', dates: [Y] },
+    { comp: 't20', label: 'Round 2', dates: [Z] },
     { comp: 'junior', dates: [X, Y] },
   ]);
 });
 
-test('upcomingDates keeps today onwards, merges older round-based calendars, and orders Senior, T20, Junior', () => {
-  const old = [
-    { comp: 'junior', label: 'Round 5', dates: ['2026-10-10'] },
-    { comp: 'senior', label: 'Round 3', dates: ['2026-10-24', '2026-10-31'] },
-    { comp: 'senior', label: 'Round 2', dates: ['2026-10-10', '2026-10-17'] },
+test('a Senior competition with one-day Women games next to two-day men is mixed, so it is a date list', () => {
+  const games = [mk('1', 'Senior A Grade', 'A', 'B', [D1, D2]), mk('2', 'Senior Women', 'C', 'D', [D2], 1, {}, { roundName: 'Round 4' })];
+  assert.deepEqual(buildCalendar(games), [{ comp: 'senior', dates: [D1, D2] }]);
+});
+
+test('rounds layout: duplicate round names stay distinguishable and the most common name wins for a date', () => {
+  const games = [
+    mk('1', 'Senior A Grade', 'A', 'B', [D1, D2]),
+    mk('2', 'Senior B02', 'A', 'B', [D1, D2], 1, {}, { roundName: 'Round 2' }),
+    mk('3', 'Senior B03', 'A', 'B', [D1, D2], 1, {}, { roundName: 'Round 3' }),
+    mk('4', 'Senior A Grade', 'A', 'B', ['2026-12-05', '2026-12-06']),
   ];
-  assert.deepEqual(upcomingDates(old, '2026-10-17'), [{ comp: 'senior', label: 'Senior', dates: ['2026-10-17', '2026-10-24', '2026-10-31'] }]);
-  assert.deepEqual(upcomingDates(old, '2000-01-01').map(c => c.label), ['Senior', 'Junior']);
+  assert.deepEqual(buildCalendar(games).map(r => r.label), ['Round 2', 'Round 2 (2)']);
+});
+
+test('upcomingDates: rounds layout keeps Day numbers; dates layout is a sorted date list; older calendars still work', () => {
+  const cal = [
+    { comp: 'senior', label: 'Round 2', dates: ['2026-10-10', '2026-10-17'] },
+    { comp: 'senior', label: 'Round 3', dates: ['2026-10-24', '2026-10-31'] },
+    { comp: 'junior', dates: ['2026-10-24', '2026-10-17', '2026-10-10'] },
+  ];
+  const up = upcomingDates(cal, '2026-10-17');
+  assert.deepEqual(up[0], {
+    comp: 'senior', label: 'Senior', mode: 'rounds', dates: ['2026-10-17', '2026-10-24', '2026-10-31'],
+    rounds: [
+      { label: 'Round 2', rows: [{ date: '2026-10-17', dayNo: 2, of: 2 }] },
+      { label: 'Round 3', rows: [{ date: '2026-10-24', dayNo: 1, of: 2 }, { date: '2026-10-31', dayNo: 2, of: 2 }] },
+    ],
+  });
+  assert.deepEqual(up[1], { comp: 'junior', label: 'Junior', mode: 'dates', rounds: [], dates: ['2026-10-17', '2026-10-24'] });
+  assert.deepEqual(upcomingDates(cal, '2027-01-01'), []);
   assert.deepEqual(upcomingDates(null, '2026-10-17'), []);
 });
 
