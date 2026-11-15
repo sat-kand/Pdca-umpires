@@ -67,27 +67,31 @@ export const upcomingRounds = (rounds, today) => rounds
 // A competition's soonest unfinished round.
 export const currentRound = (rounds, key, today) => upcomingRounds(rounds, today).find(r => r.comp === key) || null;
 
-// Which round tiles to show. Every competition always shows its next round. A competition with a longer (two-day) round
-// also shows the rounds that start inside that span (a one-day grade playing on the second Saturday), so both weeks can be
-// done at once. Each `more` reveals the next round and whatever starts inside its span.
-export function visibleRounds(rounds, today, more = 0) {
-  const all = upcomingRounds(rounds, today);
-  const first = new Set();
-  const nextOf = new Map();
-  for (const r of all) if (!nextOf.has(r.comp)) { nextOf.set(r.comp, r); first.add(r.id); }
-  if (!all.length) return { rounds: [], hasMore: false };
-  const firstDay = all[0].start;
-  let horizon = [...nextOf.values()].filter(r => r.start <= addDays(firstDay, 6)).map(r => r.end).sort().pop() || firstDay;
-  const shown = h => all.filter(r => first.has(r.id) || r.start <= h);
-  for (let i = 0; i < more; i++) {
-    const hidden = all.filter(r => !shown(horizon).includes(r));
-    if (!hidden.length) break;
-    horizon = [horizon, hidden[0].end].sort().pop();
+// Rounds grouped into sets: the appointment work for one stretch of play. A round joins the current set when it
+// starts on or before the set's last day, so a two-day round and the one-day games on its second Saturday are one set.
+export function roundSets(rounds, today) {
+  const sets = [];
+  let end = '';
+  for (const r of upcomingRounds(rounds, today)) {
+    if (sets.length && r.start <= end) { sets[sets.length - 1].push(r); end = r.end > end ? r.end : end; }
+    else { sets.push([r]); end = r.end; }
   }
-  const vis = shown(horizon);
   const order = k => COMPS.findIndex(c => c.key === k);
-  vis.sort((a, b) => order(a.comp) - order(b.comp) || a.start.localeCompare(b.start));
-  return { rounds: vis, hasMore: vis.length < all.length };
+  return sets.map(set => set.sort((a, b) => order(a.comp) - order(b.comp) || a.start.localeCompare(b.start)));
+}
+
+// Which sets to show. At first enough sets for every competition that plays within the fortnight to appear once;
+// each `more` adds the next set.
+export function visibleRounds(rounds, today, more = 0) {
+  const sets = roundSets(rounds, today);
+  if (!sets.length) return { sets: [], hasMore: false };
+  const horizon = addDays(sets[0][0].start, 13);
+  const needed = new Set(sets.flat().filter(r => r.start <= horizon).map(r => r.comp));
+  const seen = new Set();
+  let n = 0;
+  while (n < sets.length && (n === 0 || [...needed].some(k => !seen.has(k)))) { sets[n].forEach(r => seen.add(r.comp)); n++; }
+  n = Math.min(sets.length, n + more);
+  return { sets: sets.slice(0, n), hasMore: n < sets.length };
 }
 
 export function needsSync(season, rounds, today, now = Date.now()) {

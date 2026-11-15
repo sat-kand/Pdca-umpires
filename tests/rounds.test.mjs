@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { roundWindows, visibleRounds, nextRoundWindow, majorityRound, currentRound, needsSync, saveSeasonAndRounds, applyFresh, defaultSlotsFn, STALE_MS, SCHEMA } from '../js/rounds.js';
+import { roundWindows, roundSets, visibleRounds, nextRoundWindow, majorityRound, currentRound, needsSync, saveSeasonAndRounds, applyFresh, defaultSlotsFn, STALE_MS, SCHEMA } from '../js/rounds.js';
 import { summarise, isPicked } from '../js/logic.js';
 
 const SEN = 'PDCA Senior Competition', JUN = 'PDCA Junior Competition', T20 = 'PDCA T20 Competition';
@@ -169,25 +169,25 @@ test('roundWindows: a two-day round and the one-day games on its second Saturday
   assert.equal(roundWindows(games, '2026-12-20').length, 0);
 });
 
-test('visibleRounds: one tile per competition unless a longer round spans the next week; Load more reveals the rest', () => {
-  const R = (comp, start, end) => ({ id: `${comp}-${start}`, comp, start, end, dates: [start, end] });
+test('visibleRounds: rounds are grouped into sets; enough sets show for every competition, Load more adds one', () => {
+  const R = (comp, start, end = start) => ({ id: `${comp}-${start}`, comp, start, end, dates: [start, end] });
   const rounds = [
-    R('senior', '2026-11-21', '2026-11-28'), R('senior', '2026-11-28', '2026-11-28'), R('senior', '2026-12-05', '2026-12-12'),
-    R('t20', '2026-11-22', '2026-11-22'), R('t20', '2026-11-29', '2026-11-29'),
-    R('junior', '2026-11-21', '2026-11-21'), R('junior', '2026-11-28', '2026-11-28'),
+    R('t20', '2026-11-15'),                                              // part of the weekend that is finishing
+    R('senior', '2026-11-21', '2026-11-28'), R('senior', '2026-11-28'),   // two-day round + one-day games on its second Saturday
+    R('junior', '2026-11-21'), R('t20', '2026-11-22'),
+    R('senior', '2026-12-05', '2026-12-12'), R('junior', '2026-12-05'),
   ];
-  const ids = v => v.rounds.map(r => r.id);
-  const v0 = visibleRounds(rounds, '2026-11-16');
-  assert.deepEqual(ids(v0), ['senior-2026-11-21', 'senior-2026-11-28', 't20-2026-11-22', 'junior-2026-11-21', 'junior-2026-11-28'], 'Senior has a two-day round, so its second week is shown too (and Junior\'s one-day round starting inside that span)');
+  const sets = v => v.sets.map(set => set.map(r => r.id));
+  assert.deepEqual(roundSets(rounds, '2026-11-15').map(x => x.length), [1, 4, 2]);
+  const v0 = visibleRounds(rounds, '2026-11-15');
+  assert.deepEqual(sets(v0), [['t20-2026-11-15'], ['senior-2026-11-21', 'senior-2026-11-28', 't20-2026-11-22', 'junior-2026-11-21']], 'the 15th is one set, the 21st the next; then Load more');
   assert.equal(v0.hasMore, true);
-  const v1 = visibleRounds(rounds, '2026-11-16', 1);
-  assert.ok(ids(v1).includes('t20-2026-11-29') && !ids(v1).includes('senior-2026-12-05'));
-  assert.equal(v1.hasMore, true);
-  const v2 = visibleRounds(rounds, '2026-11-16', 2);
-  assert.ok(ids(v2).includes('senior-2026-12-05'));
-  assert.equal(v2.hasMore, false);
-  // everything one-day: just one tile per competition
-  const oneDay = [R('senior', '2026-11-21', '2026-11-21'), R('senior', '2026-11-28', '2026-11-28'), R('t20', '2026-11-21', '2026-11-21'), R('junior', '2026-11-21', '2026-11-21')];
-  assert.deepEqual(ids(visibleRounds(oneDay, '2026-11-16')), ['senior-2026-11-21', 't20-2026-11-21', 'junior-2026-11-21']);
-  assert.equal(visibleRounds([], '2026-11-16').hasMore, false);
+  const v1 = visibleRounds(rounds, '2026-11-15', 1);
+  assert.equal(v1.sets.length, 3);
+  assert.equal(v1.hasMore, false);
+  // everything one-day and all competitions playing this weekend: a single set, three tiles
+  const oneDay = [R('senior', '2026-11-21'), R('t20', '2026-11-21'), R('junior', '2026-11-21'), R('senior', '2026-11-28')];
+  assert.deepEqual(sets(visibleRounds(oneDay, '2026-11-16')), [['senior-2026-11-21', 't20-2026-11-21', 'junior-2026-11-21']]);
+  assert.equal(visibleRounds(oneDay, '2026-11-16').hasMore, true);
+  assert.deepEqual(visibleRounds([], '2026-11-16'), { sets: [], hasMore: false });
 });

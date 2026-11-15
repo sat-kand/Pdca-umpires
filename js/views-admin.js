@@ -108,8 +108,9 @@ export async function viewAdminHome(ctx) {
     setChildren(wrap,
       h('div', { class: 'row-between' }, h('h1', {}, 'Rounds'), state.syncing && h('span', { class: 'muted' }, 'Updating fixtures from Play Cricket…')),
       state.error && h('p', { class: 'notice warn' }, state.error, ' ', h('button', { class: 'link', type: 'button', onclick: () => sync(true) }, 'Try again')),
-      h('div', { class: 'cards' }, shown.rounds.map(tile), COMPS.filter(c => !currentRound(state.rounds, c.key, today)).map(empty)),
-      shown.hasMore && h('p', {}, h('button', { class: 'btn', type: 'button', onclick: () => { state.more++; draw(); } }, 'Load more')));
+      shown.sets.map((set, i) => [i > 0 && h('hr', { class: 'set-break' }), h('div', { class: 'cards' }, set.map(tile))]),
+      COMPS.some(c => !currentRound(state.rounds, c.key, today)) && h('div', { class: 'cards' }, COMPS.filter(c => !currentRound(state.rounds, c.key, today)).map(empty)),
+      shown.hasMore && h('div', { class: 'load-more' }, h('button', { class: 'btn', type: 'button', onclick: () => { state.more++; draw(); } }, 'Load more')));
   }
 
   async function sync(force) {

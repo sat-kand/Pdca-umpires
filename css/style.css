@@ -152,3 +152,6 @@ dialog.modal h2 { margin: 0 0 .25rem; }
 .grade-row input[type=checkbox] { width: 1.15rem; height: 1.15rem; }
 .grade-row select { width: auto; padding: .2rem .4rem; }
 .modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .6rem; }
+
+.set-break { border: 0; border-top: 2px solid var(--line, #d9ded9); margin: 22px 0 18px; }
+.load-more { display: flex; justify-content: center; margin: 22px 0 8px; }
