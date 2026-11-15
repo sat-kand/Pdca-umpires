@@ -4,7 +4,7 @@ import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './u
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
   slotOptions, recount, summarise, formatSummary, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
-  availStatus, compLabel, compKeyOf, roundColumns, COMPS,
+  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS,
 } from './logic.js';
 import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, TILE_ORDER } from './rounds.js';
 
@@ -369,52 +369,96 @@ export async function viewSeasonAvailability(ctx) {
   if (!season || !season.calendar || !season.calendar.length) {
     return h('div', {}, h('h1', {}, 'Availability'), h('p', { class: 'notice' }, 'No season dates yet. They load from Play Cricket when you open Rounds.'));
   }
-  const [umpires, availList] = await Promise.all([store.listUmpires(), store.listAvailability(season.id || 'manual')]);
+  const seasonId = season.id || 'manual';
+  const [umpires, availList] = await Promise.all([store.listUmpires(), store.listAvailability(seasonId)]);
   const by = Object.fromEntries(availList.map(a => [a.email, a]));
   const active = umpires.filter(u => u.active).sort((a, b) => a.name.localeCompare(b.name));
   const comps = [...COMPS].sort((a, b) => TILE_ORDER.indexOf(a.key) - TILE_ORDER.indexOf(b.key)).filter(c => season.calendar.some(e => (e.comp || 'senior') === c.key));
   const wrap = h('div');
-  const ui = { comp: comps[0].key };
+  const ui = { comp: comps[0].key, past: false, q: '', on: null };       // on = show only umpires available on this date
+  const ICON = { yes: '\u2713', no: '\u2717', none: '' };
+  const KLASS = { yes: 'ok', no: 'no', none: 'none' };
+  const NEXT = { none: 'yes', yes: 'no', no: 'none' };
+  const draw = () => setChildren(wrap, build());
 
-  // One cell: the days of a round an umpire can do, or Not Available / blank.
-  function cell(u, comp, dates, rounds) {
-    const st = dates.map(d => availStatus(by, u, comp, d));
-    const yes = st.filter(x => x === 'yes').length;
-    if (!yes) return st.includes('no') ? ['Not Available', 'no'] : ['', 'none'];
-    if (!rounds) return ['Yes', 'ok'];
-    if (dates.length === 1) return ['Yes', 'ok'];
-    return [dates.map((d, i) => (st[i] === 'yes' ? `Day ${i + 1}` : null)).filter(Boolean).join(', '), yes === dates.length ? 'ok' : 'part'];
+  // The officer's change is saved straight away and marked, so it can be told apart from the umpire's own answer.
+  async function setCell(u, date, value) {
+    const rec = by[u.email] || { seasonId, email: u.email, name: u.name, days: {} };
+    const key = availKey(ui.comp, date);
+    const days = { ...(rec.days || {}) }, edited = { ...(rec.edited || {}) };
+    if (value === 'none') delete days[key]; else days[key] = value;
+    edited[key] = true;
+    const next = { ...rec, seasonId, email: u.email, name: u.name, days, edited, updatedAt: new Date().toISOString() };
+    await store.saveAvailability(next);
+    by[u.email] = next;
   }
 
   function build() {
-    const entries = season.calendar.filter(e => (e.comp || 'senior') === ui.comp);
-    const rounds = entries.some(e => e.label);                                   // rounds layout, else a plain list of dates
-    const cols = rounds ? entries.map(e => ({ title: e.label, sub: fmtRange(e.dates), dates: e.dates }))
-      : entries.flatMap(e => e.dates).sort().map(d => ({ title: fmtDay(d), sub: '', dates: [d] }));
-    cols.forEach(c => { c.past = c.dates[c.dates.length - 1] < today; });
+    // Every competition is laid out the same way: one column per playing date, upcoming dates first.
+    const all = [...new Set(season.calendar.filter(e => (e.comp || 'senior') === ui.comp).flatMap(e => e.dates))].sort();
+    const dates = ui.past ? all : all.filter(d => d >= today);
+    const hasPast = all.some(d => d < today);
+    if (ui.on && !dates.includes(ui.on)) ui.on = null;
+    const st = (u, d) => availStatus(by, u, ui.comp, d);
     const answered = u => (by[u.email] && by[u.email].days && Object.keys(by[u.email].days).some(k => k.startsWith(ui.comp + ':')));
     const missing = active.filter(u => !answered(u));
     const emails = missing.map(u => u.email);
-    const count = c => active.filter(u => c.dates.some(d => availStatus(by, u, ui.comp, d) === 'yes')).length;
+    const q = ui.q.trim().toLowerCase();
+    const rows = active.filter(u => (!q || u.name.toLowerCase().includes(q)) && (!ui.on || st(u, ui.on) === 'yes'));
+    const months = [];
+    for (const d of dates) { const m = new Date(d + 'T00:00:00Z').toLocaleDateString('en-AU', { month: 'long', timeZone: 'UTC' }); if (months.length && months[months.length - 1][0] === m) months[months.length - 1][1]++; else months.push([m, 1]); }
+    const dayHead = d => { const x = new Date(d + 'T00:00:00Z'); return [x.toLocaleDateString('en-AU', { weekday: 'short', timeZone: 'UTC' }), String(x.getUTCDate())]; };
+    const countCells = {}, tallyCells = {};
+    const count = d => active.filter(u => st(u, d) === 'yes').length;
+    const tally = u => `${dates.filter(d => d >= today && st(u, d) === 'yes').length}/${dates.filter(d => d >= today).length}`;
+
+    const cell = (u, d) => {
+      const td = h('td', {});
+      const btn = h('button', { type: 'button', class: 'avbtn' });
+      const paint = () => {
+        const v = st(u, d);
+        td.className = 'av ' + KLASS[v] + (d < today ? ' past' : '');
+        btn.textContent = ICON[v];
+        btn.title = `${u.name}, ${fmtDay(d)}: ${v === 'yes' ? 'Available' : v === 'no' ? 'Not available' : 'No answer'}${by[u.email] && by[u.email].edited && by[u.email].edited[availKey(ui.comp, d)] ? ' (set by the officer)' : ''}. Click to change.`;
+        btn.classList.toggle('edited', !!(by[u.email] && by[u.email].edited && by[u.email].edited[availKey(ui.comp, d)]));
+      };
+      btn.onclick = async () => {
+        try { await setCell(u, d, NEXT[st(u, d)]); } catch (e) { console.error(e); toast(e.message || String(e), 'err'); }
+        paint();
+        if (countCells[d]) countCells[d].textContent = String(count(d));
+        if (tallyCells[u.pid]) tallyCells[u.pid].textContent = tally(u);
+      };
+      paint();
+      td.append(btn);
+      return td;
+    };
+
+    const search = h('input', { type: 'search', placeholder: 'Find an umpire', value: ui.q, 'aria-label': 'Find an umpire', class: 'grid-search' });
+    search.oninput = () => { ui.q = search.value; draw(); const s2 = wrap.querySelector('.grid-search'); if (s2) { s2.focus(); s2.setSelectionRange(s2.value.length, s2.value.length); } };
 
     return [
       h('div', { class: 'row-between' }, h('h1', {}, 'Availability'), h('span', { class: 'muted' }, season.name || '')),
-      h('nav', { class: 'tabs noprint' }, comps.map(c => h('button', { class: 'tab' + (c.key === ui.comp ? ' active' : ''), type: 'button', onclick: () => { ui.comp = c.key; setChildren(wrap, build()); } }, c.label))),
+      h('nav', { class: 'tabs noprint' }, comps.map(c => h('button', { class: 'tab' + (c.key === ui.comp ? ' active' : ''), type: 'button', onclick: () => { ui.comp = c.key; ui.on = null; draw(); } }, c.label))),
       h('div', { class: 'card' },
         h('div', { class: 'summary' },
-          h('span', { class: 'chip' }, `${active.length} umpires`),
-          h('span', { class: 'chip ok' }, `${active.length - missing.length} have answered`),
-          h('span', { class: 'chip ' + (missing.length ? 'warn' : 'ok') }, `${missing.length} not yet`),
-          missing.length > 0 && h('button', { class: 'btn small', type: 'button', onclick: async () => { toast(await copyText(emails.join(', ')) ? 'Emails copied' : 'Could not copy', 'ok'); } }, 'Copy emails of those not answered')),
-        h('div', { class: 'table-wrap season-grid' }, h('table', { class: 'board' },
-          h('thead', {},
-            h('tr', {}, h('th', { class: 'stick' }, 'Name'), cols.map(c => h('th', { class: c.past ? 'past' : '' }, h('div', {}, c.title), c.sub && h('div', { class: 'sub' }, c.sub)))),
-            h('tr', { class: 'counts' }, h('td', { class: 'stick' }, 'Available'), cols.map(c => h('td', { class: 'av ' + (c.past ? 'past' : '') }, String(count(c)))))),
-          h('tbody', {}, active.map(u => h('tr', {}, h('td', { class: 'stick' }, u.name),
-            cols.map(c => { const [t, k] = cell(u, ui.comp, c.dates, rounds); return h('td', { class: 'av ' + k + (c.past ? ' past' : '') }, t); }))))))),
+          search,
+          h('span', { class: 'chip ' + (missing.length ? 'warn' : 'ok') }, `${active.length - missing.length} of ${active.length} have answered`),
+          missing.length > 0 && h('button', { class: 'btn small', type: 'button', onclick: async () => { toast(await copyText(emails.join(', ')) ? 'Emails copied' : 'Could not copy', 'ok'); } }, 'Copy emails of the rest'),
+          ui.on && h('button', { class: 'chip ok', type: 'button', onclick: () => { ui.on = null; draw(); } }, `Available ${fmtDay(ui.on)} \u2715`),
+          hasPast && h('label', { class: 'inline right' }, (() => { const cb = h('input', { type: 'checkbox', checked: ui.past }); cb.onchange = () => { ui.past = cb.checked; draw(); }; return cb; })(), ' Show past dates')),
+        !dates.length ? h('p', { class: 'muted' }, 'No upcoming dates in this competition.')
+          : h('div', { class: 'table-wrap season-grid' }, h('table', { class: 'board' },
+            h('thead', {},
+              h('tr', { class: 'months' }, h('th', { class: 'stick' }, ''), months.map(([m, n]) => h('th', { colspan: n }, m))),
+              h('tr', {}, h('th', { class: 'stick' }, 'Umpire'), dates.map(d => { const [w, n] = dayHead(d);
+                return h('th', { class: (d < today ? 'past ' : '') + (ui.on === d ? 'on' : '') }, h('button', { type: 'button', class: 'datebtn', title: 'Show only umpires available on ' + fmtDay(d), onclick: () => { ui.on = ui.on === d ? null : d; draw(); } }, h('span', { class: 'sub' }, w), h('span', {}, n))); })),
+              h('tr', { class: 'counts' }, h('td', { class: 'stick' }, 'Available'), dates.map(d => (countCells[d] = h('td', { class: d < today ? 'past' : '' }, String(count(d))))))),
+            h('tbody', {}, rows.map(u => h('tr', {}, h('td', { class: 'stick' }, u.name, ' ', (tallyCells[u.pid] = h('span', { class: 'muted tally' }, tally(u)))), dates.map(d => cell(u, d)))),
+              !rows.length && h('tr', {}, h('td', { class: 'stick muted' }, 'Nobody matches'), dates.map(() => h('td', {})))))),
+        h('p', { class: 'muted small' }, 'Click a cell to change it: \u2713 available \u2192 \u2717 not available \u2192 blank (no answer). A dot marks cells you set. Click a date to list only the umpires available that day.')),
     ];
   }
-  setChildren(wrap, build());
+  draw();
   return wrap;
 }
 
