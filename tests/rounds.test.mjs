@@ -174,20 +174,26 @@ test('visibleRounds: rounds are grouped into sets; enough sets show for every co
   const rounds = [
     R('t20', '2026-11-15'),                                              // part of the weekend that is finishing
     R('senior', '2026-11-21', '2026-11-28'), R('senior', '2026-11-28'),   // two-day round + one-day games on its second Saturday
-    R('junior', '2026-11-21'), R('t20', '2026-11-22'),
+    R('junior', '2026-11-21'), R('t20', '2026-11-22'), R('t20', '2026-11-29'),   // Sunday T20 after the second Saturday: same weekend
     R('senior', '2026-12-05', '2026-12-12'), R('junior', '2026-12-05'),
   ];
   const sets = v => v.sets.map(set => set.map(r => r.id));
-  assert.deepEqual(roundSets(rounds, '2026-11-15').map(x => x.length), [1, 4, 2]);
+  assert.deepEqual(roundSets(rounds, '2026-11-15').map(x => x.length), [1, 5, 2]);
   const v0 = visibleRounds(rounds, '2026-11-15');
-  assert.deepEqual(sets(v0), [['t20-2026-11-15'], ['senior-2026-11-21', 'senior-2026-11-28', 't20-2026-11-22', 'junior-2026-11-21']], 'the 15th is one set, the 21st the next; then Load more');
+  assert.deepEqual(sets(v0), [['t20-2026-11-15'], ['senior-2026-11-21', 'senior-2026-11-28', 'junior-2026-11-21', 't20-2026-11-22', 't20-2026-11-29']], 'the 15th is one set, the 21st the next; then Load more');
   assert.equal(v0.hasMore, true);
   const v1 = visibleRounds(rounds, '2026-11-15', 1);
   assert.equal(v1.sets.length, 3);
   assert.equal(v1.hasMore, false);
   // everything one-day and all competitions playing this weekend: a single set, three tiles
   const oneDay = [R('senior', '2026-11-21'), R('t20', '2026-11-21'), R('junior', '2026-11-21'), R('senior', '2026-11-28')];
-  assert.deepEqual(sets(visibleRounds(oneDay, '2026-11-16')), [['senior-2026-11-21', 't20-2026-11-21', 'junior-2026-11-21']]);
+  assert.deepEqual(sets(visibleRounds(oneDay, '2026-11-16')), [['senior-2026-11-21', 'junior-2026-11-21', 't20-2026-11-21']]);
   assert.equal(visibleRounds(oneDay, '2026-11-16').hasMore, true);
   assert.deepEqual(visibleRounds([], '2026-11-16'), { sets: [], hasMore: false });
+});
+
+test('a Saturday set takes the Sunday that follows; later weekends are new sets', () => {
+  const R = (comp, start, end = start) => ({ id: `${comp}-${start}`, comp, start, end, dates: [start, end] });
+  const sets = roundSets([R('senior', '2026-11-21'), R('junior', '2026-11-21'), R('t20', '2026-11-22'), R('senior', '2026-11-28')], '2026-11-16');
+  assert.deepEqual(sets.map(x => x.map(r => r.id)), [['senior-2026-11-21', 'junior-2026-11-21', 't20-2026-11-22'], ['senior-2026-11-28']]);
 });

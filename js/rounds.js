@@ -67,16 +67,24 @@ export const upcomingRounds = (rounds, today) => rounds
 // A competition's soonest unfinished round.
 export const currentRound = (rounds, key, today) => upcomingRounds(rounds, today).find(r => r.comp === key) || null;
 
+// The order tiles are shown in.
+export const TILE_ORDER = ['senior', 'junior', 't20'];
+
+// A set runs to the end of the weekend it finishes on: a round that ends on a Saturday also takes that Sunday.
+const weekendEnd = iso => (new Date(iso + 'T00:00:00Z').getUTCDay() === 6 ? addDays(iso, 1) : iso);
+
 // Rounds grouped into sets: the appointment work for one stretch of play. A round joins the current set when it
-// starts on or before the set's last day, so a two-day round and the one-day games on its second Saturday are one set.
+// starts on or before the set's last day, so a two-day round, the one-day games on its second Saturday and the
+// Sunday games after it are one set.
 export function roundSets(rounds, today) {
   const sets = [];
   let end = '';
   for (const r of upcomingRounds(rounds, today)) {
-    if (sets.length && r.start <= end) { sets[sets.length - 1].push(r); end = r.end > end ? r.end : end; }
-    else { sets.push([r]); end = r.end; }
+    const e = weekendEnd(r.end);
+    if (sets.length && r.start <= end) { sets[sets.length - 1].push(r); end = e > end ? e : end; }
+    else { sets.push([r]); end = e; }
   }
-  const order = k => COMPS.findIndex(c => c.key === k);
+  const order = k => TILE_ORDER.indexOf(k);
   return sets.map(set => set.sort((a, b) => order(a.comp) - order(b.comp) || a.start.localeCompare(b.start)));
 }
 
