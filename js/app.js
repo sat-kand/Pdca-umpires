@@ -3,7 +3,7 @@ import { h, setChildren, spinner, toast } from './ui.js';
 import { createDemoStore } from './store-demo.js';
 import { seedDemo } from './demo-seed.js';
 import { viewLogin, viewProfile, viewMy } from './views-umpire.js';
-import { viewAdminHome, viewBoard, viewAvailabilityOverview, viewReport, viewUmpires } from './views-admin.js';
+import { viewAdminHome, viewBoard, viewAvailabilityOverview, viewSeasonAvailability, viewReport, viewUmpires } from './views-admin.js';
 
 const S = { store: null, user: null, isAdmin: false, umpire: null };
 const main = document.getElementById('app');
@@ -25,6 +25,7 @@ const ROUTES = [
   [/^\/my$/, () => viewMy(ctx)],
   [/^\/profile$/, () => viewProfile(ctx)],
   [/^\/admin$/, () => viewAdminHome(ctx), true],
+  [/^\/admin\/availability$/, () => viewSeasonAvailability(ctx), true],
   [/^\/admin\/umpires$/, () => viewUmpires(ctx), true],
   [/^\/admin\/round\/([^/]+)$/, rid => viewBoard(ctx, rid), true],
   [/^\/admin\/round\/([^/]+)\/availability$/, rid => viewAvailabilityOverview(ctx, rid), true],
@@ -43,7 +44,7 @@ function drawHeader() {
       h('button', { class: 'link', type: 'button', onclick: () => { if (confirm('Erase all demo data in this browser?')) { S.store.demoReset(); location.hash = '#/'; } } }, 'Reset')),
     h('div', { class: 'bar' },
       h('a', { class: 'brand', href: '#/' }, '🏏 ', CONFIG.appName),
-      S.isAdmin && h('nav', { class: 'nav' }, link('#/admin', 'Rounds'), link('#/admin/umpires', 'Umpires'), link('#/my', 'My availability')),
+      S.isAdmin && h('nav', { class: 'nav' }, link('#/admin', 'Rounds'), link('#/admin/availability', 'Availability'), link('#/admin/umpires', 'Umpires'), link('#/my', 'My availability')),
       S.user && h('div', { class: 'who' },
         h('a', { class: 'who-name', href: '#/profile', title: 'Edit my details' }, (S.umpire && S.umpire.name) || S.user.email),
         h('button', { class: 'btn small', type: 'button', onclick: async () => { await S.store.signOut(); location.hash = '#/'; } }, 'Sign out'))));

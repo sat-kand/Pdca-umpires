@@ -359,6 +359,66 @@ export async function viewAvailabilityOverview(ctx, rid) {
 }
 
 // ---------------------------------------------------------------------------
+// Season availability: every umpire against every round / date of one competition
+// ---------------------------------------------------------------------------
+
+export async function viewSeasonAvailability(ctx) {
+  const { store } = ctx;
+  const today = todayLocal();
+  const season = await store.getSeason();
+  if (!season || !season.calendar || !season.calendar.length) {
+    return h('div', {}, h('h1', {}, 'Availability'), h('p', { class: 'notice' }, 'No season dates yet. They load from Play Cricket when you open Rounds.'));
+  }
+  const [umpires, availList] = await Promise.all([store.listUmpires(), store.listAvailability(season.id || 'manual')]);
+  const by = Object.fromEntries(availList.map(a => [a.email, a]));
+  const active = umpires.filter(u => u.active).sort((a, b) => a.name.localeCompare(b.name));
+  const comps = [...COMPS].sort((a, b) => TILE_ORDER.indexOf(a.key) - TILE_ORDER.indexOf(b.key)).filter(c => season.calendar.some(e => (e.comp || 'senior') === c.key));
+  const wrap = h('div');
+  const ui = { comp: comps[0].key };
+
+  // One cell: the days of a round an umpire can do, or Not Available / blank.
+  function cell(u, comp, dates, rounds) {
+    const st = dates.map(d => availStatus(by, u, comp, d));
+    const yes = st.filter(x => x === 'yes').length;
+    if (!yes) return st.includes('no') ? ['Not Available', 'no'] : ['', 'none'];
+    if (!rounds) return ['Yes', 'ok'];
+    if (dates.length === 1) return ['Yes', 'ok'];
+    return [dates.map((d, i) => (st[i] === 'yes' ? `Day ${i + 1}` : null)).filter(Boolean).join(', '), yes === dates.length ? 'ok' : 'part'];
+  }
+
+  function build() {
+    const entries = season.calendar.filter(e => (e.comp || 'senior') === ui.comp);
+    const rounds = entries.some(e => e.label);                                   // rounds layout, else a plain list of dates
+    const cols = rounds ? entries.map(e => ({ title: e.label, sub: fmtRange(e.dates), dates: e.dates }))
+      : entries.flatMap(e => e.dates).sort().map(d => ({ title: fmtDay(d), sub: '', dates: [d] }));
+    cols.forEach(c => { c.past = c.dates[c.dates.length - 1] < today; });
+    const answered = u => (by[u.email] && by[u.email].days && Object.keys(by[u.email].days).some(k => k.startsWith(ui.comp + ':')));
+    const missing = active.filter(u => !answered(u));
+    const emails = missing.map(u => u.email);
+    const count = c => active.filter(u => c.dates.some(d => availStatus(by, u, ui.comp, d) === 'yes')).length;
+
+    return [
+      h('div', { class: 'row-between' }, h('h1', {}, 'Availability'), h('span', { class: 'muted' }, season.name || '')),
+      h('nav', { class: 'tabs noprint' }, comps.map(c => h('button', { class: 'tab' + (c.key === ui.comp ? ' active' : ''), type: 'button', onclick: () => { ui.comp = c.key; setChildren(wrap, build()); } }, c.label))),
+      h('div', { class: 'card' },
+        h('div', { class: 'summary' },
+          h('span', { class: 'chip' }, `${active.length} umpires`),
+          h('span', { class: 'chip ok' }, `${active.length - missing.length} have answered`),
+          h('span', { class: 'chip ' + (missing.length ? 'warn' : 'ok') }, `${missing.length} not yet`),
+          missing.length > 0 && h('button', { class: 'btn small', type: 'button', onclick: async () => { toast(await copyText(emails.join(', ')) ? 'Emails copied' : 'Could not copy', 'ok'); } }, 'Copy emails of those not answered')),
+        h('div', { class: 'table-wrap season-grid' }, h('table', { class: 'board' },
+          h('thead', {},
+            h('tr', {}, h('th', { class: 'stick' }, 'Name'), cols.map(c => h('th', { class: c.past ? 'past' : '' }, h('div', {}, c.title), c.sub && h('div', { class: 'sub' }, c.sub)))),
+            h('tr', { class: 'counts' }, h('td', { class: 'stick' }, 'Available'), cols.map(c => h('td', { class: 'av ' + (c.past ? 'past' : '') }, String(count(c)))))),
+          h('tbody', {}, active.map(u => h('tr', {}, h('td', { class: 'stick' }, u.name),
+            cols.map(c => { const [t, k] = cell(u, ui.comp, c.dates, rounds); return h('td', { class: 'av ' + k + (c.past ? ' past' : '') }, t); }))))))),
+    ];
+  }
+  setChildren(wrap, build());
+  return wrap;
+}
+
+// ---------------------------------------------------------------------------
 // Report + email
 // ---------------------------------------------------------------------------
 
