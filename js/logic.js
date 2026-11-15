@@ -1,0 +1,273 @@
+// Pure allocation logic: no DOM, no network, no Firebase. Fully unit-tested.
+//
+// Data shapes
+//   umpire : { pid, email, name, phone, clubs, active }
+//   game   : { id, comp, grade, roundName, matchType, days:[{day,date,time}],
+//              home:{name,org}, away:{name,org}, ground, slots, alloc, ... }
+//   alloc  : { '2026-10-10': [ {p:pid, n:name} | null, ... ] }   (one entry per slot)
+//   avail  : { [email]: { days: { '2026-10-10': 'yes'|'maybe'|'no' }, note } }
+
+export const AVAIL = { YES: 'yes', MAYBE: 'maybe', NO: 'no' };
+
+// ---------- dates ---------------------------------------------------------
+
+const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+export function fmtDay(date) {
+  const d = new Date(date + 'T00:00:00Z');
+  return d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+}
+
+// ['2026-10-10','2026-10-17'] -> '10/17 OCT'
+export function fmtRange(dates) {
+  const ds = [...new Set(dates)].sort();
+  if (!ds.length) return '';
+  const parts = ds.map(d => ({ day: Number(d.slice(8, 10)), mon: Number(d.slice(5, 7)) - 1 }));
+  const sameMonth = parts.every(p => p.mon === parts[0].mon);
+  if (sameMonth) return parts.map(p => p.day).join('/') + ' ' + MONTHS[parts[0].mon];
+  return parts.map(p => p.day + ' ' + MONTHS[p.mon]).join(' / ');
+}
+
+// ---------- grades --------------------------------------------------------
+
+// 'Senior A Grade' -> 'A', 'Senior A Reserve' -> 'Ar', 'Senior B02' -> 'B2'
+export function gradeShort(grade) {
+  const g = (grade || '').trim();
+  let m;
+  if ((m = /^Senior\s+B0*(\d+)$/i.exec(g))) return 'B' + m[1];
+  if (/^Senior\s+A\s+Grade$/i.test(g)) return 'A';
+  if (/^Senior\s+A\s+Reserve$/i.test(g)) return 'Ar';
+  if (/^Senior\s+Women/i.test(g)) return 'Women';
+  return g.replace(/^Senior\s+/i, '');
+}
+
+// Sort key so A, Ar, B1..B16, then everything else, natural order.
+export function gradeRank(grade) {
+  const s = gradeShort(grade);
+  if (s === 'A') return [0, 0, s];
+  if (s === 'Ar') return [0, 1, s];
+  const m = /^B(\d+)$/.exec(s);
+  if (m) return [1, Number(m[1]), s];
+  return [2, 0, s];
+}
+
+export function compareGrades(a, b) {
+  const ra = gradeRank(a), rb = gradeRank(b);
+  return ra[0] - rb[0] || ra[1] - rb[1] || ra[2].localeCompare(rb[2], undefined, { numeric: true });
+}
+
+// ---------- sections (how the report groups games) ------------------------
+
+export function sectionKey(g) {
+  return [g.comp, g.roundName, g.matchType].join('|');
+}
+
+export function sectionLabel(games) {
+  const first = games[0];
+  const grades = [...new Set(games.map(g => g.grade))];
+  const names = grades.length === 1 ? gradeShort(grades[0]) : /senior/i.test(first.comp) ? 'Seniors' : first.comp.replace(/^PDCA\s+/i, '');
+  return `${first.roundName} ${names}`.trim();
+}
+
+export function groupSections(games) {
+  const map = new Map();
+  for (const g of games) {
+    const k = sectionKey(g);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(g);
+  }
+  const out = [...map.entries()].map(([key, list]) => {
+    list.sort(compareGames);
+    const dates = list.flatMap(g => g.days.map(d => d.date));
+    return { key, label: sectionLabel(list), dates: [...new Set(dates)].sort(), games: list };
+  });
+  out.sort((a, b) => (a.dates[0] || '').localeCompare(b.dates[0] || '') || b.games.length - a.games.length);
+  return out;
+}
+
+export function compareGames(a, b) {
+  return (a.days[0]?.date || '').localeCompare(b.days[0]?.date || '')
+    || compareGrades(a.grade, b.grade)
+    || (a.home?.name || '').localeCompare(b.home?.name || '');
+}
+
+// ---------- clubs ---------------------------------------------------------
+
+export function normClub(s) {
+  return (s || '').toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\b(cricket|club|cc|ccc|sports|sc|the|seniors?|mens?|men|team|inc|a|b)\b/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+
+export function splitClubs(text) {
+  return (text || '').split(/[,;/\n]/).map(s => s.trim()).filter(Boolean);
+}
+
+// True when any of the umpire's clubs looks like the home or away club.
+export function clubConflict(umpire, game) {
+  const mine = splitClubs(umpire.clubs).map(normClub).filter(s => s.length >= 4);
+  if (!mine.length) return false;
+  const theirs = [game.home?.name, game.home?.org, game.away?.name, game.away?.org].map(normClub).filter(Boolean);
+  return mine.some(a => theirs.some(b => a === b || b.includes(a) || a.includes(b)));
+}
+
+// ---------- allocation state ----------------------------------------------
+
+export function slotCount(game) { return game.removed ? 0 : (game.slots || 0); }
+
+export function allocFor(game, date) {
+  const n = slotCount(game);
+  const cur = (game.alloc && game.alloc[date]) || [];
+  return Array.from({ length: n }, (_, i) => cur[i] || null);
+}
+
+// Who is already umpiring on each date: { date: { pid: [gameId, ...] } }
+export function buildBusyMap(games) {
+  const busy = {};
+  for (const g of games) {
+    if (g.removed) continue;
+    for (const d of g.days) {
+      for (const a of allocFor(g, d.date)) {
+        if (!a) continue;
+        ((busy[d.date] ||= {})[a.p] ||= []).push(g.id);
+      }
+    }
+  }
+  return busy;
+}
+
+export function availStatus(availByEmail, umpire, date) {
+  const rec = availByEmail && availByEmail[umpire.email];
+  if (!rec || !rec.days) return 'none';
+  return rec.days[date] || 'none';
+}
+
+// Warnings for one umpire in one slot. Empty array = clean.
+export function assignmentWarnings({ game, date, slotIndex, umpire, availByEmail, busy }) {
+  const w = [];
+  const st = availStatus(availByEmail, umpire, date);
+  if (st === 'no') w.push('Marked unavailable for this day');
+  else if (st === 'maybe') w.push('Only "maybe" available');
+  else if (st === 'none') w.push('No availability submitted');
+  const others = ((busy[date] || {})[umpire.pid] || []).filter(id => id !== game.id);
+  if (others.length) w.push('Already umpiring another game this day');
+  const here = allocFor(game, date).filter((a, i) => a && a.p === umpire.pid && i !== slotIndex);
+  if (here.length) w.push('Already in this game');
+  if (clubConflict(umpire, game)) w.push('Belongs to the home or away club');
+  return w;
+}
+
+// Options for a slot dropdown, grouped and sorted.
+export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy, loads }) {
+  const rows = [];
+  for (const u of umpires) {
+    if (!u.active) continue;
+    const st = availStatus(availByEmail, u, date);
+    const others = ((busy[date] || {})[u.pid] || []).filter(id => id !== game.id);
+    const dup = allocFor(game, date).some((a, i) => a && a.p === u.pid && i !== slotIndex);
+    const club = clubConflict(u, game);
+    const avoid = st === 'no' || others.length > 0 || dup;
+    const group = avoid ? 'avoid' : st === 'yes' ? 'ok' : st === 'maybe' ? 'maybe' : 'none';
+    rows.push({ umpire: u, status: st, busy: others.length > 0, dup, club, group, load: (loads && loads[u.pid]) || 0 });
+  }
+  rows.sort((a, b) => a.load - b.load || a.umpire.name.localeCompare(b.umpire.name));
+  return rows;
+}
+
+export function recount(games) {
+  let needed = 0, filled = 0, gamesNeeding = 0;
+  const byUmpire = {};
+  for (const g of games) {
+    const n = slotCount(g);
+    if (!n) continue;
+    gamesNeeding++;
+    for (const d of g.days) {
+      const a = allocFor(g, d.date);
+      needed += n;
+      for (const s of a) if (s) { filled++; byUmpire[s.p] = (byUmpire[s.p] || 0) + 1; }
+    }
+  }
+  return { games: gamesNeeding, needed, filled, byUmpire };
+}
+
+// Sum of appointments per umpire across stats from other rounds + this one.
+export function seasonLoads(statsList) {
+  const out = {};
+  for (const s of statsList) for (const [p, n] of Object.entries((s && s.byUmpire) || {})) out[p] = (out[p] || 0) + n;
+  return out;
+}
+
+// Greedy fill of EMPTY slots using only umpires who said "yes".
+// Returns a list of changes; does not mutate. Fairness: least-loaded first.
+export function autoAllocate({ games, umpires, availByEmail, baseLoads = {} }) {
+  const active = umpires.filter(u => u.active);
+  const busy = buildBusyMap(games);
+  const loads = { ...baseLoads };
+  for (const [p, n] of Object.entries(recount(games).byUmpire)) loads[p] = (loads[p] || 0) + n;
+  const working = new Map(games.map(g => [g.id, { ...g, alloc: structuredClone(g.alloc || {}) }]));
+  const changes = [];
+
+  const ordered = [...games].filter(g => slotCount(g) > 0).sort(compareGames);
+  for (const orig of ordered) {
+    const g = working.get(orig.id);
+    let prevPid = null;
+    for (const d of g.days) {
+      const cur = allocFor(g, d.date);
+      for (let i = 0; i < cur.length; i++) {
+        if (cur[i]) { prevPid = cur[i].p; continue; }
+        const cands = active.filter(u =>
+          availStatus(availByEmail, u, d.date) === 'yes' &&
+          !((busy[d.date] || {})[u.pid] || []).length &&
+          !allocFor(g, d.date).some(a => a && a.p === u.pid) &&
+          !clubConflict(u, g));
+        if (!cands.length) continue;
+        cands.sort((a, b) =>
+          (loads[a.pid] || 0) - (loads[b.pid] || 0) ||
+          (b.pid === prevPid) - (a.pid === prevPid) ||
+          a.name.localeCompare(b.name));
+        // keep the same umpire across a two-day game when that is fair enough
+        const same = prevPid && cands.find(u => u.pid === prevPid);
+        const pick = same && (loads[same.pid] || 0) <= (loads[cands[0].pid] || 0) + 1 ? same : cands[0];
+        const entry = { p: pick.pid, n: pick.name };
+        (g.alloc[d.date] ||= [])[i] = entry;
+        ((busy[d.date] ||= {})[pick.pid] ||= []).push(g.id);
+        loads[pick.pid] = (loads[pick.pid] || 0) + 1;
+        changes.push({ gameId: g.id, date: d.date, slot: i, entry });
+        prevPid = pick.pid;
+      }
+    }
+  }
+  return changes;
+}
+
+export function applyChanges(game, changes) {
+  const alloc = structuredClone(game.alloc || {});
+  for (const c of changes.filter(c => c.gameId === game.id)) {
+    const arr = (alloc[c.date] ||= []);
+    while (arr.length <= c.slot) arr.push(null);
+    arr[c.slot] = c.entry;
+  }
+  return alloc;
+}
+
+// Text for the "umpires" column in the report.
+export function umpireText(game) {
+  if (!slotCount(game)) return '';
+  const days = game.days;
+  const per = days.map(d => allocFor(game, d.date).map(a => (a ? a.n : null)));
+  if (days.length === 1) return per[0].map(n => n || '—').join(' & ').toUpperCase();
+  const sameAll = per.every(p => JSON.stringify(p) === JSON.stringify(per[0]));
+  if (sameAll) return per[0].map(n => n || '—').join(' & ').toUpperCase();
+  return per.map((p, i) => `${p.map(n => n || '—').join(' & ')} (Day ${days[i].day})`).join(' / ').toUpperCase();
+}
+
+// ---------- ids -----------------------------------------------------------
+
+export function newPid() {
+  const a = new Uint8Array(8);
+  (globalThis.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach((_, i) => (a[i] = Math.floor(Math.random() * 256)));
+  return [...a].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export function emailKey(email) { return (email || '').trim().toLowerCase(); }

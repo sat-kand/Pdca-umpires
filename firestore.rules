@@ -1,0 +1,89 @@
+rules_version = '2';
+
+// Paste this into Firebase console > Firestore Database > Rules, then Publish.
+//
+// Who can do what
+//   Appointments officers  = emails that have a document in the `admins` collection
+//                            (created by hand in the console; the app can never write it).
+//   Umpires                = any signed-in, email-verified user:
+//                              - read/write their own umpire profile (but cannot approve themselves)
+//                              - read/write their own availability while a round is open
+//                              - read rounds, and the games of PUBLISHED rounds only
+//   Everything else is denied.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function me() {
+      return request.auth.token.email.lower();
+    }
+    function isAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/admins/$(me()));
+    }
+    // Only these fields may change in an update
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // Officers list: you can only check whether YOU are on it.
+    match /admins/{id} {
+      allow get: if signedIn() && id == me();
+      allow list, write: if false;
+    }
+
+    // One document per umpire, id = lower-case email.
+    match /umpires/{id} {
+      allow get: if signedIn() && (id == me() || isAdmin());
+      allow list: if isAdmin();
+
+      // Self sign-up: starts inactive until an officer approves.
+      allow create: if signedIn() && (
+        isAdmin() || (
+          id == me()
+          && request.resource.data.email == me()
+          && request.resource.data.active == false
+          && request.resource.data.keys().hasOnly(['pid', 'email', 'name', 'phone', 'clubs', 'active', 'updatedAt'])
+        ));
+
+      // Umpires may edit their own details but never `active`, `pid` or `email`.
+      allow update: if signedIn() && (
+        isAdmin() || (
+          id == me()
+          && request.resource.data.email == me()
+          && onlyChanges(['name', 'phone', 'clubs', 'updatedAt'])
+        ));
+    }
+
+    match /rounds/{roundId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+
+      // Allocations are only visible to umpires once the round is published.
+      match /games/{gameId} {
+        allow read: if isAdmin()
+          || (signedIn() && get(/databases/$(database)/documents/rounds/$(roundId)).data.published == true);
+        allow write: if isAdmin();
+      }
+    }
+
+    // id = <roundId>__<email>
+    match /availability/{id} {
+      allow get: if signedIn() && (id.split('__')[1] == me() || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if signedIn() && (
+        isAdmin() || (
+          id.split('__')[1] == me()
+          && request.resource.data.email == me()
+          && request.resource.data.roundId == id.split('__')[0]
+          && get(/databases/$(database)/documents/rounds/$(id.split('__')[0])).data.availabilityOpen == true
+        ));
+    }
+
+    match /settings/{id} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
