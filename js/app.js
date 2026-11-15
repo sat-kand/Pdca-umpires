@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js';
+import { CONFIG, DEMO_ORG } from './config.js';
 import { h, setChildren, spinner, toast } from './ui.js';
 import { createDemoStore } from './store-demo.js';
 import { seedDemo } from './demo-seed.js';
@@ -27,6 +27,7 @@ async function loadUser(user) {
       const mine = (await S.store.listMyOrgs(user.email)).map(o => o.id);
       if (mine.length && !mine.includes(id)) id = mine.length === 1 ? mine[0] : null;
     }
+    if (!id && S.store.mode === 'demo') id = DEMO_ORG.id;      // the demo has one built-in association: nobody needs a link to try it
     S.org = id ? await S.store.useOrg(id) : null;
     if (id && !S.org) { localStorage.removeItem(ORG_KEY); if (localStorage.getItem(JOIN_KEY)) toast('That association link is not valid.', 'err'); }
   } catch (e) { console.warn('association load failed', e); }
@@ -64,9 +65,9 @@ function drawHeader() {
   setChildren(header,
     demo && h('div', { class: 'demo-banner' }, 'Demo mode — data is stored only in this browser. ',
       h('button', { class: 'link', type: 'button', onclick: async ev => {
-        if (!S.org || !S.isAdmin) { toast('Sign in as admin@demo.test first', 'err'); return; }
+        await S.store.useOrg(S.org ? S.org.id : DEMO_ORG.id);      // works for anyone in the demo, signed in or not
         const b = ev.currentTarget; b.disabled = true; b.textContent = 'Loading real PDCA fixtures…';
-        try { const r = await seedDemo(S.store); toast(r.live ? `Loaded the real PDCA fixtures (${r.games} games) and sample umpires` : 'Play Cricket not reachable: loaded made-up sample fixtures'); } finally { render(); }
+        try { const r = await seedDemo(S.store); toast(r.live ? `Loaded the real PDCA fixtures (${r.games} games) and sample umpires` : 'Play Cricket not reachable: loaded made-up sample fixtures'); } finally { if (S.user) await loadUser(S.user); render(); }
       } }, 'Load sample data'), ' · ',
       h('button', { class: 'link', type: 'button', onclick: () => { if (confirm('Erase all demo data in this browser?')) { localStorage.removeItem(ORG_KEY); S.store.demoReset(); location.hash = '#/'; } } }, 'Reset')),
     h('div', { class: 'bar' },
