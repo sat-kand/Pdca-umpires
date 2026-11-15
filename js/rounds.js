@@ -6,6 +6,8 @@ import { CONFIG } from './config.js';
 import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures, mergeFixtures } from './fixtures.js';
 import { buildCalendar, compKeyOf, summarise, COMPS } from './logic.js';
 
+// Bump when the information saved on each round changes shape, so stored rounds are rebuilt on the next visit.
+export const SCHEMA = 3;
 export const STALE_MS = 12 * 60 * 60 * 1000;   // refetch the fixtures at most twice a day on its own
 
 export const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
@@ -54,7 +56,7 @@ export function currentRound(rounds, key, today) {
 }
 
 export function needsSync(season, rounds, today, now = Date.now()) {
-  if (!season || !season.calendar) return true;
+  if (!season || !season.calendar || season.schema !== SCHEMA) return true;
   if (now - Date.parse(season.updatedAt || 0) > STALE_MS) return true;
   return season.calendar.some(c => !currentRound(rounds, c.comp || 'senior', today) && c.dates.some(d => d >= today));
 }
@@ -85,7 +87,7 @@ export async function syncFromPlayCricket(store, { today, fetchFn, onProgress } 
 
 // Shared with the demo: turn a season's games into the calendar plus one next round per competition.
 export async function saveSeasonAndRounds(store, { season, games, comps = [], today, source = undefined }) {
-  await store.saveSeason({ ...season, calendar: buildCalendar(games), updatedAt: new Date().toISOString() });
+  await store.saveSeason({ ...season, calendar: buildCalendar(games), schema: SCHEMA, updatedAt: new Date().toISOString() });
   const settings = await store.getSettings();
   const existing = await store.listRounds();
   const made = [];

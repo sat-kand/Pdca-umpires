@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextRoundWindow, majorityRound, currentRound, needsSync, saveSeasonAndRounds, applyFresh, defaultSlotsFn, STALE_MS } from '../js/rounds.js';
+import { nextRoundWindow, majorityRound, currentRound, needsSync, saveSeasonAndRounds, applyFresh, defaultSlotsFn, STALE_MS, SCHEMA } from '../js/rounds.js';
 import { summarise, isPicked } from '../js/logic.js';
 
 const SEN = 'PDCA Senior Competition', JUN = 'PDCA Junior Competition', T20 = 'PDCA T20 Competition';
@@ -67,7 +67,8 @@ test('currentRound picks a competition\'s earliest unfinished round; needsSync r
   assert.equal(currentRound(rounds, 'senior', '2026-11-16').id, 'senior-2026-11-21');
   assert.equal(currentRound(rounds, 'senior', '2026-11-10').id, 'senior-2026-11-21', 'a round from an older version is ignored');
   assert.equal(currentRound(rounds, 't20', '2026-11-16'), null);
-  const fresh = { calendar: [{ comp: 'senior', dates: ['2026-11-21'] }], updatedAt: new Date().toISOString() };
+  const fresh = { calendar: [{ comp: 'senior', dates: ['2026-11-21'] }], schema: SCHEMA, updatedAt: new Date().toISOString() };
+  assert.equal(needsSync({ ...fresh, schema: undefined }, rounds, '2026-11-16', Date.now()), true);   // saved by an older version: rebuild
   const now = Date.now();
   assert.equal(needsSync(null, rounds, '2026-11-16', now), true);                                        // never synced
   assert.equal(needsSync(fresh, rounds, '2026-11-16', now), false);
