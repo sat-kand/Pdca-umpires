@@ -96,7 +96,7 @@ export function roundSets(rounds, today) {
         }
       }
     }
-    sets.push(set.sort((a, b) => order(a.comp) - order(b.comp) || a.start.localeCompare(b.start)));
+    sets.push(set.sort((a, b) => a.start.localeCompare(b.start) || order(a.comp) - order(b.comp)));   // by date, then Senior, Junior, T20
   }
   return sets;
 }

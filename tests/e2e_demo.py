@@ -380,7 +380,7 @@ with sync_playwright() as p:
         sign_out(page)
     sign_in(page, "admin@demo.test")
     page.wait_for_selector(".tile-round")
-    check(page.locator(".comp-tile h2").all_inner_texts() == ["Senior", "Senior", "Junior", "T20"], "no button needed: next rounds appear by themselves; Senior has a second tile for its one-day Women's game")
+    check(page.locator(".comp-tile h2").all_inner_texts() == ["Senior", "Junior", "Senior", "T20"], "no button needed: next rounds appear by themselves; Senior has a second tile for its one-day Women's game")
     check("Two Day" in tile("Senior", 0).inner_text() and "28 NOV" in tile("Senior", 1).inner_text().upper() and "T20" in tile("Senior", 1).inner_text() and "Two Day" not in tile("Senior", 1).inner_text(), "second Senior tile: its own date and its own match type (T20 in the mock)")
     tile("Senior", 1).locator("button:has-text('Select grades')").click()
     dlg.wait_for(state="visible")

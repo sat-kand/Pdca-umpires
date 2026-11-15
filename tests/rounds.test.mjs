@@ -180,7 +180,7 @@ test('visibleRounds: rounds are grouped into sets; enough sets show for every co
   const sets = v => v.sets.map(set => set.map(r => r.id));
   assert.deepEqual(roundSets(rounds, '2026-11-15').map(x => x.length), [1, 5, 2]);
   const v0 = visibleRounds(rounds, '2026-11-15');
-  assert.deepEqual(sets(v0), [['t20-2026-11-15'], ['senior-2026-11-21', 'senior-2026-11-28', 'junior-2026-11-21', 't20-2026-11-22', 't20-2026-11-29']], 'the 15th is one set, the 21st the next; then Load more');
+  assert.deepEqual(sets(v0), [['t20-2026-11-15'], ['senior-2026-11-21', 'junior-2026-11-21', 't20-2026-11-22', 'senior-2026-11-28', 't20-2026-11-29']], 'the 15th is one set, the 21st the next; then Load more');
   assert.equal(v0.hasMore, true);
   const v1 = visibleRounds(rounds, '2026-11-15', 1);
   assert.equal(v1.sets.length, 3);
@@ -206,7 +206,7 @@ test('sets on the real PDCA fixtures (16 Nov 2026): one-day weekends, a two-day 
   const ids = roundSets(real, '2026-11-16').map(set => set.map(r => r.id));
   assert.deepEqual(ids, [
     ['senior-2026-11-21', 'junior-2026-11-21', 't20-2026-11-22'],                                                                  // Sat 21 + Sun 22
-    ['senior-2026-11-28', 'junior-2026-11-28', 'junior-2026-12-05', 't20-2026-11-29', 't20-2026-12-06'],                            // Junior two-day 28 Nov/5 Dec takes the one-day games on its second weekend
+    ['senior-2026-11-28', 'junior-2026-11-28', 't20-2026-11-29', 'junior-2026-12-05', 't20-2026-12-06'],                            // Junior two-day 28 Nov/5 Dec takes the one-day games on its second weekend
     ['senior-2026-12-05', 'senior-2026-12-12', 'junior-2026-12-12', 't20-2026-12-13'],                                              // Senior two-day 5/12 Dec + the one-day games on its second weekend
     ['senior-2027-01-09'],
   ]);
