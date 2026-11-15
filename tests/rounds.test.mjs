@@ -59,11 +59,13 @@ test('nextRoundWindow: removed games are ignored; juniors with different round n
 
 test('currentRound picks a competition\'s earliest unfinished round; needsSync reasons', () => {
   const rounds = [
-    { id: 'senior-a', comp: 'senior', start: '2026-11-07', end: '2026-11-08' },
-    { id: 'senior-b', comp: 'senior', start: '2026-11-21', end: '2026-11-22' },
-    { id: 'junior-a', comp: 'junior', start: '2026-11-21', end: '2026-11-22' },
+    { id: 'senior-2026-11-07', comp: 'senior', source: { from: '2026-11-07' }, start: '2026-11-07', end: '2026-11-08' },
+    { id: 'senior-2026-11-21', comp: 'senior', source: { from: '2026-11-21' }, start: '2026-11-21', end: '2026-11-22' },
+    { id: 'junior-2026-11-21', comp: 'junior', source: { from: '2026-11-21' }, start: '2026-11-21', end: '2026-11-22' },
+    { id: 'k3Xr9aQ', comp: 'senior', source: { from: '2026-11-14' }, start: '2026-11-14', end: '2026-11-15' },   // built by an earlier version
   ];
-  assert.equal(currentRound(rounds, 'senior', '2026-11-16').id, 'senior-b');
+  assert.equal(currentRound(rounds, 'senior', '2026-11-16').id, 'senior-2026-11-21');
+  assert.equal(currentRound(rounds, 'senior', '2026-11-10').id, 'senior-2026-11-21', 'a round from an older version is ignored');
   assert.equal(currentRound(rounds, 't20', '2026-11-16'), null);
   const fresh = { calendar: [{ comp: 'senior', dates: ['2026-11-21'] }], updatedAt: new Date().toISOString() };
   const now = Date.now();
@@ -122,4 +124,25 @@ test('the next round remembers the grades ticked last time, and applyFresh keeps
   assert.equal(after.s4.slots, 1);                                    // new game in a grade ticked before
   assert.equal(store.db.rounds[id].picked, 2);
   assert.equal(defaultSlotsFn({}) (g1), 0);
+});
+
+test('juniors sort oldest age group first; seniors keep A, Ar, B1...', async () => {
+  const { compareGrades } = await import('../js/logic.js');
+  const j = ['U10 Blue North', 'U17 Division 2', 'U12 Division 1', 'U15 Division 1', 'U17 Division 1', 'U12 Girls Stage 1'];
+  assert.deepEqual(j.sort(compareGrades), ['U17 Division 1', 'U17 Division 2', 'U15 Division 1', 'U12 Division 1', 'U12 Girls Stage 1', 'U10 Blue North']);
+  assert.deepEqual(['Senior B02', 'Senior Women', 'Senior A Reserve', 'Senior A Grade', 'Senior B01'].sort(compareGrades), ['Senior A Grade', 'Senior A Reserve', 'Senior B01', 'Senior B02', 'Senior Women']);
+});
+
+test('round title follows the picked grades; a grade on another round is listed beside it', () => {
+  const g = (id, grade, roundName, slots) => ({ id, grade, roundName, slots, days: [{ date: '2026-11-21' }], alloc: {} });
+  const games = [g('1', 'Senior A Grade', 'Round 5', 0), g('2', 'Senior B01', 'Round 5', 0), g('3', 'Senior Women', 'Round 4', 0)];
+  assert.equal(summarise(games).title, 'Round 5');
+  assert.equal(summarise(games).other, 'Women: Round 4');                      // nothing picked: all grades considered
+  games[0].slots = 1; games[1].slots = 1;
+  assert.equal(summarise(games).other, '');                                    // Women not picked: the tile is simply Round 5
+  games[2].slots = 1;
+  assert.equal(summarise(games).title, 'Round 5');
+  assert.equal(summarise(games).other, 'Women: Round 4');
+  games[0].slots = 0; games[1].slots = 0;
+  assert.equal(summarise(games).title, 'Round 4');                             // only Women picked: Round 4
 });

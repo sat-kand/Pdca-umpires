@@ -4,7 +4,7 @@ import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './u
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
   slotOptions, recount, summarise, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
-  availStatus, compLabel, roundColumns, COMPS,
+  availStatus, compLabel, compKeyOf, roundColumns, COMPS,
 } from './logic.js';
 import { syncFromPlayCricket, refreshRound, currentRound, needsSync } from './rounds.js';
 
@@ -27,41 +27,40 @@ function tabs(rid, active) {
 // listed on the board, and the slot totals follow. `onDone` runs after saving.
 async function openGradesModal({ store, round, onDone }) {
   const [games, settings] = await Promise.all([store.listGames(round.id), store.getSettings()]);
-  const live = games.filter(g => !g.removed);
+  const live = games.filter(g => !g.removed && compKeyOf(g) === (round.comp || 'senior'));
   const grades = [...new Set(live.map(g => g.grade))].sort(compareGrades);
   const count = gr => live.filter(g => g.grade === gr).length;
-  const prior = Object.fromEntries(grades.map(gr => [gr, Math.max(...live.filter(g => g.grade === gr).map(g => g.slots || 0))]));
-  const want = Object.fromEntries(grades.map(gr => [gr, prior[gr] || 0]));          // 0 = not ticked, else umpires per game
-  const memory = gr => (settings.slotsByGrade && settings.slotsByGrade[gr]) || 1;     // 1 or 2 umpires, remembered
+  const perGame = g => ((g.slots || 0) || 1);                                          // umpires per game: what the board has, else 1
+  const want = Object.fromEntries(grades.map(gr => [gr, live.some(g => g.grade === gr && isPicked(g))]));
+  const roundOf = gr => (live.find(g => g.grade === gr) || {}).roundName;
 
   const dlg = h('dialog', { class: 'modal', 'aria-label': 'Select grades' });
   const total = h('span', { class: 'muted' });
   const rows = grades.map(gr => {
-    const cb = h('input', { type: 'checkbox', checked: want[gr] > 0, id: 'g-' + gr.replace(/\W+/g, '_') });
-    const two = h('select', { 'aria-label': `Umpires for ${gradeShort(gr)}`, hidden: want[gr] === 0 },
-      h('option', { value: '1' }, '1 umpire'), h('option', { value: '2' }, '2 umpires'));
-    two.value = String(want[gr] || memory(gr));
-    const upd = () => { want[gr] = cb.checked ? Number(two.value) : 0; two.hidden = !cb.checked; showTotal(); };
-    cb.onchange = upd; two.onchange = upd;
-    return { gr, cb, two, row: h('label', { class: 'grade-row' }, cb, h('span', { class: 'chip grade' }, gradeShort(gr)), h('span', { class: 'muted' }, `${count(gr)} game${count(gr) === 1 ? '' : 's'}`), two) };
+    const cb = h('input', { type: 'checkbox', checked: want[gr], id: 'g-' + gr.replace(/\W+/g, '_') });
+    cb.onchange = () => { want[gr] = cb.checked; showTotal(); };
+    const rn = roundOf(gr);
+    return { gr, cb, row: h('label', { class: 'grade-row' }, cb, h('span', { class: 'chip grade' }, gradeShort(gr)), h('span', { class: 'muted' }, `${count(gr)} game${count(gr) === 1 ? '' : 's'}`),
+      rn && rn !== round.title && h('span', { class: 'muted' }, rn)) };
   });
   function showTotal() {
-    const picked = grades.filter(gr => want[gr] > 0);
-    const slots = picked.reduce((n, gr) => n + live.filter(g => g.grade === gr).reduce((m, g) => m + want[gr] * g.days.length, 0), 0);
+    const picked = grades.filter(gr => want[gr]);
+    const slots = picked.reduce((n, gr) => n + live.filter(g => g.grade === gr).reduce((m, g) => m + perGame(g) * g.days.length, 0), 0);
     total.textContent = picked.length ? `${picked.length} grade${picked.length === 1 ? '' : 's'} · ${slots} umpire slots` : 'No grades selected';
   }
-  const setAll = on => rows.forEach(r => { r.cb.checked = on; r.two.hidden = !on; want[r.gr] = on ? Number(r.two.value) : 0; showTotal(); });
+  const setAll = on => { rows.forEach(r => { r.cb.checked = on; want[r.gr] = on; }); showTotal(); };
   const done = h('button', { class: 'btn primary', type: 'button' }, 'Done');
   done.onclick = busy(done, async () => {
     const changed = [];
     for (const g of games) {
-      const n = g.removed ? (g.slots || 0) : (want[g.grade] || 0);
+      const n = g.removed || !(g.grade in want) || compKeyOf(g) !== (round.comp || 'senior') ? (g.slots || 0) : (want[g.grade] ? perGame(g) : 0);
       if (n !== (g.slots || 0)) { g.slots = n; changed.push({ ...g, slots: n }); }
     }
     if (changed.length) await store.saveGames(round.id, changed);
     await store.saveRound({ id: round.id, ...summarise(games) });
+    Object.assign(round, summarise(games));
     const slotsByGrade = { ...(settings.slotsByGrade || {}) };
-    for (const gr of grades) slotsByGrade[gr] = want[gr];            // remembered for the next round
+    for (const gr of grades) slotsByGrade[gr] = want[gr] ? Math.max(...live.filter(g => g.grade === gr).map(perGame)) : 0;   // remembered for the next round
     await store.saveSettings({ slotsByGrade });
     dlg.close(); dlg.remove();
     if (onDone) await onDone();
@@ -97,6 +96,7 @@ export async function viewAdminHome(ctx) {
         h('button', { class: 'btn small', type: 'button', onclick: () => openGradesModal({ store, round: r, onDone: async () => { await load(); draw(); } }) }, 'Select grades')),
       h('a', { class: 'tile-body', href: `#/admin/round/${r.id}` },
         h('div', { class: 'tile-round' }, r.title),
+        r.other && h('div', { class: 'muted' }, r.other),
         h('div', { class: 'muted' }, fmtRange(r.dates || [])),
         h('div', { class: 'tile-stats' },
           picked

@@ -49,7 +49,8 @@ export function buildRound({ key, win, games, season, compIds = [], source = nul
 
 // The round to show for a competition: the earliest one that has not finished.
 export function currentRound(rounds, key, today) {
-  return rounds.filter(r => (r.comp || 'senior') === key && (r.end || '') >= today).sort((a, b) => a.start.localeCompare(b.start))[0] || null;
+  // Only rounds this module builds (id = '<competition>-<first day>'); older all-competition rounds are ignored.
+  return rounds.filter(r => r.comp === key && new RegExp(`^${key}-\\d{4}-\\d{2}-\\d{2}$`).test(r.id) && (r.end || '') >= today).sort((a, b) => a.start.localeCompare(b.start))[0] || null;
 }
 
 export function needsSync(season, rounds, today, now = Date.now()) {

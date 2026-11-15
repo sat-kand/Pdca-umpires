@@ -79,6 +79,8 @@ export function gradeShort(grade) {
 // Sort key so A, Ar, B1..B16, then everything else, natural order.
 export function gradeRank(grade) {
   const s = gradeShort(grade);
+  const u = /^U\s?(\d{1,2})\b/i.exec(s);
+  if (u) return [0, 100 - Number(u[1]), s];            // Juniors: oldest age group first (U17 ... U10)
   if (s === 'A') return [0, 0, s];
   if (s === 'Ar') return [0, 1, s];
   const m = /^B(\d+)$/.exec(s);
@@ -216,7 +218,16 @@ export function recount(games) {
 
 // What a round tile shows: slots filled / needed, and how many grades were picked.
 export function summarise(games) {
-  return { stats: recount(games), picked: new Set(games.filter(isPicked).map(g => g.grade)).size };
+  const live = games.filter(g => !g.removed);
+  const picked = live.filter(isPicked);
+  // The round is named after the grades being umpired (all grades until some are picked). A grade playing a
+  // different round number (Women, say) is listed under `other` instead of leaving the title inconsistent.
+  const basis = picked.length ? picked : live;
+  const counts = new Map();
+  for (const g of basis) counts.set(g.roundName || '', (counts.get(g.roundName || '') || 0) + 1);
+  const title = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], undefined, { numeric: true }))[0];
+  const other = [...new Set(basis.filter(g => g.roundName && title && g.roundName !== title[0]).map(g => `${gradeShort(g.grade)}: ${g.roundName}`))].join(' · ');
+  return { stats: recount(games), picked: new Set(picked.map(g => g.grade)).size, ...(title && title[0] ? { title: title[0] } : {}), other };
 }
 
 // Sum of appointments per umpire across stats from other rounds + this one.
