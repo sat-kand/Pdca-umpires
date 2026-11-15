@@ -70,22 +70,35 @@ export const currentRound = (rounds, key, today) => upcomingRounds(rounds, today
 // The order tiles are shown in.
 export const TILE_ORDER = ['senior', 'junior', 't20'];
 
-// A set runs to the end of the weekend it finishes on: a round that ends on a Saturday also takes that Sunday.
-const weekendEnd = iso => (new Date(iso + 'T00:00:00Z').getUTCDay() === 6 ? addDays(iso, 1) : iso);
+// The Sunday that ends the weekend a date falls in (a Saturday takes the Sunday after it).
+const weekendEnd = iso => addDays(iso, (7 - new Date(iso + 'T00:00:00Z').getUTCDay()) % 7);
 
-// Rounds grouped into sets: the appointment work for one stretch of play. A round joins the current set when it
-// starts on or before the set's last day, so a two-day round, the one-day games on its second Saturday and the
-// Sunday games after it are one set.
+// Rounds grouped into sets: the appointment work for one stretch of play, soonest first.
+// A set starts with the earliest round left over. It takes every round that starts in that weekend. If something in
+// it runs into later weekends (a two-day round), it also takes the one-day rounds that start in those weekends; a
+// further two-day round starts the next set.
 export function roundSets(rounds, today) {
-  const sets = [];
-  let end = '';
-  for (const r of upcomingRounds(rounds, today)) {
-    const e = weekendEnd(r.end);
-    if (sets.length && r.start <= end) { sets[sets.length - 1].push(r); end = e > end ? e : end; }
-    else { sets.push([r]); end = e; }
-  }
+  const left = upcomingRounds(rounds, today);
   const order = k => TILE_ORDER.indexOf(k);
-  return sets.map(set => set.sort((a, b) => order(a.comp) - order(b.comp) || a.start.localeCompare(b.start)));
+  const sets = [];
+  while (left.length) {
+    const first = left.shift();
+    const set = [first];
+    const anchorEnd = weekendEnd(first.start);
+    let end = weekendEnd(first.end);
+    for (let changed = true; changed;) {
+      changed = false;
+      for (let i = 0; i < left.length; i++) {
+        const r = left[i];
+        if (r.start <= anchorEnd || (r.start <= end && r.start === r.end)) {
+          set.push(r); left.splice(i--, 1); changed = true;
+          const e = weekendEnd(r.end); if (e > end) end = e;
+        }
+      }
+    }
+    sets.push(set.sort((a, b) => order(a.comp) - order(b.comp) || a.start.localeCompare(b.start)));
+  }
+  return sets;
 }
 
 // Which sets to show. At first enough sets for every competition that plays within the fortnight to appear once;

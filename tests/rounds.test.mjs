@@ -197,3 +197,20 @@ test('a Saturday set takes the Sunday that follows; later weekends are new sets'
   const sets = roundSets([R('senior', '2026-11-21'), R('junior', '2026-11-21'), R('t20', '2026-11-22'), R('senior', '2026-11-28')], '2026-11-16');
   assert.deepEqual(sets.map(x => x.map(r => r.id)), [['senior-2026-11-21', 'junior-2026-11-21', 't20-2026-11-22'], ['senior-2026-11-28']]);
 });
+
+test('sets on the real PDCA fixtures (16 Nov 2026): one-day weekends, a two-day Junior round, a two-day Senior round', () => {
+  const real = [['senior', '2026-11-21', '2026-11-21'], ['senior', '2026-11-28', '2026-11-28'], ['senior', '2026-12-05', '2026-12-12'], ['senior', '2026-12-12', '2026-12-12'], ['senior', '2027-01-09', '2027-01-09'],
+    ['junior', '2026-11-21', '2026-11-21'], ['junior', '2026-11-28', '2026-12-05'], ['junior', '2026-12-05', '2026-12-05'], ['junior', '2026-12-12', '2026-12-12'],
+    ['t20', '2026-11-22', '2026-11-22'], ['t20', '2026-11-29', '2026-11-29'], ['t20', '2026-12-06', '2026-12-06'], ['t20', '2026-12-13', '2026-12-13']]
+    .map(([comp, start, end]) => ({ id: `${comp}-${start}`, comp, start, end, dates: [start, end] }));
+  const ids = roundSets(real, '2026-11-16').map(set => set.map(r => r.id));
+  assert.deepEqual(ids, [
+    ['senior-2026-11-21', 'junior-2026-11-21', 't20-2026-11-22'],                                                                  // Sat 21 + Sun 22
+    ['senior-2026-11-28', 'junior-2026-11-28', 'junior-2026-12-05', 't20-2026-11-29', 't20-2026-12-06'],                            // Junior two-day 28 Nov/5 Dec takes the one-day games on its second weekend
+    ['senior-2026-12-05', 'senior-2026-12-12', 'junior-2026-12-12', 't20-2026-12-13'],                                              // Senior two-day 5/12 Dec + the one-day games on its second weekend
+    ['senior-2027-01-09'],
+  ]);
+  const v = visibleRounds(real, '2026-11-16');
+  assert.equal(v.sets.length, 1, 'all three competitions play in the first set, so only it shows until Load more');
+  assert.equal(v.hasMore, true);
+});
