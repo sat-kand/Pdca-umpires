@@ -113,8 +113,9 @@ export async function viewAdminHome(ctx) {
       shown.sets.map((set, i) => [i > 0 && h('hr', { class: 'set-break' }), h('div', { class: 'cards' }, set.map(tile))]),
       COMPS.some(c => !currentRound(state.rounds, c.key, today)) && h('div', { class: 'cards' }, [...COMPS].sort((a, b) => TILE_ORDER.indexOf(a.key) - TILE_ORDER.indexOf(b.key)).filter(c => !currentRound(state.rounds, c.key, today)).map(empty)),
       shown.hasMore && h('div', { class: 'load-more' }, h('button', { class: 'btn', type: 'button', onclick: () => { state.more++; draw(); } }, 'Load more')),
-      past.length > 0 && h('details', { class: 'card past-rounds', open: state.pastOpen, ontoggle: ev => { state.pastOpen = ev.currentTarget.open; } },
+      h('details', { class: 'card past-rounds', open: state.pastOpen, ontoggle: ev => { state.pastOpen = ev.currentTarget.open; } },
         h('summary', {}, `Past allocations (${past.length})`),
+        !past.length && h('p', { class: 'muted' }, 'Nothing here yet. A round moves here once its last day has passed, if it was published or had umpires allocated.'),
         h('ul', { class: 'plain' }, past.map(r => { const st = r.stats || { needed: 0, filled: 0 };
           return h('li', {}, h('a', { class: 'past-row', href: `#/admin/round/${r.id}/report` },
             h('strong', {}, fmtRange(r.dates || [r.start, r.end])), h('span', {}, r.comp ? compLabel(r.comp) : (r.title || '')), h('span', { class: 'muted' }, r.formats || ''),

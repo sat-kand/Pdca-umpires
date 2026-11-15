@@ -354,7 +354,7 @@ with sync_playwright() as p:
     print("Admin: past allocations stay available")
     page.goto(BASE + "#/admin")
     page.wait_for_selector(".tile-round")
-    check(page.locator(".past-rounds").count() == 0, "no past allocations yet")
+    check("Past allocations (0)" in page.locator(".past-rounds summary").inner_text(), "Past allocations is always on the page, empty at first")
     page.evaluate("""() => { const k = 'pdca-umpires-demo-v1'; const db = JSON.parse(localStorage.getItem(k)); const r = db.rounds['senior-' + Object.keys(db.rounds).filter(i => i.startsWith('senior-')).sort()[0].slice(7)];
         r.start = '2026-01-03'; r.end = '2026-01-10'; r.dates = ['2026-01-03', '2026-01-10']; localStorage.setItem(k, JSON.stringify(db)); }""")
     page.reload()
