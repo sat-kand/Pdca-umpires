@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   fmtRange, gradeShort, compareGrades, groupSections, clubConflict, normClub, allocFor, buildBusyMap,
-  assignmentWarnings, slotOptions, recount, autoAllocate, applyChanges, umpireText, seasonLoads, buildCalendar, upcomingCalendar,
-  compKeyOf, availKey, availStatus, groupByComp, roundColumns,
+  assignmentWarnings, slotOptions, recount, autoAllocate, applyChanges, umpireText, seasonLoads, buildCalendar, upcomingDates, byMonth,
+  compKeyOf, availKey, availStatus, roundColumns,
 } from '../js/logic.js';
 
 const mk = (id, grade, home, away, days, slots = 1, alloc = {}, extra = {}) => ({
@@ -156,40 +156,6 @@ test('report text: one day, two slots, and a different umpire each day', () => {
   assert.equal(umpireText(mk('5', 'Senior B02', 'A', 'B', [D1], 0)), '');
 });
 
-test('buildCalendar: two-day rounds become Day 1 / Day 2, one-day games on the same Saturdays are absorbed', () => {
-  const [S1, S2, S3, S4, S5] = ['2026-10-10', '2026-10-17', '2026-10-24', '2026-10-31', '2026-11-07'];
-  const games = [
-    mk('1', 'Senior A Grade', 'A', 'B', [S1, S2]),
-    mk('2', 'Senior Women', 'C', 'D', [S1], 1, {}, { roundName: 'Round 3' }),   // same Saturday as Round 2 Day 1
-    mk('3', 'Senior Women', 'C', 'D', [S2], 1, {}, { roundName: 'Round 4' }),   // same Saturday as Round 2 Day 2
-    mk('4', 'Senior Women', 'C', 'D', [S3], 1, {}, { roundName: 'Round 5' }),   // a Saturday with only one-day games
-    mk('5', 'Senior A Grade', 'A', 'B', [S4, S5], 1, {}, { roundName: 'Round 3' }),
-  ];
-  const cal = buildCalendar(games);
-  assert.deepEqual(cal, [
-    { comp: 'senior', label: 'Round 2', dates: [S1, S2] },
-    { comp: 'senior', label: 'Round 5', dates: [S3] },
-    { comp: 'senior', label: 'Round 3', dates: [S4, S5] },
-  ]);
-});
-
-test('buildCalendar: duplicate round names stay distinguishable', () => {
-  const games = [mk('1', 'Senior A Grade', 'A', 'B', ['2026-10-10', '2026-10-17']), mk('2', 'Senior Women', 'C', 'D', ['2026-12-05'])];
-  assert.deepEqual(buildCalendar(games).map(r => r.label), ['Round 2', 'Round 2 (2)']);
-});
-
-test('upcomingCalendar hides past dates but keeps Day numbers', () => {
-  const cal = [{ comp: 'senior', label: 'Round 2', dates: ['2026-10-10', '2026-10-17'] }, { comp: 'senior', label: 'Round 3', dates: ['2026-10-24', '2026-10-31'] }];
-  assert.deepEqual(upcomingCalendar(cal, '2026-10-17'), [
-    { comp: 'senior', label: 'Round 2', rows: [{ date: '2026-10-17', dayNo: 2, of: 2 }] },
-    { comp: 'senior', label: 'Round 3', rows: [{ date: '2026-10-24', dayNo: 1, of: 2 }, { date: '2026-10-31', dayNo: 2, of: 2 }] },
-  ]);
-  assert.deepEqual(upcomingCalendar(cal, '2027-01-01'), []);
-  assert.deepEqual(upcomingCalendar(null, '2026-10-17'), []);
-});
-
-// ---------- competitions: separate availability, overlapping dates ---------
-
 test('compKeyOf recognises Senior, T20 and Junior competitions', () => {
   assert.equal(compKeyOf('PDCA Senior Competition'), 'senior');
   assert.equal(compKeyOf('PDCA Junior Competition'), 'junior');
@@ -243,51 +209,66 @@ test('autoAllocate uses each competition\'s own availability and can use one ump
   assert.deepEqual(who, { 1: 'u1', 2: 'u1', 3: 'u2' });   // Ann does Senior and Junior on the same day
 });
 
-test('buildCalendar keeps competitions apart even when their dates overlap', () => {
+
+// ---------- season calendar: plain dates per competition ------------------
+
+test('buildCalendar lists every date each competition plays, sorted, with no round or day labels', () => {
+  const [X, Y, Z] = ['2026-11-21', '2026-11-28', '2026-12-05'];
+  const j = (id, grade, days, roundName) => mk(id, grade, 'A', 'B', days, 1, {}, { comp: JUN, roundName });
   const games = [
-    mk('1', 'Senior A Grade', 'A', 'B', [D1, D2]),
-    mk('2', 'U12 Gold', 'C', 'D', [D1], 1, {}, { comp: JUN, roundName: 'Round 5' }),
-    mk('3', 'U10 Red', 'E', 'F', [D1], 1, {}, { comp: JUN, roundName: 'Round 5' }),
-    mk('4', 'U14 Blue', 'G', 'H', [D1], 1, {}, { comp: JUN, roundName: 'Round 4' }),   // minority name for that date
-    mk('5', 'T20 Mens', 'I', 'J', [D2], 1, {}, { comp: T20C, roundName: 'Round 1' }),
+    mk('1', 'Senior A Grade', 'A', 'B', [X, Y], 1, {}, { roundName: 'Round 9' }),
+    mk('2', 'Senior Women', 'C', 'D', [Y], 1, {}, { roundName: 'Round 4' }),
+    mk('3', 'Senior B02', 'E', 'F', [Z, '2026-12-12'], 1, {}, { roundName: 'Round 7' }),   // Round 7 after Round 9 on purpose
+    j('4', 'U14 Blue', [X, Y], 'Round 3'),
+    j('5', 'U13 Gold', [Y], 'Round 4'),             // day 2 of U14 is a one-day round for U13
+    mk('6', 'T20 Mens', 'G', 'H', [Y], 1, {}, { comp: T20C, roundName: 'Round 1' }),
   ];
   assert.deepEqual(buildCalendar(games), [
-    { comp: 'senior', label: 'Round 2', dates: [D1, D2] },
-    { comp: 't20', label: 'Round 1', dates: [D2] },
-    { comp: 'junior', label: 'Round 5', dates: [D1], notes: { [D1]: 'U14 Round 4 · U10, U12 Round 5' } },
+    { comp: 'senior', dates: [X, Y, Z, '2026-12-12'] },
+    { comp: 't20', dates: [Y] },
+    { comp: 'junior', dates: [X, Y] },
   ]);
 });
 
-test('groupByComp orders Senior, T20, Junior and hides empty competitions; roundColumns lists comp+date pairs', () => {
-  const up = upcomingCalendar([
-    { comp: 'junior', label: 'Round 5', dates: [D1] }, { comp: 'senior', label: 'Round 2', dates: [D1, D2] },
-  ], '2000-01-01');
-  assert.deepEqual(groupByComp(up).map(g => [g.label, g.rounds.length]), [['Senior', 1], ['Junior', 1]]);
+test('upcomingDates keeps today onwards, merges older round-based calendars, and orders Senior, T20, Junior', () => {
+  const old = [
+    { comp: 'junior', label: 'Round 5', dates: ['2026-10-10'] },
+    { comp: 'senior', label: 'Round 3', dates: ['2026-10-24', '2026-10-31'] },
+    { comp: 'senior', label: 'Round 2', dates: ['2026-10-10', '2026-10-17'] },
+  ];
+  assert.deepEqual(upcomingDates(old, '2026-10-17'), [{ comp: 'senior', label: 'Senior', dates: ['2026-10-17', '2026-10-24', '2026-10-31'] }]);
+  assert.deepEqual(upcomingDates(old, '2000-01-01').map(c => c.label), ['Senior', 'Junior']);
+  assert.deepEqual(upcomingDates(null, '2026-10-17'), []);
+});
+
+test('byMonth groups sorted dates under month headings', () => {
+  const m = byMonth(['2026-11-21', '2026-11-28', '2026-12-05']);
+  assert.deepEqual(m.map(x => [x.month, x.dates.length]), [['November 2026', 2], ['December 2026', 1]]);
+});
+
+test('roundColumns lists comp+date pairs, skipping removed games', () => {
   const games = [mk('1', 'Senior A Grade', 'A', 'B', [D1, D2]), mk('2', 'U12 Gold', 'C', 'D', [D1], 1, {}, { comp: JUN }), mk('3', 'x', 'C', 'D', [D1], 1, {}, { removed: true, comp: T20C })];
   assert.deepEqual(roundColumns(games).map(c => c.key), [availKey('senior', D1), availKey('junior', D1), availKey('senior', D2)]);
 });
 
-test('juniors: day 2 of a two-day U14 round that is a one-day round for U13 is explained on that date', () => {
-  const [X, Y, Z] = ['2026-11-21', '2026-11-28', '2026-12-05'];
-  const j = (id, grade, days, roundName) => mk(id, grade, 'A', 'B', days, 1, {}, { comp: JUN, roundName });
-  const games = [
-    j('1', 'U14 Blue North', [X, Y], 'Round 3'),
-    j('2', 'U14 Red South', [X, Y], 'Round 3'),
-    j('3', 'U13 Gold', [Y], 'Round 4'),
-    j('4', 'U13 Silver', [Y], 'Round 4'),
-    j('5', 'U13 Gold', [Z], 'Round 5'),
-  ];
-  const cal = buildCalendar(games);
-  assert.deepEqual(cal, [
-    { comp: 'junior', label: 'Round 3', dates: [X, Y], notes: { [Y]: 'U14 Round 3 Day 2 · U13 Round 4 (one day)' } },
-    { comp: 'junior', label: 'Round 5', dates: [Z] },
-  ]);
-  const up = upcomingCalendar(cal, X);
-  assert.equal(up[0].rows[0].note, undefined);                       // Day 1 is just U14
-  assert.equal(up[0].rows[1].note, 'U14 Round 3 Day 2 · U13 Round 4 (one day)');
+test('two-day game: umpires free on both days are grouped first, one-day-only umpires separately', () => {
+  const g = mk('1', 'Senior A Grade', 'A', 'B', [D1, D2]);
+  const umpires = [U('u1', 'Ann'), U('u2', 'Bob'), U('u3', 'Cat'), U('u4', 'Dee'), U('u5', 'Eve')];
+  const a = avail({
+    u1: { [D1]: 'yes', [D2]: 'yes' },      // both days
+    u2: { [D1]: 'yes', [D2]: 'no' },       // Day 1 only
+    u3: { [D1]: 'yes' },                   // yes Day 1, no reply Day 2 -> not both
+    u4: { [D1]: 'yes', [D2]: 'yes' },      // both days, but already busy on Day 2 in another Senior game
+  });
+  const other = mk('2', 'Senior B02', 'C', 'D', [D2], 1, { [D2]: [{ p: 'u4', n: 'Dee' }] });
+  const opts = slotOptions({ game: g, date: D1, slotIndex: 0, umpires, availByEmail: a, busy: buildBusyMap([g, other]), loads: {} });
+  const by = Object.fromEntries(opts.map(o => [o.umpire.name, o.group]));
+  assert.deepEqual(by, { Ann: 'both', Bob: 'ok', Cat: 'ok', Dee: 'ok', Eve: 'none' });
+  assert.deepEqual(opts.find(o => o.umpire.name === 'Bob').okDays, [D1]);
 });
 
-test('seniors do not get date notes even when Women play one-day games on a Senior day', () => {
-  const games = [mk('1', 'Senior A Grade', 'A', 'B', [D1, D2]), mk('2', 'Senior Women', 'C', 'D', [D2], 1, {}, { roundName: 'Round 4' })];
-  assert.deepEqual(buildCalendar(games), [{ comp: 'senior', label: 'Round 2', dates: [D1, D2] }]);
+test('one-day games never use the "both days" group', () => {
+  const g = mk('1', 'Senior A Grade', 'A', 'B', [D1]);
+  const opts = slotOptions({ game: g, date: D1, slotIndex: 0, umpires: [U('u1', 'Ann')], availByEmail: avail({ u1: { [D1]: 'yes' } }), busy: {}, loads: {} });
+  assert.equal(opts[0].group, 'ok');
 });

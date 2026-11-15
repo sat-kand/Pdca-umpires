@@ -1,7 +1,7 @@
 // Screens for umpires: sign-in, profile, availability, my appointments.
 
 import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
-import { fmtDay, gradeShort, allocFor, newPid, emailKey, upcomingCalendar, groupByComp, availKey, compKeyOf, compLabel } from './logic.js';
+import { fmtDay, gradeShort, allocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel } from './logic.js';
 
 export function viewLogin(ctx) {
   const { store } = ctx;
@@ -88,7 +88,7 @@ export async function viewMy(ctx) {
   }
 
   // ---- availability
-  const comps = season ? groupByComp(upcomingCalendar(season.calendar, today)) : [];
+  const comps = season ? upcomingDates(season.calendar, today) : [];
   const card = h('section', { class: 'card' });
   if (!season) {
     card.append(h('h2', {}, 'Availability'), h('p', { class: 'muted' }, 'The season dates have not been set up yet. Please check back soon.'));
@@ -97,7 +97,7 @@ export async function viewMy(ctx) {
   }
   const existing = await store.getAvailability(season.id, u.email);
   const days = { ...((existing && existing.days) || {}) };
-  const keysOf = c => c.rounds.flatMap(g => g.rows.map(r => availKey(c.comp, r.date)));
+  const keysOf = c => c.dates.map(d => availKey(c.comp, d));
   const shown = comps.flatMap(keysOf);
   let saved = !!existing, dirty = false;
 
@@ -122,13 +122,14 @@ export async function viewMy(ctx) {
   // even when the dates overlap.
   const sections = comps.map(c => {
     const markAll = h('button', { class: 'link', type: 'button', onclick: () => { keysOf(c).forEach(k => { days[k] = 'yes'; paint(k); }); dirty = true; drawStatus(); } }, 'Mark all available');
-    const tiles = c.rounds.map(g => h('div', { class: 'tile' }, h('h3', {}, g.label),
-      g.rows.map(r => {
-        const key = availKey(c.comp, r.date);
+    // A plain list of dates in order, grouped by month. No round names or Day 1/Day 2.
+    const tiles = byMonth(c.dates).map(m => h('div', { class: 'tile' }, h('h3', {}, m.month),
+      m.dates.map(date => {
+        const key = availKey(c.comp, date);
         const yes = optBtn(key, 'yes', 'Available'), no = optBtn(key, 'no', 'Not available');
         buttons[key] = [['yes', yes], ['no', no]];
         yes.classList.toggle('on', days[key] === 'yes'); no.classList.toggle('on', days[key] === 'no');
-        return h('div', { class: 'drow' }, h('span', { class: 'dlabel' }, r.of > 1 ? `Day ${r.dayNo} · ${fmtDay(r.date)}` : fmtDay(r.date), r.note && h('small', { class: 'dnote' }, r.note)), h('div', { class: 'opts' }, yes, no));
+        return h('div', { class: 'drow' }, h('span', { class: 'dlabel' }, fmtDay(date)), h('div', { class: 'opts' }, yes, no));
       })));
     return h('div', { class: 'comp-section' }, h('div', { class: 'row-between comp-head' }, h('h2', { class: 'comp-title' }, c.label), markAll), tiles);
   });
@@ -142,7 +143,7 @@ export async function viewMy(ctx) {
 
   setChildren(card,
     h('div', { class: 'row-between' }, h('h2', {}, 'Availability'), chip),
-    h('p', { class: 'muted' }, 'Tap your answer for each day, then press Save. It applies to the whole season. Each competition has its own answers, so you can say yes to Senior and no to Junior on the same day.'),
+    h('p', { class: 'muted' }, 'Tap an answer for each date, then Save. Senior, T20 and Junior are separate.'),
     sections.length ? sections : h('p', { class: 'muted' }, 'No upcoming dates.'),
     sections.length > 0 && h('div', { class: 'savebar' }, hint, saveBtn));
   drawStatus();

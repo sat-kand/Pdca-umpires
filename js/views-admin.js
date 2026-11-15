@@ -4,7 +4,7 @@ import { CONFIG } from './config.js';
 import { h, toast, setChildren, busy, copyText, mapsLink } from './ui.js';
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, sectionKey, allocFor, buildBusyMap, assignmentWarnings,
-  slotOptions, recount, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, newPid, emailKey, availStatus, buildCalendar, compLabel, compKeyOf, roundColumns, COMPS,
+  slotOptions, recount, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, newPid, emailKey, availStatus, buildCalendar, upcomingDates, compLabel, compKeyOf, roundColumns, COMPS,
 } from './logic.js';
 import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures, gamesFromCsv, mergeFixtures } from './fixtures.js';
 
@@ -39,22 +39,23 @@ async function syncSeason(store) {
 
 export async function viewAdminHome(ctx) {
   const [rounds, season] = await Promise.all([ctx.store.listRounds(), ctx.store.getSeason()]);
-  const nDates = season ? season.calendar.reduce((n, r) => n + r.dates.length, 0) : 0;
+  const perComp = season ? upcomingDates(season.calendar, '0000-01-01') : [];
+  const nDates = perComp.reduce((n, c) => n + c.dates.length, 0);
   const syncBtn = h('button', { class: 'btn', type: 'button' }, season ? '↻ Re-sync dates' : 'Set up season dates');
   syncBtn.onclick = busy(syncBtn, async () => {
     const x = await syncSeason(ctx.store);
-    toast(`Season dates saved: ${x.calendar.length} rounds`);
+    toast(`Season dates saved: ${x.calendar.reduce((n, c) => n + c.dates.length, 0)} dates`);
     ctx.go('/admin');
   });
   return h('div', {},
     h('div', { class: 'row-between' }, h('h1', {}, 'Rounds'), h('a', { class: 'btn primary', href: '#/admin/new' }, '+ New round')),
     h('div', { class: 'card' },
       h('div', { class: 'row-between' },
-        h('div', {}, h('strong', {}, 'Season dates'), ' ', season ? h('span', { class: 'muted' }, `${season.name} · ${season.calendar.length} rounds, ${nDates} dates across ${new Set(season.calendar.map(r => r.comp || 'senior')).size} competition(s) · umpires answer for these`) : h('span', { class: 'chip warn' }, 'Not set up — umpires cannot give availability yet')),
+        h('div', {}, h('strong', {}, 'Season dates'), ' ', season ? h('span', { class: 'muted' }, `${season.name} · ${nDates} dates across ${perComp.length} competition(s) · umpires answer for these`) : h('span', { class: 'chip warn' }, 'Not set up — umpires cannot give availability yet')),
         syncBtn),
       season && h('details', {}, h('summary', {}, 'Show the dates umpires see'),
-        h('ul', { class: 'plain' }, season.calendar.map(r => h('li', {}, h('span', { class: 'chip' }, compLabel(r.comp || 'senior')), ' ', h('strong', {}, r.label), ' — ', r.dates.map(fmtDay).join(' and ')))),
-        h('p', { class: 'muted' }, 'Built from the Senior, T20 and Junior fixtures. Umpires answer each competition separately, and can be appointed to more than one on the same day. Re-sync if the fixture list changes.'))),
+        h('ul', { class: 'plain' }, perComp.map(c => h('li', {}, h('span', { class: 'chip' }, c.label), ' ', h('strong', {}, `${c.dates.length} dates`), ' — ', c.dates.map(fmtDay).join(' · ')))),
+        h('p', { class: 'muted' }, 'Built from the Senior, T20 and Junior fixtures: every date a competition has games. Umpires answer date by date for each competition, and can be appointed to more than one on the same day. Re-sync if the fixture list changes.'))),
     rounds.length ? h('div', { class: 'cards' }, rounds.map(r => {
       const st = r.stats || { needed: 0, filled: 0 };
       return h('a', { class: 'card round-card', href: `#/admin/round/${r.id}` },
@@ -244,12 +245,32 @@ export async function viewBoard(ctx, rid) {
   function slotSelect(g, date, i, busyMap, loads) {
     const cur = allocFor(g, date)[i];
     const opts = slotOptions({ game: g, date, slotIndex: i, umpires: B.umpires, availByEmail: B.availByEmail, busy: busyMap, loads });
-    const GROUPS = [['ok', 'Available'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']];
+    const multi = g.days.length > 1;
+    // Two-day games: umpires free on every day come first, so one pick can cover both days.
+    const GROUPS = multi
+      ? [['both', 'Available both days'], ['ok', 'Available this day only'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']]
+      : [['ok', 'Available'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']];
     const label = o => `${o.umpire.name}${o.load ? ` · ${o.load}` : ''}${o.club ? ' · club' : ''}${o.busy ? ' · busy' : ''}`;
     const sel = h('select', { class: 'slot' + (cur ? '' : ' empty'), 'aria-label': `Umpire ${i + 1}, ${gradeShort(g.grade)} ${g.home.name}, ${fmtDay(date)}`,
       onchange: guard(async () => {
         const u = B.umpires.find(x => x.pid === sel.value);
-        await setAlloc(g, date, i, u ? { p: u.pid, n: u.name } : null);
+        if (!u) { await setAlloc(g, date, i, null); return; }
+        // Picking someone for Day 1 of a two-day game also fills the empty later days when that
+        // umpire is free and clean there. Day 2 can still be changed on its own.
+        const alloc = structuredClone(g.alloc || {});
+        const put = (dt) => { const arr = (alloc[dt] ||= []); while (arr.length <= i) arr.push(null); arr[i] = { p: u.pid, n: u.name }; };
+        put(date);
+        let extra = 0;
+        const cleanPick = !assignmentWarnings({ game: g, date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy: busyMap }).length;
+        if (cleanPick && g.days.length > 1 && date === g.days[0].date) {
+          for (const d of g.days.slice(1)) {
+            if (allocFor(g, d.date)[i]) continue;
+            if (!assignmentWarnings({ game: g, date: d.date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy: busyMap }).length) { put(d.date); extra++; }
+          }
+        }
+        await writeGame(g, { alloc });
+        draw();
+        if (extra) toast(`${u.name} also set for ${extra === 1 ? 'Day 2' : 'the other days'} (change it below if needed)`, 'ok');
       }) },
     h('option', { value: '' }, '— unallocated —'),
     GROUPS.map(([k, name]) => {

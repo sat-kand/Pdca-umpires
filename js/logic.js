@@ -205,8 +205,14 @@ export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy
     const dup = allocFor(game, date).some((a, i) => a && a.p === u.pid && i !== slotIndex);
     const club = clubConflict(u, game);
     const avoid = st === 'no' || others.length > 0 || dup;
-    const group = avoid ? 'avoid' : st === 'yes' ? 'ok' : 'none';
-    rows.push({ umpire: u, status: st, busy: others.length > 0, dup, club, group, load: (loads && loads[u.pid]) || 0 });
+    // For a multi-day game, who can do EVERY day (free, said yes, not already busy that day)?
+    const days = game.days.map(d => d.date);
+    const freeOn = dt => availStatus(availByEmail, u, compKeyOf(game), dt) === 'yes'
+      && !((busy[availKey(compKeyOf(game), dt)] || {})[u.pid] || []).filter(id => id !== game.id).length;
+    const okDays = days.filter(freeOn);
+    const bothDays = days.length > 1 && okDays.length === days.length;
+    const group = avoid ? 'avoid' : st === 'yes' ? (days.length > 1 ? (bothDays ? 'both' : 'ok') : 'ok') : 'none';
+    rows.push({ umpire: u, status: st, busy: others.length > 0, dup, club, group, bothDays, okDays, load: (loads && loads[u.pid]) || 0 });
   }
   rows.sort((a, b) => a.load - b.load || a.umpire.name.localeCompare(b.umpire.name));
   return rows;
@@ -301,90 +307,45 @@ export function umpireText(game) {
   return per.map((p, i) => `${p.map(n => n || '—').join(' & ')} (Day ${days[i].day})`).join(' / ').toUpperCase();
 }
 
-// 'U14 Blue North' -> 'U14'; seniors and others keep their short grade name.
-export function ageGroup(game) {
-  const m = /^(U\s?\d{1,2})\b/i.exec((game.grade || '').trim());
-  return m ? m[1].toUpperCase().replace(/\s/g, '') : gradeShort(game.grade);
-}
-
 // ---------- season calendar (what umpires see) ----------------------------
 
-// From every fixture in the season build the list of dates umpires answer for, per competition,
-// grouped the way umpires think of them: Senior -> Round 2 -> Day 1, Day 2.
-// Within a competition, two-day rounds win over one-day games on the same Saturday, and when
-// grades disagree about the round number for a date the most common name wins.
+// Umpires answer date by date, separately for each competition, so the calendar is simply
+// the sorted list of dates on which each competition has games. Round names and day numbers
+// are left out on purpose: the same Saturday can be Day 2 of a two-day round for one grade
+// and a one-day round for another, and umpires only need to know whether they can work that day.
 export function buildCalendar(games) {
   const byComp = new Map();
-  for (const g of games) { const k = compKeyOf(g); if (!byComp.has(k)) byComp.set(k, []); byComp.get(k).push(g); }
-  const out = [];
-  for (const { key } of COMPS) {
-    const list = byComp.get(key);
-    if (!list) continue;
-    const info = new Map(); // date -> { two, names: Map(name -> n) }
-    const note = (date, name, two) => {
-      let c = info.get(date);
-      if (!c) info.set(date, (c = { two, names: new Map() }));
-      if (two && !c.two) { c.two = true; c.names = new Map(); }
-      if (two === c.two) c.names.set(name, (c.names.get(name) || 0) + 1);
-    };
-    for (const g of list) if (g.days.length > 1) for (const d of g.days) note(d.date, g.roundName, true);
-    for (const g of list) if (g.days.length === 1) note(g.days[0].date, g.roundName, false);
+  for (const g of games) {
+    const k = compKeyOf(g);
+    const set = byComp.get(k) || byComp.set(k, new Set()).get(k);
+    for (const d of g.days) set.add(d.date);
+  }
+  return COMPS.filter(c => byComp.has(c.key)).map(c => ({ comp: c.key, dates: [...byComp.get(c.key)].sort() }));
+}
 
-    // Everything that is played on each date. Juniors mix two-day and one-day games (the second
-    // day of U14 can be a one-day round for U13), so a date with more than one kind of game gets
-    // a note such as "U14 Round 3 Day 2 · U13 Round 4 (one day)".
-    const played = new Map(); // date -> Map(entryKey -> { round, day, of, ages:Set })
-    for (const g of list) for (const d of g.days) {
-      const m = played.get(d.date) || played.set(d.date, new Map()).get(d.date);
-      const k = `${g.roundName}|${d.day}|${g.days.length}`;
-      if (!m.has(k)) m.set(k, { round: g.roundName, day: d.day, of: g.days.length, ages: new Set() });
-      m.get(k).ages.add(ageGroup(g));
+// Dates from `today` on, per competition in Senior, T20, Junior order: [{ comp, label, dates }].
+// Also accepts older calendars that were split into rounds.
+export function upcomingDates(calendar, today) {
+  const by = new Map();
+  for (const r of calendar || []) {
+    const k = r.comp || 'senior';
+    const set = by.get(k) || by.set(k, new Set()).get(k);
+    for (const d of r.dates || []) if (d >= today) set.add(d);
+  }
+  return COMPS.filter(c => by.has(c.key) && by.get(c.key).size).map(c => ({ comp: c.key, label: c.label, dates: [...by.get(c.key)].sort() }));
+}
+
+// [{ month: 'November 2026', dates: [...] }] for a sorted list of ISO dates.
+export function byMonth(dates) {
+  const out = [];
+  for (const d of dates) {
+    const key = d.slice(0, 7);
+    if (!out.length || out[out.length - 1].key !== key) {
+      out.push({ key, month: new Date(d + 'T00:00:00Z').toLocaleDateString('en-AU', { month: 'long', year: 'numeric', timeZone: 'UTC' }), dates: [] });
     }
-    const noteFor = date => {
-      const m = played.get(date);
-      if (!m || m.size < 2) return '';
-      const all = [...m.values()];
-      const mixed = all.some(e => e.of > 1) && all.some(e => e.of === 1);
-      return all.sort((a, b) => b.of - a.of || a.round.localeCompare(b.round, undefined, { numeric: true }))
-        .map(e => `${[...e.ages].sort((x, y) => x.localeCompare(y, undefined, { numeric: true })).join(', ')} ${e.round}${e.of > 1 ? ` Day ${e.day}` : mixed ? ' (one day)' : ''}`.trim())
-        .join(' · ');
-    };
-    const groups = new Map();
-    for (const [date, { two, names }] of info) {
-      const round = [...names.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], undefined, { numeric: true }))[0][0];
-      const gk = `${round}|${two}`;
-      if (!groups.has(gk)) groups.set(gk, { round, dates: [] });
-      groups.get(gk).dates.push(date);
-    }
-    const rounds = [...groups.values()].map(g => ({ ...g, dates: g.dates.sort() }));
-    for (const g of key === 'junior' ? rounds : []) {   // only juniors mix game lengths within a date
-      const notes = {};
-      for (const d of g.dates) { const t = noteFor(d); if (t) notes[d] = t; }
-      if (Object.keys(notes).length) g.notes = notes;
-    }
-    rounds.sort((a, b) => a.dates[0].localeCompare(b.dates[0]));
-    const seen = {};
-    for (const g of rounds) {
-      const base = g.round || 'Games';
-      seen[base] = (seen[base] || 0) + 1;
-      out.push({ comp: key, label: seen[base] > 1 ? `${base} (${seen[base]})` : base, dates: g.dates, ...(g.notes ? { notes: g.notes } : {}) });
-    }
+    out[out.length - 1].dates.push(d);
   }
   return out;
-}
-
-// Only dates from `today` on, but keep each date's Day number within its round.
-export function upcomingCalendar(calendar, today) {
-  return (calendar || []).map(r => ({
-    comp: r.comp || 'senior',
-    label: r.label,
-    rows: r.dates.map((date, i) => ({ date, dayNo: i + 1, of: r.dates.length, ...(r.notes && r.notes[date] ? { note: r.notes[date] } : {}) })).filter(x => x.date >= today),
-  })).filter(r => r.rows.length);
-}
-
-// [{ comp, label: 'Senior', rounds: [...] }] in Senior, T20, Junior order; empty competitions left out.
-export function groupByComp(upcoming) {
-  return COMPS.map(c => ({ comp: c.key, label: c.label, rounds: upcoming.filter(r => r.comp === c.key) })).filter(g => g.rounds.length);
 }
 
 // ---------- ids -----------------------------------------------------------
