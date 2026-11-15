@@ -1,14 +1,16 @@
 // Screens for the appointments officer.
 
-import { CONFIG } from './config.js';
-import { h, toast, setChildren, busy, copyText, mapsLink } from './ui.js';
+import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './ui.js';
 import {
-  fmtDay, fmtRange, gradeShort, compareGrades, groupSections, sectionKey, allocFor, buildBusyMap, assignmentWarnings,
-  slotOptions, recount, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, newPid, emailKey, availStatus, buildCalendar, upcomingDates, compLabel, compKeyOf, roundColumns, COMPS,
+  fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
+  slotOptions, recount, summarise, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
+  availStatus, compLabel, roundColumns, COMPS,
 } from './logic.js';
-import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures, gamesFromCsv, mergeFixtures } from './fixtures.js';
+import { syncFromPlayCricket, refreshRound, currentRound, needsSync } from './rounds.js';
 
-const SLOT_CHOICES = [[0, 'None'], [1, '1 umpire'], [2, '2 umpires']];
+const SLOT_CHOICES = [[1, '1 umpire'], [2, '2 umpires']];
+
+const roundHeading = r => `${r.comp ? compLabel(r.comp) + ' · ' : ''}${r.title}`;
 
 function tabs(rid, active) {
   const t = [['', 'Allocate'], ['/availability', 'Availability'], ['/report', 'Report & email']];
@@ -17,174 +19,112 @@ function tabs(rid, active) {
   h('a', { class: 'tab right', href: '#/admin' }, '← All rounds'));
 }
 
-function defaultSlotsFn(settings) { return g => (settings.slotsByGrade && settings.slotsByGrade[g.grade] != null ? settings.slotsByGrade[g.grade] : 1); }
-
 // ---------------------------------------------------------------------------
-// Rounds list
+// Rounds: one tile per competition showing its next round
 // ---------------------------------------------------------------------------
 
-// Pull the whole season's fixtures and turn them into the date list umpires answer for.
-async function syncSeason(store) {
-  const api = makeApi(CONFIG.apiBase);
-  const seasons = await fetchSeasons(api, CONFIG.orgId);
-  const cur = seasons.find(x => x.current) || seasons[0];
-  if (!cur) throw new Error('No season found on Play Cricket');
-  const comps = await fetchCompetitions(api, CONFIG.orgId, cur.id);
-  // Senior, T20 and Junior: umpires give availability for each one separately.
-  const games = await loadFixtures({ api, comps, from: '0000-01-01', to: '9999-12-31' });
-  const season = { id: cur.id, name: cur.name, calendar: buildCalendar(games), updatedAt: new Date().toISOString() };
-  await store.saveSeason(season);
-  return season;
+// "Select grades" popup: tick the grades the committee wants umpires for. Only ticked grades are
+// listed on the board, and the slot totals follow. `onDone` runs after saving.
+async function openGradesModal({ store, round, onDone }) {
+  const [games, settings] = await Promise.all([store.listGames(round.id), store.getSettings()]);
+  const live = games.filter(g => !g.removed);
+  const grades = [...new Set(live.map(g => g.grade))].sort(compareGrades);
+  const count = gr => live.filter(g => g.grade === gr).length;
+  const prior = Object.fromEntries(grades.map(gr => [gr, Math.max(...live.filter(g => g.grade === gr).map(g => g.slots || 0))]));
+  const want = Object.fromEntries(grades.map(gr => [gr, prior[gr] || 0]));          // 0 = not ticked, else umpires per game
+  const memory = gr => (settings.slotsByGrade && settings.slotsByGrade[gr]) || 1;     // 1 or 2 umpires, remembered
+
+  const dlg = h('dialog', { class: 'modal', 'aria-label': 'Select grades' });
+  const total = h('span', { class: 'muted' });
+  const rows = grades.map(gr => {
+    const cb = h('input', { type: 'checkbox', checked: want[gr] > 0, id: 'g-' + gr.replace(/\W+/g, '_') });
+    const two = h('select', { 'aria-label': `Umpires for ${gradeShort(gr)}`, hidden: want[gr] === 0 },
+      h('option', { value: '1' }, '1 umpire'), h('option', { value: '2' }, '2 umpires'));
+    two.value = String(want[gr] || memory(gr));
+    const upd = () => { want[gr] = cb.checked ? Number(two.value) : 0; two.hidden = !cb.checked; showTotal(); };
+    cb.onchange = upd; two.onchange = upd;
+    return { gr, cb, two, row: h('label', { class: 'grade-row' }, cb, h('span', { class: 'chip grade' }, gradeShort(gr)), h('span', { class: 'muted' }, `${count(gr)} game${count(gr) === 1 ? '' : 's'}`), two) };
+  });
+  function showTotal() {
+    const picked = grades.filter(gr => want[gr] > 0);
+    const slots = picked.reduce((n, gr) => n + live.filter(g => g.grade === gr).reduce((m, g) => m + want[gr] * g.days.length, 0), 0);
+    total.textContent = picked.length ? `${picked.length} grade${picked.length === 1 ? '' : 's'} · ${slots} umpire slots` : 'No grades selected';
+  }
+  const setAll = on => rows.forEach(r => { r.cb.checked = on; r.two.hidden = !on; want[r.gr] = on ? Number(r.two.value) : 0; showTotal(); });
+  const done = h('button', { class: 'btn primary', type: 'button' }, 'Done');
+  done.onclick = busy(done, async () => {
+    const changed = [];
+    for (const g of games) {
+      const n = g.removed ? (g.slots || 0) : (want[g.grade] || 0);
+      if (n !== (g.slots || 0)) { g.slots = n; changed.push({ ...g, slots: n }); }
+    }
+    if (changed.length) await store.saveGames(round.id, changed);
+    await store.saveRound({ id: round.id, ...summarise(games) });
+    const slotsByGrade = { ...(settings.slotsByGrade || {}) };
+    for (const gr of grades) slotsByGrade[gr] = want[gr];            // remembered for the next round
+    await store.saveSettings({ slotsByGrade });
+    dlg.close(); dlg.remove();
+    if (onDone) await onDone();
+  });
+  const cancel = h('button', { class: 'btn', type: 'button', onclick: () => { dlg.close(); dlg.remove(); } }, 'Cancel');
+  dlg.append(
+    h('h2', {}, `${compLabel(round.comp || 'senior')} · ${round.title}`),
+    h('p', { class: 'muted' }, 'Tick the grades that need umpires.'),
+    h('div', { class: 'row-between' }, total, h('span', {}, h('button', { class: 'link', type: 'button', onclick: () => setAll(true) }, 'All'), ' · ', h('button', { class: 'link', type: 'button', onclick: () => setAll(false) }, 'None'))),
+    h('div', { class: 'grade-list' }, rows.map(r => r.row), !grades.length && h('p', { class: 'muted' }, 'No games in this round.')),
+    h('div', { class: 'modal-actions' }, cancel, done));
+  dlg.addEventListener('cancel', () => dlg.remove());
+  document.body.append(dlg);
+  showTotal();
+  dlg.showModal();
 }
 
 export async function viewAdminHome(ctx) {
-  const [rounds, season] = await Promise.all([ctx.store.listRounds(), ctx.store.getSeason()]);
-  const perComp = season ? upcomingDates(season.calendar, '0000-01-01') : [];
-  const nDates = perComp.reduce((n, c) => n + c.dates.length, 0);
-  const syncBtn = h('button', { class: 'btn', type: 'button' }, season ? '↻ Re-sync dates' : 'Set up season dates');
-  syncBtn.onclick = busy(syncBtn, async () => {
-    const x = await syncSeason(ctx.store);
-    toast(`Season dates saved: ${x.calendar.reduce((n, c) => n + c.dates.length, 0)} dates`);
-    ctx.go('/admin');
-  });
-  return h('div', {},
-    h('div', { class: 'row-between' }, h('h1', {}, 'Rounds'), h('a', { class: 'btn primary', href: '#/admin/new' }, '+ New round')),
-    h('div', { class: 'card' },
-      h('div', { class: 'row-between' },
-        h('div', {}, h('strong', {}, 'Season dates'), ' ', season ? h('span', { class: 'muted' }, `${season.name} · ${nDates} dates across ${perComp.length} competition(s) · umpires answer for these`) : h('span', { class: 'chip warn' }, 'Not set up — umpires cannot give availability yet')),
-        syncBtn),
-      season && h('details', {}, h('summary', {}, 'Show the dates umpires see'),
-        h('ul', { class: 'plain' }, perComp.map(c => h('li', {}, h('span', { class: 'chip' }, c.label), ' ', h('strong', {}, `${c.dates.length} dates`), ' ', h('span', { class: 'muted' }, c.mode === 'rounds' ? '(shown by round: all games are the same length)' : '(shown as a date list: mixed game lengths)'), h('div', { class: 'muted' }, c.dates.map(fmtDay).join(' · '))))),
-        h('p', { class: 'muted' }, 'Built from the Senior, T20 and Junior fixtures: every date a competition has games. A competition whose games are all the same length (all two-day or all one-day) is shown by round, with Day 1 / Day 2; one with mixed lengths is shown as a plain list of dates. Umpires answer date by date for each competition, and can be appointed to more than one on the same day. Re-sync if the fixture list changes.'))),
-    rounds.length ? h('div', { class: 'cards' }, rounds.map(r => {
-      const st = r.stats || { needed: 0, filled: 0 };
-      return h('a', { class: 'card round-card', href: `#/admin/round/${r.id}` },
-        h('h2', {}, r.title), h('p', { class: 'muted' }, fmtRange(r.dates || [])),
-        h('div', {}, h('span', { class: 'chip ' + (st.filled >= st.needed && st.needed ? 'ok' : 'warn') }, `${st.filled}/${st.needed} slots filled`),
-          r.published && h('span', { class: 'chip ok' }, 'Published')));
-    })) : h('div', { class: 'card' }, h('p', {}, 'No rounds yet. Create one to import fixtures and start allocating.')));
-}
+  const { store } = ctx;
+  const today = todayLocal();
+  const wrap = h('div');
+  const state = { rounds: [], season: null, syncing: false, error: '' };
 
-// ---------------------------------------------------------------------------
-// New round wizard
-// ---------------------------------------------------------------------------
+  async function load() { [state.rounds, state.season] = await Promise.all([store.listRounds(), store.getSeason()]); }
 
-function nextSaturday() {
-  const d = new Date();
-  d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7));
-  const iso = x => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
-  const a = iso(d); d.setDate(d.getDate() + 7);
-  return [a, iso(d)];
-}
-
-export async function viewNewRound(ctx) {
-  const { store, go } = ctx;
-  const api = makeApi(CONFIG.apiBase);
-  const [from0, to0] = nextSaturday();
-  const root = h('div', {});
-  const previewBox = h('div');
-  let seasons = [], comps = [];
-
-  // ----- preview + create (shared by both sources)
-  function showPreview(games, source, warnings = []) {
-    if (!games.length) { previewBox.replaceChildren(h('p', { class: 'notice warn' }, 'No fixtures found for those dates.')); return; }
-    const sections = groupSections(games);
-    const checks = sections.map(s => h('input', { type: 'checkbox', checked: true, 'data-key': s.key }));
-    const title = h('input', { value: `${sections[0].label} – ${fmtRange(sections[0].dates)}` });
-    const create = h('button', { class: 'btn primary' }, 'Create round');
-    create.onclick = busy(create, async () => {
-      const keys = checks.filter(c => c.checked).map(c => c.dataset.key);
-      const chosen = games.filter(g => keys.includes(sectionKey(g)));
-      if (!chosen.length) { toast('Tick at least one group of fixtures', 'err'); return; }
-      const settings = await store.getSettings();
-      const slots = defaultSlotsFn(settings);
-      const all = chosen.map(g => ({ ...g, slots: slots(g), alloc: {} }));
-      const dates = [...new Set(all.flatMap(g => g.days.map(d => d.date)))].sort();
-      const cur = await store.getSeason();
-      const existing = new Set((await store.listRounds()).map(r => r.id));
-      let id = 'r-' + dates[0], n = 2;
-      while (existing.has(id)) id = `r-${dates[0]}-${n++}`;
-      await store.saveRound({
-        id, title: title.value.trim() || id, start: dates[0], end: dates[dates.length - 1], dates,
-        season: source.seasonId ? { id: source.seasonId, name: source.seasonName } : cur ? { id: cur.id, name: cur.name } : { id: 'manual', name: 'Manual' },
-        published: false, source: { ...source, sectionKeys: keys }, stats: recount(all),
-        createdAt: new Date().toISOString(),
-      });
-      await store.saveGames(id, all);
-      toast(`Round created with ${all.length} games`);
-      go('/admin/round/' + id);
-    });
-    setChildren(previewBox,
-      h('h2', {}, `Found ${games.length} games`),
-      warnings.length > 0 && h('div', { class: 'notice warn' }, warnings.map(w => h('div', {}, w))),
-      h('p', { class: 'muted' }, 'Tick the groups that belong in this round. Games stay linked to the fixture list, so changes to ground or time can be pulled in later.'),
-      h('ul', { class: 'plain' }, sections.map((s, i) => h('li', {}, h('label', { class: 'inline' }, checks[i],
-        h('strong', {}, ` ${s.label}`), ` — ${s.games.length} games, ${s.games[0].matchType}, ${fmtRange(s.dates)}`)))),
-      h('label', {}, 'Round title (appears on the report)', title), create);
+  function tile(c) {
+    const r = currentRound(state.rounds, c.key, today);
+    if (!r) return h('div', { class: 'card comp-tile empty' }, h('h2', {}, c.label), h('p', { class: 'muted' }, state.syncing ? 'Loading fixtures…' : 'No upcoming games'));
+    const st = r.stats || { needed: 0, filled: 0 };
+    const picked = r.picked || 0;
+    return h('div', { class: 'card comp-tile' },
+      h('div', { class: 'row-between' }, h('h2', {}, c.label),
+        h('button', { class: 'btn small', type: 'button', onclick: () => openGradesModal({ store, round: r, onDone: async () => { await load(); draw(); } }) }, 'Select grades')),
+      h('a', { class: 'tile-body', href: `#/admin/round/${r.id}` },
+        h('div', { class: 'tile-round' }, r.title),
+        h('div', { class: 'muted' }, fmtRange(r.dates || [])),
+        h('div', { class: 'tile-stats' },
+          picked
+            ? [h('span', { class: 'chip' }, `${picked} grade${picked === 1 ? '' : 's'}`), h('span', { class: 'chip ' + (st.filled >= st.needed && st.needed ? 'ok' : 'warn') }, `${st.filled}/${st.needed} slots filled`)]
+            : h('span', { class: 'muted' }, 'No grades selected yet · 0/0 slots filled'),
+          r.published && h('span', { class: 'chip ok' }, 'Published'))));
   }
 
-  // ----- Play Cricket panel
-  const seasonSel = h('select');
-  const compBox = h('div', { class: 'checks' });
-  const from = h('input', { type: 'date', value: from0 }), to = h('input', { type: 'date', value: to0 });
-  const status = h('p', { class: 'muted' });
-  const findBtn = h('button', { class: 'btn primary', type: 'button' }, 'Find fixtures');
-
-  async function loadComps() {
-    status.textContent = 'Loading competitions…'; compBox.replaceChildren();
-    comps = await fetchCompetitions(api, CONFIG.orgId, seasonSel.value);
-    compBox.replaceChildren(...comps.map(c => h('label', { class: 'inline' },
-      h('input', { type: 'checkbox', value: c.id, checked: /senior/i.test(c.name) }), ` ${c.name} `, h('span', { class: 'muted' }, `(${c.grades.length} grades)`))));
-    status.textContent = '';
+  function draw() {
+    setChildren(wrap,
+      h('div', { class: 'row-between' }, h('h1', {}, 'Rounds'), state.syncing && h('span', { class: 'muted' }, 'Updating fixtures from Play Cricket…')),
+      state.error && h('p', { class: 'notice warn' }, state.error, ' ', h('button', { class: 'link', type: 'button', onclick: () => sync(true) }, 'Try again')),
+      h('div', { class: 'cards' }, COMPS.map(tile)));
   }
-  seasonSel.onchange = () => loadComps().catch(showApiError);
-  function showApiError(e) {
-    status.replaceChildren(h('span', { class: 'notice err' }, `Couldn't reach Play Cricket: ${e.message}. You can use the CSV file option instead.`));
+
+  async function sync(force) {
+    if (state.syncing) return;
+    state.syncing = true; state.error = ''; draw();
+    try { await syncFromPlayCricket(store, { today }); await load(); }
+    catch (e) { console.error(e); state.error = `Could not load the fixtures from Play Cricket (${e.message || e}).`; }
+    state.syncing = false; draw();
   }
-  findBtn.onclick = busy(findBtn, async () => {
-    const picked = [...compBox.querySelectorAll('input:checked')].map(i => i.value);
-    if (!picked.length) { toast('Pick at least one competition', 'err'); return; }
-    status.textContent = 'Fetching fixtures…';
-    const chosen = comps.filter(c => picked.includes(c.id));
-    const games = await loadFixtures({ api, comps: chosen, from: from.value, to: to.value, onProgress: (d, n) => { status.textContent = `Fetching fixtures… ${d}/${n} grades`; } });
-    status.textContent = '';
-    const season = seasons.find(s => s.id === seasonSel.value);
-    showPreview(games, { type: 'playcricket', seasonId: season.id, seasonName: season.name, comps: picked, from: from.value, to: to.value });
-  });
-  const pcPanel = h('div', {},
-    h('label', {}, 'Season', seasonSel), h('label', {}, 'Competitions'), compBox,
-    h('div', { class: 'grid2' }, h('label', {}, 'First day from', from), h('label', {}, 'to', to)),
-    h('p', { class: 'muted' }, 'Games are included when their first day falls in this window. A two-day round that starts on 10 Oct and finishes on 17 Oct is found by a window that includes 10 Oct.'),
-    findBtn, status);
 
-  // ----- CSV panel
-  const file = h('input', { type: 'file', accept: '.csv,.txt,.tsv' });
-  const pasted = h('textarea', { rows: 6, placeholder: 'grade,home,away,ground,date,day 2,time\nSenior A Grade,Team 1,Team 2,Some Park,10/10/2026,17/10/2026,13:30' });
-  const csvBtn = h('button', { class: 'btn primary', type: 'button' }, 'Preview fixtures');
-  csvBtn.onclick = busy(csvBtn, async () => {
-    const text = pasted.value.trim() || (file.files[0] ? await file.files[0].text() : '');
-    if (!text) { toast('Choose a file or paste the fixtures first', 'err'); return; }
-    const { games, errors } = gamesFromCsv(text);
-    showPreview(games, { type: 'csv' }, errors);
-  });
-  const csvPanel = h('div', { hidden: true },
-    h('p', { class: 'muted' }, 'Columns: grade, home, away, ground, date — optionally day 2 (for two-day games), time and round. Dates can be 2026-10-10 or 10/10/2026. Excel or Google Sheets can export this as CSV.'),
-    h('label', {}, 'CSV file', file), h('label', {}, 'or paste rows here', pasted), csvBtn);
-
-  const tabPc = h('button', { class: 'tab active', type: 'button' }, 'From Play Cricket');
-  const tabCsv = h('button', { class: 'tab', type: 'button' }, 'From a CSV file');
-  tabPc.onclick = () => { pcPanel.hidden = false; csvPanel.hidden = true; tabPc.classList.add('active'); tabCsv.classList.remove('active'); previewBox.replaceChildren(); };
-  tabCsv.onclick = () => { pcPanel.hidden = true; csvPanel.hidden = false; tabCsv.classList.add('active'); tabPc.classList.remove('active'); previewBox.replaceChildren(); };
-
-  root.append(h('div', { class: 'card' }, h('h1', {}, 'New round'), h('nav', { class: 'tabs' }, tabPc, tabCsv), pcPanel, csvPanel, previewBox));
-
-  try {
-    seasons = await fetchSeasons(api, CONFIG.orgId);
-    const cur = seasons.find(s => s.current) || seasons[0];
-    seasonSel.replaceChildren(...seasons.slice(0, 8).map(s => h('option', { value: s.id, selected: s.id === cur.id }, s.name)));
-    await loadComps();
-  } catch (e) { showApiError(e); }
-  return root;
+  await load();
+  draw();
+  // First visit, or fixtures more than half a day old, or a competition has no round yet: fetch in the background.
+  if (needsSync(state.season, state.rounds, today)) sync();
+  return wrap;
 }
 
 // ---------------------------------------------------------------------------
@@ -202,7 +142,9 @@ export async function viewBoard(ctx, rid) {
   const otherStats = rounds.filter(r => r.id !== rid && r.season && round.season && r.season.id === round.season.id).map(r => r.stats);
   const wrap = h('div');
 
-  const persistStats = async () => { B.round.stats = recount(B.games); await store.saveRound({ id: rid, stats: B.round.stats }); };
+  const persistStats = async () => { Object.assign(B.round, summarise(B.games)); await store.saveRound({ id: rid, ...summarise(B.games) }); };
+  // Only the grades the officer picked are listed; the rest of the competition stays out of the way.
+  const visible = () => B.games.filter(isPicked);
   const draw = () => { const y = window.scrollY; setChildren(wrap, build()); window.scrollTo(0, y); };
   const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { console.error(e); toast(e.message || String(e), 'err'); draw(); } };
 
@@ -223,11 +165,11 @@ export async function viewBoard(ctx, rid) {
   }
 
   // Active umpires who have not answered for any date of this round.
-  const noReply = () => { const cols = roundColumns(B.games); return B.umpires.filter(u => u.active && cols.every(c => availStatus(B.availByEmail, u, c.comp, c.date) === 'none')); };
+  const noReply = () => { const cols = roundColumns(visible()); return B.umpires.filter(u => u.active && cols.every(c => availStatus(B.availByEmail, u, c.comp, c.date) === 'none')); };
 
   function collectWarnings() {
     const busy = buildBusyMap(B.games), out = [];
-    for (const g of B.games) {
+    for (const g of visible()) {
       if (g.removed) continue;
       for (const d of g.days) {
         allocFor(g, d.date).forEach((a, i) => {
@@ -250,7 +192,7 @@ export async function viewBoard(ctx, rid) {
     const GROUPS = multi
       ? [['both', 'Available both days'], ['ok', 'Available this day only'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']]
       : [['ok', 'Available'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']];
-    const label = o => `${o.umpire.name}${o.load ? ` · ${o.load}` : ''}${o.club ? ' · club' : ''}${o.busy ? ' · busy' : ''}`;
+    const label = o => `${o.umpire.name}${o.load ? ` · ${o.load}` : ''}${o.busy ? ' · busy' : ''}`;
     const sel = h('select', { class: 'slot' + (cur ? '' : ' empty'), 'aria-label': `Umpire ${i + 1}, ${gradeShort(g.grade)} ${g.home.name}, ${fmtDay(date)}`,
       onchange: guard(async () => {
         const u = B.umpires.find(x => x.pid === sel.value);
@@ -303,26 +245,11 @@ export async function viewBoard(ctx, rid) {
   }
 
   async function doUpdateFixtures() {
-    const src = B.round.source || {};
-    let fresh;
-    if (src.type === 'playcricket') {
-      const api = makeApi(CONFIG.apiBase);
-      const comps = (await fetchCompetitions(api, CONFIG.orgId, src.seasonId)).filter(c => src.comps.includes(c.id));
-      fresh = (await loadFixtures({ api, comps, from: src.from, to: src.to })).filter(g => (src.sectionKeys || []).includes(sectionKey(g)));
-    } else if (src.type === 'csv') {
-      const f = await pickFile();
-      if (!f) return;
-      const r = gamesFromCsv(await f.text());
-      if (r.errors.length) toast(r.errors.join('\n'), 'err');
-      fresh = r.games;
-    } else { toast('This sample round has no live fixture source.'); return; }
-    const res = mergeFixtures(B.games, fresh, defaultSlotsFn(B.settings));
-    if (res.games.length) await store.saveGames(rid, res.games);
-    for (const g of res.games) { const i = B.games.findIndex(x => x.id === g.id); if (i >= 0) B.games[i] = g; else B.games.push(g); }
-    const dates = [...new Set(B.games.filter(g => !g.removed).flatMap(g => g.days.map(d => d.date)))].sort();
-    B.round.dates = dates;
-    await store.saveRound({ id: rid, dates, start: dates[0] || B.round.start, end: dates[dates.length - 1] || B.round.end, stats: recount(B.games) });
-    B.round.stats = recount(B.games);
+    const res = await refreshRound(store, B.round, B.settings);
+    if (!res) { toast('This sample round has no live fixture source.'); return; }
+    B.games = res.all;
+    const fresh = await store.getRound(rid);
+    Object.assign(B.round, fresh);
     draw();
     toast(res.games.length ? `Fixtures updated: ${res.added} new, ${res.changed} changed, ${res.removed} removed` : 'Fixtures are already up to date');
   }
@@ -332,7 +259,7 @@ export async function viewBoard(ctx, rid) {
     const busyMap = buildBusyMap(B.games);
     const st = recount(B.games);
     const warnings = collectWarnings();
-    const sections = groupSections(B.games);
+    const sections = groupSections(visible());
 
     const toggle = (label, field, hint, confirmFn) => {
       const cb = h('input', { type: 'checkbox', checked: !!B.round[field], onchange: guard(async () => {
@@ -343,23 +270,7 @@ export async function viewBoard(ctx, rid) {
       return h('label', { class: 'toggle' }, cb, h('span', {}, h('strong', {}, label), h('small', { class: 'muted' }, hint)));
     };
 
-    const gradeNames = [...new Set(B.games.map(g => g.grade))].sort(compareGrades);
-    const gradePanel = h('details', { class: 'card', open: B.ui.grades, ontoggle: e => { B.ui.grades = e.target.open; } }, h('summary', {}, 'Which grades need umpires, and how many?'),
-      h('p', { class: 'muted' }, 'Set what the secretary asked for. This applies to every game in the grade; you can still override a single game in the table. Your choice is remembered for next round.'),
-      h('div', { class: 'grade-grid' }, gradeNames.map(gr => {
-        const list = B.games.filter(g => g.grade === gr && !g.removed);
-        const vals = [...new Set(list.map(g => g.slots))];
-        return h('label', { class: 'inline' }, h('span', { class: 'chip grade' }, gradeShort(gr)),
-          h('select', { value: vals.length === 1 ? String(vals[0]) : 'mixed', onchange: guard(async e => {
-            const n = Number(e.target.value);
-            const changed = list.map(g => ({ ...g, slots: n }));
-            await store.saveGames(rid, changed);
-            list.forEach(g => { g.slots = n; });
-            B.settings = { ...B.settings, slotsByGrade: { ...(B.settings.slotsByGrade || {}), [gr]: n } };
-            await store.saveSettings({ slotsByGrade: B.settings.slotsByGrade });
-            await persistStats(); draw();
-          }) }, vals.length > 1 && h('option', { value: 'mixed', disabled: true }, 'mixed'), SLOT_CHOICES.map(([v, l]) => h('option', { value: String(v) }, l))));
-      })));
+    const gradesBtn = h('button', { class: 'btn', type: 'button', onclick: () => openGradesModal({ store, round: B.round, onDone: async () => { B.games = await store.listGames(rid); B.settings = await store.getSettings(); B.round = await store.getRound(rid); draw(); } }) }, 'Select grades');
 
     const autoBtn = h('button', { class: 'btn', type: 'button' }, '✨ Suggest allocations');
     autoBtn.onclick = busy(autoBtn, guard(async () => {
@@ -382,45 +293,31 @@ export async function viewBoard(ctx, rid) {
       await store.saveGames(rid, all); all.forEach((x, i) => { B.games[i].alloc = {}; });
       await persistStats(); draw();
     });
-    const rename = h('button', { class: 'link', type: 'button', onclick: guard(async () => {
-      const t = prompt('Round title', B.round.title); if (!t) return;
-      B.round.title = t.trim(); await store.saveRound({ id: rid, title: B.round.title }); draw();
-    }) }, 'rename');
-
     return [
-      h('div', { class: 'row-between' }, h('h1', {}, B.round.title, ' ', rename), h('span', { class: 'muted' }, fmtRange(B.round.dates))),
+      h('div', { class: 'row-between' }, h('h1', {}, roundHeading(B.round)), h('span', { class: 'muted' }, fmtRange(B.round.dates))),
       tabs(rid, ''),
       h('div', { class: 'card toolbar' },
         h('div', { class: 'toggles' },
           toggle('Published', 'published', 'Umpires can see their allocations', () => st.filled < st.needed ? `${st.needed - st.filled} slot(s) are still empty. Publish anyway?` : 'Publish allocations to umpires?')),
-        h('div', { class: 'actions' }, autoBtn, updBtn, clearBtn)),
+        h('div', { class: 'actions' }, gradesBtn, autoBtn, updBtn, clearBtn)),
       h('div', { class: 'summary' },
         h('span', { class: 'chip ' + (st.needed && st.filled === st.needed ? 'ok' : 'warn') }, `${st.filled} of ${st.needed} slots filled`),
         h('span', { class: 'chip ' + (warnings.length ? 'warn' : 'ok') }, warnings.length ? `${warnings.length} warning${warnings.length > 1 ? 's' : ''}` : 'No warnings'),
         noReply().length > 0 && h('span', { class: 'chip' }, `${noReply().length} umpires haven't replied`)),
       warnings.length > 0 && h('details', { class: 'card', open: B.ui.warns, ontoggle: e => { B.ui.warns = e.target.open; } }, h('summary', {}, 'Show warnings'),
         h('ul', {}, warnings.map(w => h('li', {}, `${gradeShort(w.g.grade)} ${w.g.home.name} v ${w.g.away.name}, ${fmtDay(w.d.date)} — ${w.text}`)))),
-      gradePanel,
       sections.map(s => h('section', { class: 'card' },
         h('h2', {}, `${s.label} – ${fmtRange(s.dates)}`),
         h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
           h('thead', {}, h('tr', {}, ['Grade', 'Fixture', 'Ground', 'Umpires', 'Allocation'].map(c => h('th', {}, c)))),
           h('tbody', {}, s.games.map(g => gameRow(g, busyMap, loads))))))),
-      !sections.length && h('p', { class: 'muted' }, 'No games in this round.'),
-      h('p', { class: 'muted' }, 'Numbers next to a name are that umpire\'s appointments so far this season. "club" means they belong to one of the clubs; "busy" means they are already on another game that day.'),
+      !sections.length && h('p', { class: 'muted' }, 'No grades selected yet. Press Select grades to choose the grades that need umpires.'),
+      h('p', { class: 'muted' }, 'Numbers next to a name are that umpire\'s appointments so far this season; "busy" means they are already on another game that day.'),
     ];
   }
 
   draw();
   return wrap;
-}
-
-function pickFile() {
-  return new Promise(res => {
-    const i = h('input', { type: 'file', accept: '.csv,.txt,.tsv' });
-    i.onchange = () => res(i.files[0] || null);
-    i.click();
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -431,7 +328,8 @@ export async function viewAvailabilityOverview(ctx, rid) {
   const { store } = ctx;
   const round = await store.getRound(rid);
   if (!round) return h('p', { class: 'notice warn' }, 'Round not found.');
-  const [umpires, availList, games] = await Promise.all([store.listUmpires(), store.listAvailability((round.season && round.season.id) || 'manual'), store.listGames(rid)]);
+  const [umpires, availList, allGames] = await Promise.all([store.listUmpires(), store.listAvailability((round.season && round.season.id) || 'manual'), store.listGames(rid)]);
+  const games = allGames.filter(isPicked);
   const by = Object.fromEntries(availList.map(a => [a.email, a]));
   const active = umpires.filter(u => u.active).sort((a, b) => a.name.localeCompare(b.name));
   const cols = roundColumns(games);
@@ -443,13 +341,13 @@ export async function viewAvailabilityOverview(ctx, rid) {
   const emails = missing.map(u => u.email);
 
   return h('div', {},
-    h('div', { class: 'row-between' }, h('h1', {}, round.title), h('span', { class: 'muted' }, fmtRange(round.dates))),
+    h('div', { class: 'row-between' }, h('h1', {}, roundHeading(round)), h('span', { class: 'muted' }, fmtRange(round.dates))),
     tabs(rid, '/availability'),
     h('div', { class: 'card' },
       h('div', { class: 'summary' }, cols.map(c => { const n = counts(c); return h('span', { class: 'chip' }, `${colName(c)}: ${n.yes} available · ${n.no} not available · ${n.none} no reply`); })),
       h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Umpire'), cols.map(c => h('th', {}, colName(c))), h('th', {}, ''))),
-        h('tbody', {}, active.map(u => h('tr', {}, h('td', {}, u.name, u.clubs && h('div', { class: 'muted' }, u.clubs)),
+        h('tbody', {}, active.map(u => h('tr', {}, h('td', {}, u.name),
           cols.map(c => { const [t, k] = ICON[availStatus(by, u, c.comp, c.date)]; return h('td', { class: 'av ' + k }, t); }),
           h('td', {}))))))),
     h('div', { class: 'card' }, h('h2', {}, `Haven't replied (${missing.length})`),
@@ -477,7 +375,7 @@ export async function viewReport(ctx, rid) {
   const { store } = ctx;
   const [round, games, umpires] = await Promise.all([store.getRound(rid), store.listGames(rid), store.listUmpires()]);
   if (!round) return h('p', { class: 'notice warn' }, 'Round not found.');
-  const sections = groupSections(games.filter(g => !g.removed));
+  const sections = groupSections(games.filter(g => !g.removed && isPicked(g)));
   const st = recount(games);
   const pids = new Set(st.byUmpire ? Object.keys(st.byUmpire) : []);
   const emails = umpires.filter(u => pids.has(u.pid)).map(u => u.email);
@@ -495,7 +393,7 @@ export async function viewReport(ctx, rid) {
   } }, 'Open email draft');
 
   return h('div', {},
-    h('div', { class: 'row-between noprint' }, h('h1', {}, round.title), h('span', { class: 'muted' }, fmtRange(round.dates))),
+    h('div', { class: 'row-between noprint' }, h('h1', {}, roundHeading(round)), h('span', { class: 'muted' }, fmtRange(round.dates))),
     tabs(rid, '/report'),
     h('div', { class: 'card noprint' },
       st.filled < st.needed && h('p', { class: 'notice warn' }, `${st.needed - st.filled} slot(s) are still unallocated and show as "—" on the report.`),
@@ -524,17 +422,17 @@ export async function viewUmpires(ctx) {
     umpires.sort((a, b) => Number(a.active) - Number(b.active) || a.name.localeCompare(b.name));
     const save = (u, patch) => guard(async () => { Object.assign(u, patch); await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() }); draw(); })();
     const field = (u, key, ph = '') => h('input', { value: u[key] || '', placeholder: ph, onchange: e => save(u, { [key]: e.target.value.trim() }) });
-    const add = h('textarea', { rows: 5, placeholder: 'One umpire per line:\nName, email, club (optional), mobile (optional)\nJ Smith, j.smith@example.com, Kings Langley' });
+    const add = h('textarea', { rows: 5, placeholder: 'One umpire per line:\nName, email, mobile (optional)\nJ Smith, j.smith@example.com, 0400 000 000' });
     const addBtn = h('button', { class: 'btn primary', type: 'button' }, 'Add umpires');
     addBtn.onclick = busy(addBtn, async () => {
       const lines = add.value.split('\n').map(l => l.trim()).filter(Boolean);
       let added = 0; const bad = [];
       for (const line of lines) {
-        const [name, email, clubs = '', phone = ''] = line.split(/[,\t]/).map(s => s.trim());
+        const [name, email, phone = ''] = line.split(/[,\t]/).map(s => s.trim());
         const key = emailKey(email);
         if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(key)) { bad.push(line); continue; }
         if (umpires.some(u => u.email === key)) continue;
-        const u = { pid: newPid(), email: key, name, clubs, phone, active: true, updatedAt: new Date().toISOString() };
+        const u = { pid: newPid(), email: key, name, phone, active: true, updatedAt: new Date().toISOString() };
         await store.saveUmpire(u); umpires.push(u); added++;
       }
       toast(`${added} umpire(s) added${bad.length ? `; couldn't read ${bad.length} line(s)` : ''}`, bad.length ? 'err' : 'ok');
@@ -545,10 +443,10 @@ export async function viewUmpires(ctx) {
       h('div', { class: 'row-between' }, h('h1', {}, 'Umpires'), h('a', { class: 'btn', href: '#/admin' }, '← Rounds')),
       pending.length > 0 && h('p', { class: 'notice warn' }, `${pending.length} umpire(s) are waiting for approval. Tick "Active" to approve them.`),
       h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
-        h('thead', {}, h('tr', {}, ['Active', 'Name', 'Email', 'Club(s)', 'Mobile'].map(c => h('th', {}, c)))),
+        h('thead', {}, h('tr', {}, ['Active', 'Name', 'Email', 'Mobile'].map(c => h('th', {}, c)))),
         h('tbody', {}, umpires.map(u => h('tr', { class: u.active ? '' : 'needs' },
           h('td', {}, h('input', { type: 'checkbox', checked: !!u.active, 'aria-label': 'Active', onchange: e => save(u, { active: e.target.checked }) })),
-          h('td', {}, field(u, 'name')), h('td', { class: 'muted' }, u.email), h('td', {}, field(u, 'clubs', 'e.g. Kings Langley')), h('td', {}, field(u, 'phone'))))))),
+          h('td', {}, field(u, 'name')), h('td', { class: 'muted' }, u.email), h('td', {}, field(u, 'phone'))))))),
       !umpires.length && h('p', { class: 'muted' }, 'No umpires yet. Add some below, or ask them to sign in and fill in their details.')),
       h('div', { class: 'card' }, h('h2', {}, 'Add umpires'), h('p', { class: 'muted' }, 'Paste your existing list (for example from the Google Form responses). Added umpires are active straight away and can sign in with that email address.'), add, addBtn));
   };

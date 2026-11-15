@@ -3,7 +3,8 @@
 // reached it falls back to made-up fixtures that overlap the same way, so the whole flow
 // can always be tried without any setup.
 
-import { newPid, recount, fmtRange, buildCalendar, groupSections, compKeyOf, COMPS } from './logic.js';
+import { newPid, compKeyOf, compareGrades, COMPS } from './logic.js';
+import { addDays, saveSeasonAndRounds } from './rounds.js';
 import { CONFIG } from './config.js';
 import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures } from './fixtures.js';
 
@@ -54,14 +55,9 @@ export const demoGames = ([D1, D2]) => { const two = [D1, D2]; return [
 ]; };
 
 
-const NAMES = [
-  ['Demo Umpire 1', 'Kings Langley'], ['Demo Umpire 2', 'Wenty Leagues'], ['Demo Umpire 3', ''],
-  ['Demo Umpire 4', ''], ['Demo Umpire 5', 'Winston Hills'], ['Demo Umpire 6', ''],
-  ['Demo Umpire 7', 'Parramatta'], ['Demo Umpire 8', ''], ['Demo Umpire 9', ''], ['Demo Umpire 10', 'GLCC'],
-];
+const NAMES = Array.from({ length: 10 }, (_, i) => `Demo Umpire ${i + 1}`);
 
 const todayIso = () => { const d = new Date(); return iso(d); };
-const addDays = (isoDate, n) => { const d = new Date(isoDate + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
 // Real fixtures for the whole season from Play Cricket, or null when the service can't be reached.
 export async function loadLiveSeason({ fetchFn, timeoutMs = 45000 } = {}) {
@@ -72,7 +68,7 @@ export async function loadLiveSeason({ fetchFn, timeoutMs = 45000 } = {}) {
     if (!cur) return null;
     const comps = await fetchCompetitions(api, CONFIG.orgId, cur.id);
     const games = await loadFixtures({ api, comps, from: '0000-01-01', to: '9999-12-31' });
-    return games.length ? { season: { id: cur.id, name: cur.name }, games } : null;
+    return games.length ? { season: { id: cur.id, name: cur.name }, games, comps } : null;
   })();
   const timeout = new Promise(res => setTimeout(() => res(null), timeoutMs));
   try { return await Promise.race([work, timeout]); } catch { return null; }
@@ -80,13 +76,6 @@ export async function loadLiveSeason({ fetchFn, timeoutMs = 45000 } = {}) {
 
 // The "current round" for the demo: every game whose first day is in the week starting at the
 // next upcoming game (or, if the season is over, the last week).
-export function pickDemoRound(games, today = todayIso()) {
-  const firsts = games.map(g => g.days[0].date).sort();
-  const upcoming = firsts.find(d => d >= today);
-  const [from, to] = upcoming ? [upcoming, addDays(upcoming, 6)] : [addDays(firsts[firsts.length - 1], -6), firsts[firsts.length - 1]];
-  return games.filter(g => g.days[0].date >= from && g.days[0].date <= to);
-}
-
 // Made-up answers that differ by competition, so the demo shows separate availability:
 // umpires 3 and 6 never do juniors, umpire 5 does juniors only, and so on.
 export function demoAnswer(i, comp, k) {
@@ -96,22 +85,21 @@ export function demoAnswer(i, comp, k) {
 }
 
 export async function seedDemo(store, { live = true, fetchFn } = {}) {
-  for (const [i, [name, clubs]] of NAMES.entries()) {
+  for (const [i, name] of NAMES.entries()) {
     const email = `umpire${i + 1}@demo.test`;
     const had = await store.getUmpire(email);
-    await store.saveUmpire({ pid: had ? had.pid : newPid(), email, name, phone: '', clubs, active: true });
+    await store.saveUmpire({ pid: had ? had.pid : newPid(), email, name, phone: '', active: true });
   }
 
   const real = live ? await loadLiveSeason({ fetchFn }) : null;
-  let seasonInfo, all, games;
+  let seasonInfo, all, comps = [];
   if (real) {
-    seasonInfo = real.season; all = real.games; games = pickDemoRound(all);
+    seasonInfo = real.season; all = real.games; comps = real.comps;
   } else {
     const [D1, D2] = demoDates();
     seasonInfo = { id: 'demo', name: 'Summer 2026/27' };
-    games = demoGames([D1, D2]);
-    // Season: the sample round, then more rounds every fortnight for each competition.
-    all = [...games];
+    all = demoGames([D1, D2]);
+    // The rest of the season: another round every fortnight for each competition.
     for (let k = 1; k < 6; k++) {
       const a = addDays(D1, 14 * k), b = addDays(D2, 14 * k);
       all.push(fx(`s${k}`, 'Senior A Grade', 'A', 'B', 'X', [a, b], `Round ${2 + k}`));
@@ -119,20 +107,17 @@ export async function seedDemo(store, { live = true, fetchFn } = {}) {
       all.push(fx(`t${k}`, 'T20 Mens', 'A', 'B', 'X', [b], `Round ${1 + k}`, 'T20', T20));
     }
   }
-  const calendar = buildCalendar(all);
-  const season = { id: seasonInfo.id, name: seasonInfo.name, calendar, updatedAt: new Date().toISOString() };
-  await store.saveSeason(season);
 
-  const dates = [...new Set(games.flatMap(g => g.days.map(d => d.date)))].sort();
-  const sections = groupSections(games);
-  const lead = sections.find(x => compKeyOf(x.games[0]) === 'senior') || sections[0];
-  const round = {
-    id: 'r-' + dates[0], title: `${lead.label} – ${fmtRange(dates)}`, start: dates[0], end: dates[dates.length - 1],
-    dates, published: false, season: { id: season.id, name: season.name },
-    source: { type: real ? 'demo-live' : 'demo' }, stats: recount(games),
-  };
-  await store.saveRound(round);
-  await store.saveGames(round.id, games);
+  // The committee has asked for the first five Senior grades and all T20 grades; Junior is still
+  // to be picked, so that tile starts at 0/0 slots.
+  const grades = key => [...new Set(all.filter(g => compKeyOf(g) === key).map(g => g.grade))].sort(compareGrades);
+  const slotsByGrade = {};
+  grades('senior').slice(0, 5).forEach(gr => { slotsByGrade[gr] = 1; });
+  grades('t20').forEach(gr => { slotsByGrade[gr] = 1; });
+  await store.saveSettings({ slotsByGrade });
+
+  const made = await saveSeasonAndRounds(store, { season: seasonInfo, games: all, comps, today: todayIso(), source: real ? undefined : { type: 'demo' } });
+  const season = await store.getSeason();
 
   // Umpires 1-8 have answered (separately for each competition); 9 and 10 have not replied.
   for (let i = 1; i <= 8; i++) {
@@ -140,10 +125,10 @@ export async function seedDemo(store, { live = true, fetchFn } = {}) {
     const u = await store.getUmpire(email);
     const days = {};
     const idx = {};
-    for (const r of calendar) {
+    for (const r of season.calendar) {
       r.dates.forEach(d => { idx[r.comp] = (idx[r.comp] || 0) + 1; days[`${r.comp}:${d}`] = demoAnswer(i, r.comp, idx[r.comp]); });
     }
     await store.saveAvailability({ seasonId: season.id, email, name: u.name, days, updatedAt: new Date().toISOString() });
   }
-  return { live: !!real, games: games.length, rounds: calendar.length };
+  return { live: !!real, rounds: made.length, games: all.length };
 }

@@ -131,3 +131,24 @@ td.av { text-align: center; font-weight: 700; } td.av.ok { color: var(--green); 
 .comp-head .link { font-size: .9rem; }
 
 .dnote { display: block; font-weight: 400; color: var(--muted, #666); font-size: .8rem; line-height: 1.25; margin-top: 2px; }
+
+/* rounds home: one tile per competition */
+.comp-tile { display: flex; flex-direction: column; gap: .35rem; margin: 0; }
+.comp-tile h2 { margin: 0; }
+.comp-tile.empty { opacity: .7; }
+.tile-body { display: block; text-decoration: none; color: inherit; padding: .25rem 0 .1rem; }
+.tile-body:hover .tile-round { color: var(--green); }
+.tile-round { font-size: 1.25rem; font-weight: 600; }
+.tile-stats { margin-top: .5rem; display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; }
+.btn.small { padding: .25rem .7rem; font-size: .85rem; }
+
+/* select grades popup */
+dialog.modal { border: 0; border-radius: 12px; padding: 1.1rem 1.2rem; width: min(440px, 94vw); max-height: 86vh; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+dialog.modal::backdrop { background: rgba(0,0,0,.4); }
+dialog.modal h2 { margin: 0 0 .25rem; }
+.grade-list { margin: .5rem 0; max-height: 52vh; overflow: auto; border-top: 1px solid var(--line, #e3e8e4); }
+.grade-row { display: flex; align-items: center; gap: .6rem; padding: .5rem .1rem; border-bottom: 1px solid var(--line, #e3e8e4); cursor: pointer; }
+.grade-row .muted { flex: 1; }
+.grade-row input[type=checkbox] { width: 1.15rem; height: 1.15rem; }
+.grade-row select { width: auto; padding: .2rem .4rem; }
+.modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .6rem; }

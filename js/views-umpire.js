@@ -29,13 +29,12 @@ export async function viewProfile(ctx) {
   const existing = S.umpire;
   const name = h('input', { required: true, value: existing?.name || '', placeholder: 'e.g. J Smith' });
   const phone = h('input', { type: 'tel', value: existing?.phone || '', placeholder: 'Optional' });
-  const clubs = h('input', { value: existing?.clubs || '', placeholder: 'e.g. Kings Langley' });
   const btn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
   return h('form', { class: 'card narrow', onsubmit: busy(btn, async e => {
     e.preventDefault();
     await store.saveUmpire({
       pid: existing?.pid || newPid(), email: S.user.email, name: name.value.trim(), phone: phone.value.trim(),
-      clubs: clubs.value.trim(), active: existing ? existing.active : S.isAdmin,
+      active: existing ? existing.active : S.isAdmin,
       updatedAt: new Date().toISOString(),
     });
     await refreshUser();
@@ -46,8 +45,6 @@ export async function viewProfile(ctx) {
   !existing && h('p', { class: 'muted' }, 'This is a one-off step. The appointments officer will approve your account before you can be allocated.'),
   h('label', {}, 'Name as it should appear on the allocation report', name),
   h('label', {}, 'Mobile (optional, only visible to appointments officers)', phone),
-  h('label', {}, 'Club(s) you play for or are connected with', clubs,
-    h('small', { class: 'muted' }, 'So you are not appointed to their games. Separate several with commas.')),
   btn);
 }
 

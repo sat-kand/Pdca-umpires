@@ -3,7 +3,7 @@ import { h, setChildren, spinner, toast } from './ui.js';
 import { createDemoStore } from './store-demo.js';
 import { seedDemo } from './demo-seed.js';
 import { viewLogin, viewProfile, viewMy } from './views-umpire.js';
-import { viewAdminHome, viewNewRound, viewBoard, viewAvailabilityOverview, viewReport, viewUmpires } from './views-admin.js';
+import { viewAdminHome, viewBoard, viewAvailabilityOverview, viewReport, viewUmpires } from './views-admin.js';
 
 const S = { store: null, user: null, isAdmin: false, umpire: null };
 const main = document.getElementById('app');
@@ -25,7 +25,6 @@ const ROUTES = [
   [/^\/my$/, () => viewMy(ctx)],
   [/^\/profile$/, () => viewProfile(ctx)],
   [/^\/admin$/, () => viewAdminHome(ctx), true],
-  [/^\/admin\/new$/, () => viewNewRound(ctx), true],
   [/^\/admin\/umpires$/, () => viewUmpires(ctx), true],
   [/^\/admin\/round\/([^/]+)$/, rid => viewBoard(ctx, rid), true],
   [/^\/admin\/round\/([^/]+)\/availability$/, rid => viewAvailabilityOverview(ctx, rid), true],
@@ -39,7 +38,7 @@ function drawHeader() {
     demo && h('div', { class: 'demo-banner' }, 'Demo mode — data is stored only in this browser. ',
       h('button', { class: 'link', type: 'button', onclick: async ev => {
         const b = ev.currentTarget; b.disabled = true; b.textContent = 'Loading real PDCA fixtures…';
-        try { const r = await seedDemo(S.store); toast(r.live ? `Loaded ${r.games} real PDCA games and sample umpires` : 'Play Cricket not reachable: loaded made-up sample fixtures'); } finally { render(); }
+        try { const r = await seedDemo(S.store); toast(r.live ? `Loaded the real PDCA fixtures (${r.games} games) and sample umpires` : 'Play Cricket not reachable: loaded made-up sample fixtures'); } finally { render(); }
       } }, 'Load sample data'), ' · ',
       h('button', { class: 'link', type: 'button', onclick: () => { if (confirm('Erase all demo data in this browser?')) { S.store.demoReset(); location.hash = '#/'; } } }, 'Reset')),
     h('div', { class: 'bar' },

@@ -1,7 +1,7 @@
 // Pure allocation logic: no DOM, no network, no Firebase. Fully unit-tested.
 //
 // Data shapes
-//   umpire : { pid, email, name, phone, clubs, active }
+//   umpire : { pid, email, name, phone, active }
 //   game   : { id, comp, grade, roundName, matchType, days:[{day,date,time}],
 //              home:{name,org}, away:{name,org}, ground, slots, alloc, ... }
 //   alloc  : { '2026-10-10': [ {p:pid, n:name} | null, ... ] }   (one entry per slot)
@@ -126,28 +126,10 @@ export function compareGames(a, b) {
     || (a.home?.name || '').localeCompare(b.home?.name || '');
 }
 
-// ---------- clubs ---------------------------------------------------------
-
-export function normClub(s) {
-  return (s || '').toLowerCase()
-    .replace(/[^a-z0-9 ]+/g, ' ')
-    .replace(/\b(cricket|club|cc|ccc|sports|sc|the|seniors?|mens?|men|team|inc|a|b)\b/g, ' ')
-    .replace(/\s+/g, ' ').trim();
-}
-
-export function splitClubs(text) {
-  return (text || '').split(/[,;/\n]/).map(s => s.trim()).filter(Boolean);
-}
-
-// True when any of the umpire's clubs looks like the home or away club.
-export function clubConflict(umpire, game) {
-  const mine = splitClubs(umpire.clubs).map(normClub).filter(s => s.length >= 4);
-  if (!mine.length) return false;
-  const theirs = [game.home?.name, game.home?.org, game.away?.name, game.away?.org].map(normClub).filter(Boolean);
-  return mine.some(a => theirs.some(b => a === b || b.includes(a) || a.includes(b)));
-}
-
 // ---------- allocation state ----------------------------------------------
+
+// A game is "picked" when the officer has chosen its grade for umpires (slots > 0).
+export const isPicked = game => (game.slots || 0) > 0;
 
 export function slotCount(game) { return game.removed ? 0 : (game.slots || 0); }
 
@@ -191,7 +173,6 @@ export function assignmentWarnings({ game, date, slotIndex, umpire, availByEmail
   if (others.length) w.push(`Already umpiring another ${compLabel(comp)} game this day`);
   const here = allocFor(game, date).filter((a, i) => a && a.p === umpire.pid && i !== slotIndex);
   if (here.length) w.push('Already in this game');
-  if (clubConflict(umpire, game)) w.push('Belongs to the home or away club');
   return w;
 }
 
@@ -203,7 +184,6 @@ export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy
     const st = availStatus(availByEmail, u, compKeyOf(game), date);
     const others = ((busy[availKey(compKeyOf(game), date)] || {})[u.pid] || []).filter(id => id !== game.id);
     const dup = allocFor(game, date).some((a, i) => a && a.p === u.pid && i !== slotIndex);
-    const club = clubConflict(u, game);
     const avoid = st === 'no' || others.length > 0 || dup;
     // For a multi-day game, who can do EVERY day (free, said yes, not already busy that day)?
     const days = game.days.map(d => d.date);
@@ -212,7 +192,7 @@ export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy
     const okDays = days.filter(freeOn);
     const bothDays = days.length > 1 && okDays.length === days.length;
     const group = avoid ? 'avoid' : st === 'yes' ? (days.length > 1 ? (bothDays ? 'both' : 'ok') : 'ok') : 'none';
-    rows.push({ umpire: u, status: st, busy: others.length > 0, dup, club, group, bothDays, okDays, load: (loads && loads[u.pid]) || 0 });
+    rows.push({ umpire: u, status: st, busy: others.length > 0, dup, group, bothDays, okDays, load: (loads && loads[u.pid]) || 0 });
   }
   rows.sort((a, b) => a.load - b.load || a.umpire.name.localeCompare(b.umpire.name));
   return rows;
@@ -232,6 +212,11 @@ export function recount(games) {
     }
   }
   return { games: gamesNeeding, needed, filled, byUmpire };
+}
+
+// What a round tile shows: slots filled / needed, and how many grades were picked.
+export function summarise(games) {
+  return { stats: recount(games), picked: new Set(games.filter(isPicked).map(g => g.grade)).size };
 }
 
 // Sum of appointments per umpire across stats from other rounds + this one.
@@ -264,8 +249,7 @@ export function autoAllocate({ games, umpires, availByEmail, baseLoads = {} }) {
         const cands = active.filter(u =>
           availStatus(availByEmail, u, comp, d.date) === 'yes' &&
           !((busy[bk] || {})[u.pid] || []).length &&
-          !allocFor(g, d.date).some(a => a && a.p === u.pid) &&
-          !clubConflict(u, g));
+          !allocFor(g, d.date).some(a => a && a.p === u.pid));
         if (!cands.length) continue;
         cands.sort((a, b) =>
           (loads[a.pid] || 0) - (loads[b.pid] || 0) ||

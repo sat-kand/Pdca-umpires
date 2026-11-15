@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fmtRange, gradeShort, compareGrades, groupSections, clubConflict, normClub, allocFor, buildBusyMap,
+  fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap,
   assignmentWarnings, slotOptions, recount, autoAllocate, applyChanges, umpireText, seasonLoads, buildCalendar, upcomingDates, byMonth,
   compKeyOf, availKey, availStatus, roundColumns,
 } from '../js/logic.js';
@@ -12,7 +12,7 @@ const mk = (id, grade, home, away, days, slots = 1, alloc = {}, extra = {}) => (
   home: { name: home, org: home + ' Cricket Club' }, away: { name: away, org: away + ' Cricket Club' },
   ground: 'Park', slots, alloc, ...extra,
 });
-const U = (pid, name, clubs = '', active = true) => ({ pid, email: pid + '@x.test', name, clubs, active });
+const U = (pid, name, active = true) => ({ pid, email: pid + '@x.test', name, active });
 const D1 = '2026-10-10', D2 = '2026-10-17';
 // avail({ u1: { [D1]: 'yes' } }) answers for the Senior competition; pass comp for Junior / T20.
 const avail = (map, comp = 'senior') => Object.fromEntries(Object.entries(map).map(([pid, days]) =>
@@ -47,32 +47,22 @@ test('groupSections splits two-day seniors from single-day women on the same wee
   assert.equal(s[1].label, 'Round 4 Women');
 });
 
-test('club conflict matches by club name, ignoring suffixes, and ignores tiny names', () => {
-  assert.equal(normClub('Kings Langley Cricket Club'), 'kings langley');
-  const g = mk('1', 'Senior A Grade', 'Kings Langley', 'Vone Sports Club', [D1]);
-  assert.equal(clubConflict(U('a', 'A', 'Kings Langley CC'), g), true);
-  assert.equal(clubConflict(U('a', 'A', 'Vone'), g), true);
-  assert.equal(clubConflict(U('a', 'A', 'Winston Hills'), g), false);
-  assert.equal(clubConflict(U('a', 'A', 'KL, Winston Hills'), g), false);
-  assert.equal(clubConflict(U('a', 'A', ''), g), false);
-});
-
 test('allocFor pads to slot count; removed games have no slots', () => {
   const g = mk('1', 'Senior A Grade', 'A', 'B', [D1], 2, { [D1]: [{ p: 'u1', n: 'Ann' }] });
   assert.deepEqual(allocFor(g, D1), [{ p: 'u1', n: 'Ann' }, null]);
   assert.deepEqual(allocFor({ ...g, removed: true }, D1), []);
 });
 
-test('warnings: unavailable, no response, double-booked, club conflict, same umpire twice', () => {
+test('warnings: unavailable, no response, double-booked, same umpire twice', () => {
   const g1 = mk('1', 'Senior A Grade', 'Kings Langley', 'B', [D1], 2, { [D1]: [{ p: 'u1', n: 'Ann' }, null] });
   const g2 = mk('2', 'Senior B02', 'C', 'D', [D1], 1, { [D1]: [{ p: 'u1', n: 'Ann' }] });
   const busy = buildBusyMap([g1, g2]);
   const ann = U('u1', 'Ann');
   const w = assignmentWarnings({ game: g2, date: D1, slotIndex: 0, umpire: ann, availByEmail: avail({ u1: { [D1]: 'no' } }), busy });
   assert.deepEqual(w, ['Marked unavailable for Senior on this day', 'Already umpiring another Senior game this day']);
-  const bob = U('u2', 'Bob', 'Kings Langley');
+  const bob = U('u2', 'Bob');
   assert.deepEqual(assignmentWarnings({ game: g1, date: D1, slotIndex: 1, umpire: bob, availByEmail: {}, busy }),
-    ['No Senior availability submitted', 'Belongs to the home or away club']);
+    ['No Senior availability submitted']);
   assert.ok(assignmentWarnings({ game: g1, date: D1, slotIndex: 1, umpire: ann, availByEmail: avail({ u1: { [D1]: 'yes' } }), busy }).includes('Already in this game'));
   assert.deepEqual(assignmentWarnings({ game: g1, date: D1, slotIndex: 0, umpire: ann, availByEmail: avail({ u1: { [D1]: 'yes' } }), busy: buildBusyMap([g1]) }), []);
 });
@@ -80,7 +70,7 @@ test('warnings: unavailable, no response, double-booked, club conflict, same ump
 test('slotOptions groups yes / no response / avoid and skips inactive umpires', () => {
   const g = mk('1', 'Senior A Grade', 'A', 'B', [D1]);
   const g2 = mk('2', 'Senior B02', 'C', 'D', [D1], 1, { [D1]: [{ p: 'u4', n: 'Dee' }] });
-  const umpires = [U('u1', 'Ann'), U('u2', 'Bob'), U('u3', 'Cat'), U('u4', 'Dee'), U('u5', 'Eve'), U('u6', 'Fay', '', false)];
+  const umpires = [U('u1', 'Ann'), U('u2', 'Bob'), U('u3', 'Cat'), U('u4', 'Dee'), U('u5', 'Eve'), U('u6', 'Fay', false)];
   const a = avail({ u1: { [D1]: 'yes' }, u2: { [D1]: 'yes' }, u4: { [D1]: 'yes' }, u5: { [D1]: 'no' }, u6: { [D1]: 'yes' } });
   const opts = slotOptions({ game: g, date: D1, slotIndex: 0, umpires, availByEmail: a, busy: buildBusyMap([g, g2]), loads: {} });
   const by = Object.fromEntries(opts.map(o => [o.umpire.name, o.group]));
@@ -101,13 +91,13 @@ test('recount counts slot-days and per-umpire appointments', () => {
   assert.deepEqual(seasonLoads([r, { byUmpire: { u1: 4, u9: 1 } }, null]), { u1: 6, u2: 1, u9: 1 });
 });
 
-test('autoAllocate: only "yes", no double-booking, no club conflict, balances load, keeps two-day pair', () => {
+test('autoAllocate: only "yes", no double-booking, balances load, keeps two-day pair', () => {
   const games = [
     mk('1', 'Senior A Grade', 'Kings Langley', 'B', [D1, D2]),
     mk('2', 'Senior B02', 'C', 'D', [D1, D2]),
     mk('3', 'Senior B03', 'E', 'F', [D1]),
   ];
-  const umpires = [U('u1', 'Ann', 'Kings Langley'), U('u2', 'Bob'), U('u3', 'Cat'), U('u4', 'Dan')];
+  const umpires = [U('u1', 'Ann'), U('u2', 'Bob'), U('u3', 'Cat'), U('u4', 'Dan')];
   const a = avail({
     u1: { [D1]: 'yes', [D2]: 'yes' }, u2: { [D1]: 'yes', [D2]: 'yes' },
     u3: { [D1]: 'yes', [D2]: 'no' }, u4: { [D1]: 'no', [D2]: 'yes' },
@@ -116,7 +106,6 @@ test('autoAllocate: only "yes", no double-booking, no club conflict, balances lo
   const apply = g => ({ ...g, alloc: applyChanges(g, ch) });
   const done = games.map(apply);
   const pid = (id, d) => allocFor(done.find(g => g.id === id), d)[0];
-  assert.notEqual(pid('1', D1)?.p, 'u1');                 // club conflict (Ann is Kings Langley)
   for (const d of [D1, D2]) {                              // nobody twice on one day
     const ps = done.flatMap(g => allocFor(g, d)).filter(Boolean).map(x => x.p);
     assert.equal(new Set(ps).size, ps.length);

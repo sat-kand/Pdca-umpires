@@ -3,7 +3,7 @@
 A small web app for the Parramatta District Cricket Association umpires.
 
 - **Umpires** sign in, tell us which days they can umpire, and later see their own appointments.
-- **The appointments officer** imports the round's fixtures from Play Cricket, sees who is available for each game, allocates umpires (one or two per game, per day for two-day games), gets warnings for clashes, and publishes a report that matches the one emailed today.
+- **The appointments officer** gets each competition's next round from Play Cricket automatically, picks the grades that need umpires, sees who is available for each game, allocates umpires (one or two per game, per day for two-day games), gets warnings for clashes, and publishes a report that matches the one emailed today.
 
 It is a static site (no build step) that runs on **GitHub Pages**, with **Firebase** (free tier) storing the data.
 
@@ -11,15 +11,13 @@ It is a static site (no build step) that runs on **GitHub Pages**, with **Fireba
 
 ## How a round works
 
-0. **Set up season dates (once per season)** → on the Rounds page press *Set up season dates*. The app reads the whole fixture list for **Senior, T20 and Junior** and builds the date list umpires see: one section per competition. If every game in a competition is the same length (all two-day, or all one-day) it is shown **by round** (Round 2 → Day 1 / Day 2). If a competition mixes lengths, as Juniors do (day 2 of a U14 two-day round can be a one-day round for U13), it is shown as a **plain list of dates** grouped by month, because round labels would be ambiguous. The Season dates card shows which layout each competition got. Availability is per date either way. Press *Re-sync dates* if the fixture list changes. Umpires answer once for the whole season, so there is no "open availability" step per round.
-   - **Availability is separate per competition.** An umpire can be available for Senior and not for Junior on the same date.
-   - **Dates can overlap.** An umpire can be appointed to a Senior and a Junior (or T20) game on the same day with no warning. The warnings only flag a clash between two games in the *same* competition on the same day, or an umpire who said no / hasn't answered for that competition.
-1. **New round** → pick the season, competitions and the date window (games are included when their *first day* falls in the window). Tick the groups that belong in the round (e.g. *Round 2 Seniors* and *Round 4 Women*).
-2. **Which grades need umpires** → set 0, 1 or 2 umpires per grade as the secretary requests (changeable per game). Your choice is remembered for the next round.
-3. **Allocate** → for a two-day game the drop-down lists *Available both days* first, and picking someone for Day 1 also fills Day 2 when they are free (change Day 2 separately if needed). Each slot's drop-down is sorted: available umpires first, then no reply, then unavailable/already busy. ⚠ appears for anything questionable (unavailable, double-booked that day, belongs to the home/away club). **Suggest allocations** fills only empty slots using umpires who said *Available*, least-used first.
-4. **Availability tab** shows everyone's answers for the round and who hasn't replied yet.
-5. **Update fixtures** pulls changes from Play Cricket; changed grounds/times are flagged on the game and allocations are kept.
-6. **Published** → umpires can see their appointments. **Report & email** → print/save as PDF, copy the BCC list, or open an email draft.
+1. **Open Rounds.** There is nothing to set up: the app reads the Play Cricket fixture list by itself (when it is missing or older than 12 hours) and shows **one tile per competition – Senior, T20 and Junior – for that competition's next round.** Each tile shows the round, its dates, how many grades are picked and `filled/needed` umpire slots.
+2. **Select grades** (button on each tile) → a popup lists that competition's grades playing the round with a tick box and a game count. The committee usually asks for only some grades, so tick those (use *1 umpire / 2 umpires* per grade when needed). The tile's slot total follows the ticks: 5 grades × 3 one-day games = 0/15. A two-day game counts one slot per day. Your choice is remembered for the next round.
+3. **Click the tile** → the board for that competition only, listing only the ticked grades (the *Select grades* button is there too). For a two-day game the drop-down lists *Available both days* first, and picking someone for Day 1 also fills Day 2 when they are free. Drop-downs are sorted: available umpires first, then no reply, then unavailable/already busy. ⚠ appears for anything questionable (unavailable, double-booked that day in the same competition). **Suggest allocations** fills only empty slots using umpires who said *Available*, least-used first.
+4. **Availability tab** shows everyone's answers for the round and who hasn't replied yet. **Update fixtures** refreshes the round from Play Cricket; changed grounds/times are flagged and allocations are kept.
+5. **Published** → umpires see their appointments. **Report & email** → print/save as PDF, copy the BCC list, or open an email draft.
+
+**Umpire availability** is asked once for the whole season and is **separate per competition**, so an umpire can be available for Senior and not for Junior on the same date, and can be appointed to more than one competition on the same day without a warning. If every game in a competition is the same length (all two-day, or all one-day) umpires answer **by round** (Round 2 → Day 1 / Day 2); if lengths are mixed, as in Juniors, they answer from a **plain list of dates**.
 
 ## One-time setup (about 20 minutes)
 
@@ -49,11 +47,11 @@ Then **Authentication → Settings → Authorized domains → Add domain**: `YOU
 Free GitHub Pages needs a public repository. That is fine here: the code contains no secrets (the Firebase web config is meant to be public — security comes from the Firestore rules) and the data lives in Firebase, not in the repo.
 
 ### 5. First run
-Sign in → **Umpires → Add umpires** → paste `Name, email, club` lines (for example from your Google Form responses) → **Rounds → Set up season dates** → **+ New round**.
+Sign in → **Umpires → Add umpires** → paste `Name, email, mobile` lines (for example from your Google Form responses) → **Rounds** (fixtures load on their own).
 
 ## Notes
 
-- **Fixtures** come from Play Cricket's own website service (`grassrootsapiproxy.cricket.com.au`), the same one the Play Cricket pages use. It is not an officially documented API and Cricket Australia could change it, and its terms ask for written permission before systematically collecting data into a database. Ask the PDCA secretary to confirm this is OK. If it ever stops working, **New round → From a CSV file** works with any spreadsheet export.
+- **Fixtures** come from Play Cricket's own website service (`grassrootsapiproxy.cricket.com.au`), the same one the Play Cricket pages use. It is not an officially documented API and Cricket Australia could change it, and its terms ask for written permission before systematically collecting data into a database. Ask the PDCA secretary to confirm this is OK. If it ever stops working the Rounds page says so and offers a retry.
 - **Privacy:** other umpires see names on a published round (as on the emailed report) but never email addresses or mobiles. Unpublished allocations are only visible to officers. Umpires cannot approve themselves.
 - **Sending allocation emails automatically** would need Firebase Cloud Functions (Blaze plan) or an email service. For now the app prepares the report, the BCC list and a draft; you send it.
 - Published rounds update live: if you change an allocation after publishing, umpires see the change.
