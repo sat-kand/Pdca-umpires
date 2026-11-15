@@ -94,7 +94,7 @@ export async function viewOrgSettings(ctx) {
       save),
 
       h('div', { class: 'card' }, h('h2', {}, 'Link for umpires'),
-        h('p', { class: 'muted' }, 'Send this link to your umpires. They sign in, add their name, and wait for you to approve them on the Umpires page.'),
+        h('p', { class: 'muted' }, 'Send this link to your umpires. They sign in, add their details, and wait for you to approve them on the Members page.'),
         h('p', {}, h('code', { class: 'join-link' }, link)),
         h('button', { class: 'btn', type: 'button', onclick: async () => { toast(await copyText(link) ? 'Link copied' : 'Could not copy', 'ok'); } }, 'Copy link')),
 

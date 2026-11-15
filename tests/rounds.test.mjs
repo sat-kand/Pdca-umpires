@@ -229,3 +229,16 @@ test('association helpers: Play Cricket id from a link, association id, plan wor
   assert.equal(planText({ plan: 'active' }, now), 'Subscription active');
   assert.equal(planText({ plan: 'suspended' }, now), 'Suspended');
 });
+
+test('member names: two fields, with a fallback for records that only have a full name', async () => {
+  const { nameParts, fullName, compareMembers } = await import('../js/logic.js');
+  assert.deepEqual(nameParts({ firstName: 'Jane', lastName: 'Smith', name: 'ignored' }), { firstName: 'Jane', lastName: 'Smith' });
+  assert.deepEqual(nameParts({ name: 'Jane Van Der Berg' }), { firstName: 'Jane', lastName: 'Van Der Berg' });
+  assert.deepEqual(nameParts({ name: 'Cher' }), { firstName: 'Cher', lastName: '' });
+  assert.deepEqual(nameParts({}), { firstName: '', lastName: '' });
+  assert.deepEqual(nameParts({ firstName: '', lastName: 'Smith' }), { firstName: '', lastName: 'Smith' });
+  assert.equal(fullName(' Jane ', 'Smith'), 'Jane Smith');
+  assert.equal(fullName('Jane', ''), 'Jane');
+  const list = [{ name: 'Zoe Adams' }, { firstName: 'Al', lastName: 'Zane' }, { firstName: 'Bea', lastName: 'Adams' }];
+  assert.deepEqual(list.sort(compareMembers).map(u => fullName(...Object.values(nameParts(u)))), ['Bea Adams', 'Zoe Adams', 'Al Zane']);
+});

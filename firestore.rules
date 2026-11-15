@@ -96,7 +96,7 @@ service cloud.firestore {
             id == me()
             && request.resource.data.email == me()
             && request.resource.data.active == false
-            && request.resource.data.keys().hasOnly(['pid', 'email', 'name', 'phone', 'active', 'updatedAt'])
+            && request.resource.data.keys().hasOnly(['pid', 'email', 'name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'active', 'updatedAt'])
           ));
 
         // Umpires may edit their own details but never `active`, `pid` or `email`.
@@ -104,7 +104,7 @@ service cloud.firestore {
           isOrgAdmin(orgId) || (
             id == me()
             && request.resource.data.email == me()
-            && onlyChanges(['name', 'phone', 'updatedAt'])
+            && onlyChanges(['name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'updatedAt'])
           ));
       }
 

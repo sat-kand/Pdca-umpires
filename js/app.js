@@ -52,7 +52,7 @@ const ROUTES = [
   [/^\/profile$/, () => viewProfile(ctx)],
   [/^\/admin$/, () => viewAdminHome(ctx), true],
   [/^\/admin\/availability$/, () => viewSeasonAvailability(ctx), true],
-  [/^\/admin\/umpires$/, () => viewUmpires(ctx), true],
+  [/^\/admin\/(?:members|umpires)$/, () => viewUmpires(ctx), true],   // the old /umpires link still works
   [/^\/admin\/settings$/, () => viewOrgSettings(ctx), true],
   [/^\/admin\/round\/([^/]+)$/, rid => viewBoard(ctx, rid), true],
   [/^\/admin\/round\/([^/]+)\/availability$/, rid => viewAvailabilityOverview(ctx, rid), true],
@@ -72,7 +72,7 @@ function drawHeader() {
       h('button', { class: 'link', type: 'button', onclick: () => { if (confirm('Erase all demo data in this browser?')) { localStorage.removeItem(ORG_KEY); S.store.demoReset(); location.hash = '#/'; } } }, 'Reset')),
     h('div', { class: 'bar' },
       h('a', { class: 'brand', href: '#/' }, '🏏 ', CONFIG.appName),
-      S.isAdmin && h('nav', { class: 'nav' }, link('#/admin', 'Rounds'), link('#/admin/availability', 'Availability'), link('#/admin/umpires', 'Umpires'), link('#/admin/settings', 'Settings'), link('#/my', 'My availability')),
+      S.isAdmin && h('nav', { class: 'nav' }, link('#/admin', 'Allocate'), link('#/admin/availability', 'Availability'), link('#/admin/members', 'Members'), link('#/admin/settings', 'Settings'), link('#/my', 'My availability')),
       S.user && h('div', { class: 'who' },
         S.org && h('a', { class: 'org-name', href: '#/associations', title: 'Switch association' }, S.org.name),
         h('a', { class: 'who-name', href: '#/profile', title: 'Edit my details' }, (S.umpire && S.umpire.name) || S.user.email),

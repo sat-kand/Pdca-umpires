@@ -89,7 +89,7 @@ export async function seedDemo(store, { live = true, fetchFn } = {}) {
   for (const [i, name] of NAMES.entries()) {
     const email = `umpire${i + 1}@demo.test`;
     const had = await store.getUmpire(email);
-    await store.saveUmpire({ pid: had ? had.pid : newPid(), email, name, phone: '', active: true });
+    await store.saveUmpire({ pid: had ? had.pid : newPid(), email, name, firstName: 'Demo', lastName: `Umpire ${i + 1}`, phone: '', dob: '', address: '', active: true });
   }
 
   const real = live ? await loadLiveSeason({ fetchFn, playCricketId: store.org && store.org.playCricketId }) : null;

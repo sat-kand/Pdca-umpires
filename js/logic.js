@@ -397,6 +397,21 @@ export function byMonth(dates) {
 
 // ---------- ids -----------------------------------------------------------
 
+// Members are stored with a first and last name. `name` is kept as the full name because the
+// allocation board, dropdowns, reports and saved allocations all use it. Records made before
+// the two fields existed have only `name`, so split it for display.
+export function nameParts(u = {}) {
+  if (u.firstName || u.lastName) return { firstName: u.firstName || '', lastName: u.lastName || '' };
+  const bits = (u.name || '').trim().split(/\s+/).filter(Boolean);
+  return { firstName: bits.shift() || '', lastName: bits.join(' ') };
+}
+export const fullName = (first, last) => `${(first || '').trim()} ${(last || '').trim()}`.trim();
+// Sort a member list by last name, then first name.
+export function compareMembers(a, b) {
+  const x = nameParts(a), y = nameParts(b);
+  return (x.lastName || '').localeCompare(y.lastName || '') || (x.firstName || '').localeCompare(y.firstName || '');
+}
+
 export function newPid() {
   const a = new Uint8Array(8);
   (globalThis.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach((_, i) => (a[i] = Math.floor(Math.random() * 256)));

@@ -3,7 +3,7 @@
 import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './ui.js';
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
-  slotOptions, recount, summarise, formatSummary, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
+  slotOptions, recount, summarise, formatSummary, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
   availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS,
 } from './logic.js';
 import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, TILE_ORDER } from './rounds.js';
@@ -20,7 +20,7 @@ function tabs(rid, active) {
 }
 
 // ---------------------------------------------------------------------------
-// Rounds: one tile per competition showing its next round
+// Allocate: one tile per competition showing its next round
 // ---------------------------------------------------------------------------
 
 // "Select grades" popup: tick the grades the committee wants umpires for. Only ticked grades are
@@ -108,7 +108,7 @@ export async function viewAdminHome(ctx) {
     // Finished rounds that were worked on (something allocated, or published), newest first.
     const past = state.rounds.filter(r => (r.end || '') < today && (r.published || ((r.stats || {}).filled || 0) > 0)).sort((x, y) => (y.start || '').localeCompare(x.start || ''));
     setChildren(wrap,
-      h('div', { class: 'row-between' }, h('h1', {}, 'Rounds'), state.syncing && h('span', { class: 'muted' }, 'Updating fixtures from Play Cricket…')),
+      h('div', { class: 'row-between' }, h('h1', {}, 'Allocate'), state.syncing && h('span', { class: 'muted' }, 'Updating fixtures from Play Cricket…')),
       state.error && h('p', { class: 'notice warn' }, state.error, ' ', h('button', { class: 'link', type: 'button', onclick: () => sync(true) }, 'Try again')),
       shown.sets.map((set, i) => [i > 0 && h('hr', { class: 'set-break' }), h('div', { class: 'cards' }, set.map(tile))]),
       COMPS.some(c => !currentRound(state.rounds, c.key, today)) && h('div', { class: 'cards' }, [...COMPS].sort((a, b) => TILE_ORDER.indexOf(a.key) - TILE_ORDER.indexOf(b.key)).filter(c => !currentRound(state.rounds, c.key, today)).map(empty)),
@@ -376,7 +376,7 @@ export async function viewSeasonAvailability(ctx) {
   const today = todayLocal();
   const season = await store.getSeason();
   if (!season || !season.calendar || !season.calendar.length) {
-    return h('div', {}, h('h1', {}, 'Availability'), h('p', { class: 'notice' }, 'No season dates yet. They load from Play Cricket when you open Rounds.'));
+    return h('div', {}, h('h1', {}, 'Availability'), h('p', { class: 'notice' }, 'No season dates yet. They load from Play Cricket when you open Allocate.'));
   }
   const seasonId = season.id || 'manual';
   const [umpires, availList] = await Promise.all([store.listUmpires(), store.listAvailability(seasonId)]);
@@ -528,41 +528,63 @@ export async function viewReport(ctx, rid) {
 
 export async function viewUmpires(ctx) {
   const { store } = ctx;
-  let umpires = await store.listUmpires();
+  let members = await store.listUmpires();
   const wrap = h('div');
   const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { console.error(e); toast(e.message || String(e), 'err'); } };
 
   const draw = () => {
-    umpires.sort((a, b) => Number(a.active) - Number(b.active) || a.name.localeCompare(b.name));
-    const save = (u, patch) => guard(async () => { Object.assign(u, patch); await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() }); draw(); })();
-    const field = (u, key, ph = '') => h('input', { value: u[key] || '', placeholder: ph, onchange: e => save(u, { [key]: e.target.value.trim() }) });
-    const add = h('textarea', { rows: 5, placeholder: 'One umpire per line:\nName, email, mobile (optional)\nJ Smith, j.smith@example.com, 0400 000 000' });
-    const addBtn = h('button', { class: 'btn primary', type: 'button' }, 'Add umpires');
+    members.sort((a, b) => Number(a.active) - Number(b.active) || compareMembers(a, b));
+    // Changing either name part also updates `name`, which is what the board and reports show.
+    // Editing a field saves quietly; only approving redraws, so a row never jumps while it is being edited.
+    const save = (u, patch, redraw = false) => guard(async () => {
+      Object.assign(u, patch);
+      const { firstName, lastName } = nameParts(u);
+      Object.assign(u, { firstName, lastName, name: fullName(firstName, lastName) || u.name });
+      await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
+      if (redraw) draw();
+    })();
+    const field = (u, key, { type = 'text', cls = '', ph = '', value } = {}) =>
+      h('input', { type, class: cls, value: value !== undefined ? value : (u[key] || ''), placeholder: ph, 'aria-label': key,
+        onchange: e => save(u, { [key]: e.target.value.trim() }) });
+
+    const add = h('textarea', { rows: 5, placeholder: 'One member per line:\nFirst name, Last name, email, mobile (optional)\nJane, Smith, j.smith@example.com, 0400 000 000' });
+    const addBtn = h('button', { class: 'btn primary', type: 'button' }, 'Add members');
     addBtn.onclick = busy(addBtn, async () => {
       const lines = add.value.split('\n').map(l => l.trim()).filter(Boolean);
       let added = 0; const bad = [];
       for (const line of lines) {
-        const [name, email, phone = ''] = line.split(/[,\t]/).map(s => s.trim());
-        const key = emailKey(email);
-        if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(key)) { bad.push(line); continue; }
-        if (umpires.some(u => u.email === key)) continue;
-        const u = { pid: newPid(), email: key, name, phone, active: true, updatedAt: new Date().toISOString() };
-        await store.saveUmpire(u); umpires.push(u); added++;
+        const parts = line.split(/[,\t]/).map(s2 => s2.trim());
+        const at = parts.findIndex(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));    // names before the email, mobile after
+        const key = at < 0 ? '' : emailKey(parts[at]);
+        const firstName = at > 0 ? parts[0] : '';
+        const lastName = at > 1 ? parts.slice(1, at).join(' ') : '';
+        if (!key || !firstName) { bad.push(line); continue; }
+        if (members.some(u => u.email === key)) continue;
+        const u = { pid: newPid(), email: key, firstName, lastName, name: fullName(firstName, lastName),
+          phone: parts[at + 1] || '', dob: '', address: '', active: true, updatedAt: new Date().toISOString() };
+        await store.saveUmpire(u); members.push(u); added++;
       }
-      toast(`${added} umpire(s) added${bad.length ? `; couldn't read ${bad.length} line(s)` : ''}`, bad.length ? 'err' : 'ok');
+      toast(`${added} member(s) added${bad.length ? `; couldn't read ${bad.length} line(s)` : ''}`, bad.length ? 'err' : 'ok');
       draw();
     });
-    const pending = umpires.filter(u => !u.active);
+
+    const pending = members.filter(u => !u.active);
+    const COLS = ['Active', 'First name', 'Last name', 'D.O.B', 'Address', 'Email', 'Mobile'];
     setChildren(wrap,
-      h('div', { class: 'row-between' }, h('h1', {}, 'Umpires'), h('a', { class: 'btn', href: '#/admin' }, '← Rounds')),
-      pending.length > 0 && h('p', { class: 'notice warn' }, `${pending.length} umpire(s) are waiting for approval. Tick "Active" to approve them.`),
-      h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
-        h('thead', {}, h('tr', {}, ['Active', 'Name', 'Email', 'Mobile'].map(c => h('th', {}, c)))),
-        h('tbody', {}, umpires.map(u => h('tr', { class: u.active ? '' : 'needs' },
-          h('td', {}, h('input', { type: 'checkbox', checked: !!u.active, 'aria-label': 'Active', onchange: e => save(u, { active: e.target.checked }) })),
-          h('td', {}, field(u, 'name')), h('td', { class: 'muted' }, u.email), h('td', {}, field(u, 'phone'))))))),
-      !umpires.length && h('p', { class: 'muted' }, 'No umpires yet. Add some below, or ask them to sign in and fill in their details.')),
-      h('div', { class: 'card' }, h('h2', {}, 'Add umpires'), h('p', { class: 'muted' }, 'Paste your existing list (for example from the Google Form responses). Added umpires are active straight away and can sign in with that email address.'), add, addBtn));
+      h('div', { class: 'row-between' }, h('h1', {}, 'Members'), h('a', { class: 'btn', href: '#/admin' }, '\u2190 Allocate')),
+      pending.length > 0 && h('p', { class: 'notice warn' }, `${pending.length} member(s) are waiting for approval. Tick "Active" to approve them.`),
+      h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'board members' },
+        h('thead', {}, h('tr', {}, COLS.map(c => h('th', {}, c)))),
+        h('tbody', {}, members.map(u => { const n = nameParts(u); return h('tr', { class: u.active ? '' : 'needs' },
+          h('td', {}, h('input', { type: 'checkbox', checked: !!u.active, 'aria-label': 'Active', onchange: e => save(u, { active: e.target.checked }, true) })),
+          h('td', {}, field(u, 'firstName', { cls: 'in-sm', value: n.firstName })),
+          h('td', {}, field(u, 'lastName', { cls: 'in-sm', value: n.lastName })),
+          h('td', {}, field(u, 'dob', { type: 'date', cls: 'in-dob' })),
+          h('td', {}, field(u, 'address', { cls: 'in-addr', ph: 'Street, suburb' })),
+          h('td', { class: 'muted' }, u.email),
+          h('td', {}, field(u, 'phone', { cls: 'in-sm' }))); })))),
+      !members.length && h('p', { class: 'muted' }, 'No members yet. Add some below, or send them the link from Settings so they can sign in and fill in their own details.')),
+      h('div', { class: 'card' }, h('h2', {}, 'Add members'), h('p', { class: 'muted' }, 'Paste your existing list (for example from the Google Form responses). Added members are active straight away and can sign in with that email address. They can fill in their own date of birth and address.'), add, addBtn));
   };
   draw();
   return wrap;
