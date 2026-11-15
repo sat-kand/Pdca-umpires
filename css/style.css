@@ -181,3 +181,6 @@ dialog.modal h2 { margin: 0 0 .25rem; }
 button.chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; }
 .small { font-size: .8rem; }
 .summary { align-items: center; }
+.past-rounds { margin-top: 1.5rem; } .past-rounds summary { cursor: pointer; font-weight: 600; }
+.past-row { display: flex; flex-wrap: wrap; gap: .4rem .9rem; align-items: center; text-decoration: none; color: inherit; }
+.past-row strong { min-width: 6.5rem; }

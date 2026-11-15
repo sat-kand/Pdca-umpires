@@ -351,6 +351,26 @@ with sync_playwright() as p:
     check("no" in avail_cell("Junior", "junior"), "...but not available for the Junior game the same day")
     page.click("a.tab:has-text('All rounds')")
 
+    print("Admin: past allocations stay available")
+    page.goto(BASE + "#/admin")
+    page.wait_for_selector(".tile-round")
+    check(page.locator(".past-rounds").count() == 0, "no past allocations yet")
+    page.evaluate("""() => { const k = 'pdca-umpires-demo-v1'; const db = JSON.parse(localStorage.getItem(k)); const r = db.rounds['senior-' + Object.keys(db.rounds).filter(i => i.startsWith('senior-')).sort()[0].slice(7)];
+        r.start = '2026-01-03'; r.end = '2026-01-10'; r.dates = ['2026-01-03', '2026-01-10']; localStorage.setItem(k, JSON.stringify(db)); }""")
+    page.reload()
+    page.wait_for_selector(".past-rounds")
+    check("Past allocations (1)" in page.locator(".past-rounds summary").inner_text(), "a finished, published round is listed under Past allocations")
+    page.click(".past-rounds summary")
+    check("3/10 JAN" in page.locator(".past-row").inner_text().upper() and "Published" in page.locator(".past-row").inner_text(), "it shows its dates, competition, slots filled and Published")
+    page.click(".past-row")
+    page.wait_for_selector(".report-table")
+    check(page.locator(".report-table tbody tr").count() == 13, "opening it shows the final allocation report")
+    page.evaluate("""() => { const k = 'pdca-umpires-demo-v1'; const db = JSON.parse(localStorage.getItem(k)); const id = Object.keys(db.rounds).filter(i => i.startsWith('senior-')).sort()[0]; const r = db.rounds[id];
+        const d = id.slice(7); const e = new Date(d + 'T00:00:00Z'); e.setUTCDate(e.getUTCDate() + 7); r.start = d; r.end = e.toISOString().slice(0, 10); r.dates = [r.start, r.end]; localStorage.setItem(k, JSON.stringify(db)); }""")
+    page.goto(BASE + "#/admin")
+    page.reload()
+    page.wait_for_selector(".tile-round")
+
     print("Admin: season availability dashboard")
     page.click(".nav-link:has-text('Availability')")
     page.wait_for_selector(".season-grid table")

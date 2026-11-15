@@ -105,12 +105,20 @@ export async function viewAdminHome(ctx) {
 
   function draw() {
     const shown = visibleRounds(state.rounds, today, state.more);
+    // Finished rounds that were worked on (something allocated, or published), newest first.
+    const past = state.rounds.filter(r => (r.end || '') < today && (r.published || ((r.stats || {}).filled || 0) > 0)).sort((x, y) => (y.start || '').localeCompare(x.start || ''));
     setChildren(wrap,
       h('div', { class: 'row-between' }, h('h1', {}, 'Rounds'), state.syncing && h('span', { class: 'muted' }, 'Updating fixtures from Play Cricket…')),
       state.error && h('p', { class: 'notice warn' }, state.error, ' ', h('button', { class: 'link', type: 'button', onclick: () => sync(true) }, 'Try again')),
       shown.sets.map((set, i) => [i > 0 && h('hr', { class: 'set-break' }), h('div', { class: 'cards' }, set.map(tile))]),
       COMPS.some(c => !currentRound(state.rounds, c.key, today)) && h('div', { class: 'cards' }, [...COMPS].sort((a, b) => TILE_ORDER.indexOf(a.key) - TILE_ORDER.indexOf(b.key)).filter(c => !currentRound(state.rounds, c.key, today)).map(empty)),
-      shown.hasMore && h('div', { class: 'load-more' }, h('button', { class: 'btn', type: 'button', onclick: () => { state.more++; draw(); } }, 'Load more')));
+      shown.hasMore && h('div', { class: 'load-more' }, h('button', { class: 'btn', type: 'button', onclick: () => { state.more++; draw(); } }, 'Load more')),
+      past.length > 0 && h('details', { class: 'card past-rounds', open: state.pastOpen, ontoggle: ev => { state.pastOpen = ev.currentTarget.open; } },
+        h('summary', {}, `Past allocations (${past.length})`),
+        h('ul', { class: 'plain' }, past.map(r => { const st = r.stats || { needed: 0, filled: 0 };
+          return h('li', {}, h('a', { class: 'past-row', href: `#/admin/round/${r.id}/report` },
+            h('strong', {}, fmtRange(r.dates || [r.start, r.end])), h('span', {}, r.comp ? compLabel(r.comp) : (r.title || '')), h('span', { class: 'muted' }, r.formats || ''),
+            h('span', { class: 'chip' }, `${st.filled}/${st.needed} slots filled`), h('span', { class: 'chip ' + (r.published ? 'ok' : 'warn') }, r.published ? 'Published' : 'Not published'))); }))));
   }
 
   async function sync(force) {
