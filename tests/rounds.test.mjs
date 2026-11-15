@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextRoundWindow, majorityRound, currentRound, needsSync, saveSeasonAndRounds, applyFresh, defaultSlotsFn, STALE_MS, SCHEMA } from '../js/rounds.js';
+import { roundWindows, visibleRounds, nextRoundWindow, majorityRound, currentRound, needsSync, saveSeasonAndRounds, applyFresh, defaultSlotsFn, STALE_MS, SCHEMA } from '../js/rounds.js';
 import { summarise, isPicked } from '../js/logic.js';
 
 const SEN = 'PDCA Senior Competition', JUN = 'PDCA Junior Competition', T20 = 'PDCA T20 Competition';
@@ -157,4 +157,37 @@ test('tile format line uses Play Cricket\'s own match types', async () => {
   assert.equal(formatSummary([{ days: [] }]), '');
   assert.equal(summarise([G('One Day'), G('Two Day')]).formats, 'One Day & Two Day');          // nothing picked: all games
   assert.equal(summarise([G('One Day'), G('Two Day', 1)]).formats, 'Two Day');                  // only the picked grades count
+});
+
+test('roundWindows: a two-day round and the one-day games on its second Saturday are separate windows', () => {
+  const G = (id, days) => ({ id, grade: 'g' + id, roundName: 'Round 1', matchType: days.length > 1 ? 'Two Day' : 'One Day', days: days.map(date => ({ date })) });
+  const games = [G('m', ['2026-11-21', '2026-11-28']), G('w', ['2026-11-28']), G('m2', ['2026-12-05', '2026-12-12'])];
+  const w = roundWindows(games, '2026-11-16');
+  assert.deepEqual(w.map(x => x.from), ['2026-11-21', '2026-11-28', '2026-12-05']);
+  assert.deepEqual(w.map(x => x.games.map(g => g.id)), [['m'], ['w'], ['m2']]);
+  assert.equal(roundWindows(games, '2026-11-16', 2).length, 2);
+  assert.equal(roundWindows(games, '2026-12-20').length, 0);
+});
+
+test('visibleRounds: one tile per competition unless a longer round spans the next week; Load more reveals the rest', () => {
+  const R = (comp, start, end) => ({ id: `${comp}-${start}`, comp, start, end, dates: [start, end] });
+  const rounds = [
+    R('senior', '2026-11-21', '2026-11-28'), R('senior', '2026-11-28', '2026-11-28'), R('senior', '2026-12-05', '2026-12-12'),
+    R('t20', '2026-11-22', '2026-11-22'), R('t20', '2026-11-29', '2026-11-29'),
+    R('junior', '2026-11-21', '2026-11-21'), R('junior', '2026-11-28', '2026-11-28'),
+  ];
+  const ids = v => v.rounds.map(r => r.id);
+  const v0 = visibleRounds(rounds, '2026-11-16');
+  assert.deepEqual(ids(v0), ['senior-2026-11-21', 'senior-2026-11-28', 't20-2026-11-22', 'junior-2026-11-21', 'junior-2026-11-28'], 'Senior has a two-day round, so its second week is shown too (and Junior\'s one-day round starting inside that span)');
+  assert.equal(v0.hasMore, true);
+  const v1 = visibleRounds(rounds, '2026-11-16', 1);
+  assert.ok(ids(v1).includes('t20-2026-11-29') && !ids(v1).includes('senior-2026-12-05'));
+  assert.equal(v1.hasMore, true);
+  const v2 = visibleRounds(rounds, '2026-11-16', 2);
+  assert.ok(ids(v2).includes('senior-2026-12-05'));
+  assert.equal(v2.hasMore, false);
+  // everything one-day: just one tile per competition
+  const oneDay = [R('senior', '2026-11-21', '2026-11-21'), R('senior', '2026-11-28', '2026-11-28'), R('t20', '2026-11-21', '2026-11-21'), R('junior', '2026-11-21', '2026-11-21')];
+  assert.deepEqual(ids(visibleRounds(oneDay, '2026-11-16')), ['senior-2026-11-21', 't20-2026-11-21', 'junior-2026-11-21']);
+  assert.equal(visibleRounds([], '2026-11-16').hasMore, false);
 });

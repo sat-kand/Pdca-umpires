@@ -6,7 +6,7 @@ import {
   slotOptions, recount, summarise, formatSummary, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
   availStatus, compLabel, compKeyOf, roundColumns, COMPS,
 } from './logic.js';
-import { syncFromPlayCricket, refreshRound, currentRound, needsSync } from './rounds.js';
+import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync } from './rounds.js';
 
 const SLOT_CHOICES = [[1, '1 umpire'], [2, '2 umpires']];
 
@@ -81,13 +81,14 @@ export async function viewAdminHome(ctx) {
   const { store } = ctx;
   const today = todayLocal();
   const wrap = h('div');
-  const state = { rounds: [], season: null, syncing: false, error: '' };
+  const state = { rounds: [], season: null, syncing: false, error: '', more: 0 };
 
   async function load() { [state.rounds, state.season] = await Promise.all([store.listRounds(), store.getSeason()]); }
 
-  function tile(c) {
-    const r = currentRound(state.rounds, c.key, today);
-    if (!r) return h('div', { class: 'card comp-tile empty' }, h('h2', {}, c.label), h('p', { class: 'muted' }, state.syncing ? 'Loading fixtures…' : 'No upcoming games'));
+  const empty = c => h('div', { class: 'card comp-tile empty' }, h('h2', {}, c.label), h('p', { class: 'muted' }, state.syncing ? 'Loading fixtures…' : 'No upcoming games'));
+
+  function tile(r) {
+    const c = COMPS.find(x => x.key === r.comp) || { label: compLabel(r.comp) };
     const st = r.stats || { needed: 0, filled: 0 };
     const picked = r.picked || 0;
     return h('div', { class: 'card comp-tile' },
@@ -103,10 +104,12 @@ export async function viewAdminHome(ctx) {
   }
 
   function draw() {
+    const shown = visibleRounds(state.rounds, today, state.more);
     setChildren(wrap,
       h('div', { class: 'row-between' }, h('h1', {}, 'Rounds'), state.syncing && h('span', { class: 'muted' }, 'Updating fixtures from Play Cricket…')),
       state.error && h('p', { class: 'notice warn' }, state.error, ' ', h('button', { class: 'link', type: 'button', onclick: () => sync(true) }, 'Try again')),
-      h('div', { class: 'cards' }, COMPS.map(tile)));
+      h('div', { class: 'cards' }, shown.rounds.map(tile), COMPS.filter(c => !currentRound(state.rounds, c.key, today)).map(empty)),
+      shown.hasMore && h('p', {}, h('button', { class: 'btn', type: 'button', onclick: () => { state.more++; draw(); } }, 'Load more')));
   }
 
   async function sync(force) {

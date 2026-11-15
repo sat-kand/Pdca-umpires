@@ -7,7 +7,7 @@ import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures, mergeFixtures }
 import { buildCalendar, compKeyOf, summarise, COMPS } from './logic.js';
 
 // Bump when the information saved on each round changes shape, so stored rounds are rebuilt on the next visit.
-export const SCHEMA = 3;
+export const SCHEMA = 4;
 export const STALE_MS = 12 * 60 * 60 * 1000;   // refetch the fixtures at most twice a day on its own
 
 export const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
@@ -18,16 +18,26 @@ export function defaultSlotsFn(settings) {
   return g => (settings && settings.slotsByGrade && settings.slotsByGrade[g.grade]) || 0;
 }
 
-// The next round of one competition: every game whose first day falls in the week that starts at
-// the earliest game that has not finished yet. A week, not a round number, because grades in the
-// same competition (Juniors especially) number their rounds differently.
-export function nextRoundWindow(games, today) {
+// A competition's rounds, soonest first. Each is the games whose first day falls in one week, the week starting at the
+// earliest game not yet covered. A week, not a round number, because grades in the same competition (Juniors especially)
+// number their rounds differently. A two-day round and the one-day games that start on its second Saturday are
+// therefore two windows, so each can be given its own umpires.
+export function roundWindows(games, today, max = 12) {
   const live = games.filter(g => !g.removed && lastDay(g) >= today);
-  if (!live.length) return null;
-  const from = live.map(g => g.days[0].date).sort()[0];
-  const to = addDays(from, 6);
-  return { from, to, games: live.filter(g => g.days[0].date >= from && g.days[0].date <= to) };
+  const out = [];
+  let after = '';
+  while (out.length < max) {
+    const rest = live.filter(g => g.days[0].date > after);
+    if (!rest.length) break;
+    const from = rest.map(g => g.days[0].date).sort()[0];
+    const to = addDays(from, 6);
+    out.push({ from, to, games: rest.filter(g => g.days[0].date <= to) });
+    after = to;
+  }
+  return out;
 }
+
+export const nextRoundWindow = (games, today) => roundWindows(games, today, 1)[0] || null;
 
 // 'Round 5' = the round name most of the games share.
 export function majorityRound(games) {
@@ -49,10 +59,35 @@ export function buildRound({ key, win, games, season, compIds = [], source = nul
   };
 }
 
-// The round to show for a competition: the earliest one that has not finished.
-export function currentRound(rounds, key, today) {
-  // Only rounds this module builds (id = '<competition>-<first day>'); older all-competition rounds are ignored.
-  return rounds.filter(r => r.comp === key && new RegExp(`^${key}-\\d{4}-\\d{2}-\\d{2}$`).test(r.id) && (r.end || '') >= today).sort((a, b) => a.start.localeCompare(b.start))[0] || null;
+// Rounds this module builds (id = '<competition>-<first day>') that have not finished; older all-competition rounds are ignored.
+export const upcomingRounds = (rounds, today) => rounds
+  .filter(r => r.comp && new RegExp(`^${r.comp}-\\d{4}-\\d{2}-\\d{2}$`).test(r.id) && (r.end || '') >= today)
+  .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+
+// A competition's soonest unfinished round.
+export const currentRound = (rounds, key, today) => upcomingRounds(rounds, today).find(r => r.comp === key) || null;
+
+// Which round tiles to show. Every competition always shows its next round. A competition with a longer (two-day) round
+// also shows the rounds that start inside that span (a one-day grade playing on the second Saturday), so both weeks can be
+// done at once. Each `more` reveals the next round and whatever starts inside its span.
+export function visibleRounds(rounds, today, more = 0) {
+  const all = upcomingRounds(rounds, today);
+  const first = new Set();
+  const nextOf = new Map();
+  for (const r of all) if (!nextOf.has(r.comp)) { nextOf.set(r.comp, r); first.add(r.id); }
+  if (!all.length) return { rounds: [], hasMore: false };
+  const firstDay = all[0].start;
+  let horizon = [...nextOf.values()].filter(r => r.start <= addDays(firstDay, 6)).map(r => r.end).sort().pop() || firstDay;
+  const shown = h => all.filter(r => first.has(r.id) || r.start <= h);
+  for (let i = 0; i < more; i++) {
+    const hidden = all.filter(r => !shown(horizon).includes(r));
+    if (!hidden.length) break;
+    horizon = [horizon, hidden[0].end].sort().pop();
+  }
+  const vis = shown(horizon);
+  const order = k => COMPS.findIndex(c => c.key === k);
+  vis.sort((a, b) => order(a.comp) - order(b.comp) || a.start.localeCompare(b.start));
+  return { rounds: vis, hasMore: vis.length < all.length };
 }
 
 export function needsSync(season, rounds, today, now = Date.now()) {
@@ -93,16 +128,16 @@ export async function saveSeasonAndRounds(store, { season, games, comps = [], to
   const made = [];
   for (const { key } of COMPS) {
     const list = games.filter(g => compKeyOf(g) === key);
-    const win = list.length ? nextRoundWindow(list, today) : null;
-    if (!win) continue;
     const compIds = comps.filter(c => compKeyOf(c.name) === key).map(c => c.id);
-    const id = `${key}-${win.from}`;
-    const have = existing.find(r => r.id === id);
-    if (have) { await applyFresh(store, have, win.games, settings); made.push(id); continue; }
-    const fullGames = win.games.map(g => ({ ...g, slots: defaultSlotsFn(settings)(g), alloc: {} }));
-    await store.saveRound(buildRound({ key, win, games: fullGames, season, compIds, source }));
-    await store.saveGames(id, fullGames);
-    made.push(id);
+    for (const win of roundWindows(list, today)) {
+      const id = `${key}-${win.from}`;
+      const have = existing.find(r => r.id === id);
+      if (have) { await applyFresh(store, have, win.games, settings); made.push(id); continue; }
+      const fullGames = win.games.map(g => ({ ...g, slots: defaultSlotsFn(settings)(g), alloc: {} }));
+      await store.saveRound(buildRound({ key, win, games: fullGames, season, compIds, source }));
+      await store.saveGames(id, fullGames);
+      made.push(id);
+    }
   }
   return made;
 }
