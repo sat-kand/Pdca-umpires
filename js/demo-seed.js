@@ -4,7 +4,7 @@
 // can always be tried without any setup.
 
 import { newPid, compKeyOf, compareGrades, COMPS } from './logic.js';
-import { addDays, saveSeasonAndRounds } from './rounds.js';
+import { addDays, saveSeasonAndRounds, buildRound } from './rounds.js';
 import { CONFIG } from './config.js';
 import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures } from './fixtures.js';
 
@@ -118,6 +118,34 @@ export async function seedDemo(store, { live = true, fetchFn } = {}) {
 
   const made = await saveSeasonAndRounds(store, { season: seasonInfo, games: all, comps, today: todayIso(), source: real ? undefined : { type: 'demo' } });
   const season = await store.getSeason();
+
+  // Made-up finished rounds on the two Saturdays just gone, so "Past allocations" has something to show.
+  const [N1] = demoDates();
+  const P1 = addDays(N1, -14), P2 = addDays(N1, -7);
+  const ump = [];
+  for (let i = 1; i <= 8; i++) { const u = await store.getUmpire(`umpire${i}@demo.test`); ump.push({ p: u.pid, n: u.name }); }
+  const past = [
+    { key: 'senior', published: true, games: [
+      fx('p1', 'Senior A Grade', 'GLCC Senior Maroon', 'Kings Langley', 'McCredie Park', [P1, P2], 'Round 1'),
+      fx('p2', 'Senior A Grade', 'Wenty Leagues Black', 'Baulkham Hills', 'Monty Bennett', [P1, P2], 'Round 1'),
+      fx('p3', 'Senior A Reserve', 'Parramatta CCC', 'KSS Team 1 Senior', 'Arthur Philip Reserve', [P1, P2], 'Round 1'),
+      fx('p4', 'Senior B01', 'Wenty Leagues', 'Vone Sports Club', 'Darling Street', [P1, P2], 'Round 1')] },
+    { key: 'junior', published: true, games: [
+      fx('p5', 'U14 Blue', 'Winston Hills', 'Baulkham Hills', 'Bella Vista Oval', [P1], 'Round 1', 'One Day', JUN),
+      fx('p6', 'U12 Gold', 'Parramatta', 'GLCC', 'Darling Street', [P1], 'Round 1', 'One Day', JUN)] },
+    { key: 'junior', published: false, games: [
+      fx('p7', 'U14 Blue', 'Baulkham Hills', 'Kings Langley', 'Pearce Reserve', [P2], 'Round 2', 'One Day', JUN),
+      fx('p8', 'U12 Gold', 'GLCC', 'Wenty Leagues', 'Roberta Street Park', [P2], 'Round 2', 'One Day', JUN)] },
+  ];
+  let n = 0;
+  for (const r of past) {
+    r.games.forEach((g, gi) => { for (const d of g.days) if (r.published || gi === 0) g.alloc[d.date] = [ump[(n + gi) % ump.length]]; });
+    n += r.games.length;
+    const from = r.games[0].days[0].date;
+    const round = buildRound({ key: r.key, win: { from, to: addDays(from, 6) }, games: r.games, season: seasonInfo, source: { type: 'demo' } });
+    await store.saveRound({ ...round, published: r.published });
+    await store.saveGames(round.id, r.games);
+  }
 
   // Umpires 1-8 have answered (separately for each competition); 9 and 10 have not replied.
   for (let i = 1; i <= 8; i++) {
