@@ -46,6 +46,9 @@ API = {
     "g-w": [match("m4", "Round 4", "T20", [D2], "Perry", "Gold", "School Oval")],
     "g-j": [match("m5", "Round 2", "One Day", [D1], "Juniors Red", "Juniors Blue", "Kids Park")],
     "g-t": [match("m6", "Round 1", "T20", [D2], "Twenty A", "Twenty B", "Short Oval")],
+    # juniors mix game lengths: day 2 of the U14 two-day round is a one-day round for U13
+    "g-u14": [match("m7", "Round 3", "Two Day", [(sat1 + timedelta(days=14)).isoformat(), (sat1 + timedelta(days=21)).isoformat()], "Fourteen A", "Fourteen B", "Teen Oval")],
+    "g-u13": [match("m8", "Round 4", "One Day", [(sat1 + timedelta(days=21)).isoformat()], "Thirteen A", "Thirteen B", "Teen Oval")],
 }
 API_DOWN = True   # the first "Load sample data" runs with Play Cricket unreachable -> made-up fixtures
 
@@ -61,7 +64,7 @@ def fulfill_api(route):
     elif "competition-seasons" in url:
         body = {"competitionSeasons": [
             {"competition": {"id": "c-sen", "name": "PDCA Senior Competition"}, "grades": [{"id": "g-a", "name": "Senior A Grade"}, {"id": "g-b", "name": "Senior B01"}, {"id": "g-w", "name": "Senior Women"}]},
-            {"competition": {"id": "c-jun", "name": "PDCA Junior Competition"}, "grades": [{"id": "g-j", "name": "U10 Blue North"}]},
+            {"competition": {"id": "c-jun", "name": "PDCA Junior Competition"}, "grades": [{"id": "g-j", "name": "U10 Blue North"}, {"id": "g-u14", "name": "U14 Gold"}, {"id": "g-u13", "name": "U13 Gold"}]},
             {"competition": {"id": "c-t20", "name": "PDCA T20 Competition"}, "grades": [{"id": "g-t", "name": "T20 Mens"}]}]}
     else:
         m = re.search(r"/scores/grades/([^/]+)/matches", url)
@@ -320,7 +323,7 @@ with sync_playwright() as p:
     page.goto(BASE + "#/admin")
     page.wait_for_selector("text=Season dates")
     page.click("button:has-text('Re-sync dates')")
-    page.wait_for_selector("text=4 rounds, 5 dates across 3 competition(s)")
+    page.wait_for_selector("text=5 rounds, 7 dates across 3 competition(s)")
     page.click("summary:has-text('Show the dates umpires see')")
     check(page.locator("li:has-text('Round 2'):has-text('Senior')").count() == 1 and page.locator("li:has-text('Round 9')").count() == 1, "calendar built from fixtures: Senior Round 2 (two days) and Round 9")
     check(page.locator("li:has-text('Junior'):has-text('Round 2')").count() == 1 and page.locator("li:has-text('T20'):has-text('Round 1')").count() == 1, "Junior and T20 rounds are in the calendar too")
@@ -331,7 +334,10 @@ with sync_playwright() as p:
     sign_in(page, "umpire2@demo.test")
     page.wait_for_selector(".tile")
     check(page.locator(".comp-title").all_inner_texts() == ["Senior", "T20", "Junior"], "umpire 2 sees Senior, T20 and Junior sections")
-    check(page.locator(".tile").count() == 4, "umpire 2 sees the four synced rounds")
+    check(page.locator(".tile").count() == 5, "umpire 2 sees the five synced rounds")
+    note = page.locator(".dnote")
+    check(note.count() == 1 and "U14 Round 3 Day 2" in note.first.inner_text() and "U13 Round 4 (one day)" in note.first.inner_text(), f"mixed junior day explains both games: {note.first.inner_text() if note.count() else None}")
+    check(page.locator(".tile:has-text('Round 3') .drow").count() == 2 and page.locator(".dlabel", has_text="Day 2").count() >= 1, "U14 Round 3 still reads Day 1 / Day 2 with one row per date")
     check(page.locator(".tile:has-text('Round 9') .dlabel").first.inner_text() == fmt_day_check(), "single-day round shows just the date, no 'Day 1'")
     check(page.locator(".chip:has-text('Not submitted')").count() == 1, "a fresh season starts as 'Not submitted'")
 

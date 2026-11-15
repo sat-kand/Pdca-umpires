@@ -254,7 +254,7 @@ test('buildCalendar keeps competitions apart even when their dates overlap', () 
   assert.deepEqual(buildCalendar(games), [
     { comp: 'senior', label: 'Round 2', dates: [D1, D2] },
     { comp: 't20', label: 'Round 1', dates: [D2] },
-    { comp: 'junior', label: 'Round 5', dates: [D1] },
+    { comp: 'junior', label: 'Round 5', dates: [D1], notes: { [D1]: 'U14 Round 4 · U10, U12 Round 5' } },
   ]);
 });
 
@@ -265,4 +265,29 @@ test('groupByComp orders Senior, T20, Junior and hides empty competitions; round
   assert.deepEqual(groupByComp(up).map(g => [g.label, g.rounds.length]), [['Senior', 1], ['Junior', 1]]);
   const games = [mk('1', 'Senior A Grade', 'A', 'B', [D1, D2]), mk('2', 'U12 Gold', 'C', 'D', [D1], 1, {}, { comp: JUN }), mk('3', 'x', 'C', 'D', [D1], 1, {}, { removed: true, comp: T20C })];
   assert.deepEqual(roundColumns(games).map(c => c.key), [availKey('senior', D1), availKey('junior', D1), availKey('senior', D2)]);
+});
+
+test('juniors: day 2 of a two-day U14 round that is a one-day round for U13 is explained on that date', () => {
+  const [X, Y, Z] = ['2026-11-21', '2026-11-28', '2026-12-05'];
+  const j = (id, grade, days, roundName) => mk(id, grade, 'A', 'B', days, 1, {}, { comp: JUN, roundName });
+  const games = [
+    j('1', 'U14 Blue North', [X, Y], 'Round 3'),
+    j('2', 'U14 Red South', [X, Y], 'Round 3'),
+    j('3', 'U13 Gold', [Y], 'Round 4'),
+    j('4', 'U13 Silver', [Y], 'Round 4'),
+    j('5', 'U13 Gold', [Z], 'Round 5'),
+  ];
+  const cal = buildCalendar(games);
+  assert.deepEqual(cal, [
+    { comp: 'junior', label: 'Round 3', dates: [X, Y], notes: { [Y]: 'U14 Round 3 Day 2 · U13 Round 4 (one day)' } },
+    { comp: 'junior', label: 'Round 5', dates: [Z] },
+  ]);
+  const up = upcomingCalendar(cal, X);
+  assert.equal(up[0].rows[0].note, undefined);                       // Day 1 is just U14
+  assert.equal(up[0].rows[1].note, 'U14 Round 3 Day 2 · U13 Round 4 (one day)');
+});
+
+test('seniors do not get date notes even when Women play one-day games on a Senior day', () => {
+  const games = [mk('1', 'Senior A Grade', 'A', 'B', [D1, D2]), mk('2', 'Senior Women', 'C', 'D', [D2], 1, {}, { roundName: 'Round 4' })];
+  assert.deepEqual(buildCalendar(games), [{ comp: 'senior', label: 'Round 2', dates: [D1, D2] }]);
 });

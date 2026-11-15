@@ -128,7 +128,7 @@ export async function viewMy(ctx) {
         const yes = optBtn(key, 'yes', 'Available'), no = optBtn(key, 'no', 'Not available');
         buttons[key] = [['yes', yes], ['no', no]];
         yes.classList.toggle('on', days[key] === 'yes'); no.classList.toggle('on', days[key] === 'no');
-        return h('div', { class: 'drow' }, h('span', { class: 'dlabel' }, r.of > 1 ? `Day ${r.dayNo} · ${fmtDay(r.date)}` : fmtDay(r.date)), h('div', { class: 'opts' }, yes, no));
+        return h('div', { class: 'drow' }, h('span', { class: 'dlabel' }, r.of > 1 ? `Day ${r.dayNo} · ${fmtDay(r.date)}` : fmtDay(r.date), r.note && h('small', { class: 'dnote' }, r.note)), h('div', { class: 'opts' }, yes, no));
       })));
     return h('div', { class: 'comp-section' }, h('div', { class: 'row-between comp-head' }, h('h2', { class: 'comp-title' }, c.label), markAll), tiles);
   });
