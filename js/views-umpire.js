@@ -85,6 +85,13 @@ export async function viewMy(ctx) {
   // How this member umpires: give their availability for the officer to allocate, choose games
   // themselves (player umpire), or both. Their chosen games are saved with their availability.
   const modes = { regular: true, player: !!(existing && (existing.picks || []).length), ...((existing && existing.modes) || {}) };
+  // Which competitions they give availability for. Before they have said, the ones they have
+  // answered in, or all of them for someone new.
+  const ALL_COMPS = ['senior', 'junior', 't20'];
+  if (!Array.isArray(modes.comps)) {
+    const answered = ALL_COMPS.filter(k => Object.keys((existing && existing.days) || {}).some(x => x.startsWith(k + ':')));
+    modes.comps = answered.length ? answered : [...ALL_COMPS];
+  }
   let picks = ((existing && existing.picks) || []).filter(p => PLAYER_UMPIRE_COMPS.includes(p.comp));
 
   const saveAvailability = () => store.saveAvailability({
@@ -211,6 +218,11 @@ export async function viewMy(ctx) {
     const roundsHere = lists.filter(l => l.comp === ui.comp);
     if (!roundsHere.some(l => l.roundId === ui.round)) ui.round = (roundsHere[0] || {}).roundId || '';
     const list = roundsHere.find(l => l.roundId === ui.round);
+    const gradesHere = list ? [...new Set(list.games.map(g => g.grade))].sort(compareGrades) : [];
+    if (ui.grade && !gradesHere.includes(ui.grade)) ui.grade = '';
+    const gradeSel = h('select', { 'aria-label': 'Grade', onchange: e => { ui.grade = e.target.value; drawPlayer(); } },
+      h('option', { value: '' }, 'All grades'),
+      gradesHere.map(gr => h('option', { value: gr, selected: gr === ui.grade }, gr)));
 
     const compSel = h('select', { 'aria-label': 'Competition', onchange: e => { ui.comp = e.target.value; ui.round = ''; drawPlayer(); } },
       compsHere.map(k => h('option', { value: k, selected: k === ui.comp }, compLabel(k))));
@@ -246,25 +258,46 @@ export async function viewMy(ctx) {
       lists.length
         ? h('div', { class: 'chooser' },
           h('h3', {}, 'Choose a Senior game'),
-          h('div', { class: 'chooser-pick' }, compsHere.length > 1 && compSel, roundSel),
-          list && h('ul', { class: 'plain pick-list' }, [...list.games].sort((a, b) => compareGrades(a.grade, b.grade) || a.home.name.localeCompare(b.home.name))
+          h('div', { class: 'chooser-pick' }, compsHere.length > 1 && compSel, roundSel, gradeSel),
+          list && h('ul', { class: 'plain pick-list' }, [...list.games].filter(g => !ui.grade || g.grade === ui.grade)
+            .sort((a, b) => compareGrades(a.grade, b.grade) || a.home.name.localeCompare(b.home.name))
             .filter(g => g.days.some(d => d.date >= today)).map(gameRow)))
         : h('p', { class: 'muted' }, 'No fixtures are available to choose from yet.'));
   }
+
+  const compBox = key => {
+    const cb = h('input', { type: 'checkbox', checked: modes.comps.includes(key), 'aria-label': compLabel(key) });
+    cb.onchange = () => {
+      const had = Object.keys(days).filter(k => k.startsWith(key + ':')).length;
+      if (!cb.checked && had && !confirm(`Your ${compLabel(key)} answers will be cleared when you save. Carry on?`)) { cb.checked = true; return; }
+      modes.comps = ALL_COMPS.filter(k => (k === key ? cb.checked : modes.comps.includes(k)));
+      dirty = true;
+      drawModes();
+      drawStatus();
+    };
+    return h('label', { class: 'comp-pick' + (cb.checked ? ' on' : '') }, cb, compLabel(key));
+  };
 
   function drawModes() {
     setChildren(modeCard,
       h('div', { class: 'row-between' }, h('h2', {}, 'How I will umpire'), statusChip),
       modeBox('regular', 'Give my availability', 'The appointments officer gives me games on the days I am free.'),
+      modes.regular && h('div', { class: 'comp-picks' }, h('span', { class: 'muted' }, 'For'), ALL_COMPS.filter(k => compsOffered.includes(k)).map(compBox)),
+      modes.regular && !modes.comps.some(k => compsOffered.includes(k)) && h('p', { class: 'notice warn' }, 'Tick at least one competition.'),
       modeBox('player', 'Choose my own games (player umpire)', 'Pick any Senior round, grade or fixture you want to umpire.'),
       !modes.regular && !modes.player && h('p', { class: 'notice warn' }, 'Tick one or both to give your availability.'));
-    card.hidden = !modes.regular;
+    card.hidden = !modes.regular || !modes.comps.some(k => compsOffered.includes(k));
+    for (const [k, el] of Object.entries(sectionEl)) el.hidden = !modes.comps.includes(k);
+    const n = modes.comps.filter(k => compsOffered.includes(k)).length;
+    availIntro.textContent = 'Tap an answer for each date, then Save.' + (n > 1 ? ' Each competition is answered separately.' : '');
     drawPlayer();
   }
 
   // ---- availability
   const comps = season ? upcomingDates(season.calendar, today) : [];
-  const shown = comps.flatMap(keysOf);
+  const compsOffered = comps.map(c => c.comp);
+  const sectionEl = {};
+  const availIntro = h('p', { class: 'muted' });
   const card = h('section', { class: 'card' });
   const statusChip = h('span', { class: 'chip' });
   if (!season) {
@@ -277,7 +310,7 @@ export async function viewMy(ctx) {
   drawStatus = () => {
     chip.className = 'chip ' + (dirty ? 'warn' : saved ? 'ok' : 'warn');
     chip.textContent = dirty ? 'Unsaved changes' : saved ? '✓ Submitted' : 'Not submitted';
-    const left = shown.filter(d => !days[d]).length;
+    const left = comps.filter(c => modes.comps.includes(c.comp)).flatMap(keysOf).filter(d => !days[d]).length;
     const parts = [];
     if (modes.regular) parts.push(left ? `${left} date${left > 1 ? 's' : ''} not answered yet` : 'All dates answered');
     if (modes.player) parts.push(`${picks.length} game${picks.length === 1 ? '' : 's'} chosen`);
@@ -310,12 +343,16 @@ export async function viewMy(ctx) {
       ? c.rounds.map(g => h('div', { class: 'tile' }, h('h3', {}, g.label),
           g.rows.map(r => row(r.date, r.of > 1 ? `Day ${r.dayNo} · ${fmtDay(r.date)}` : fmtDay(r.date)))))
       : byMonth(c.dates).map(m => h('div', { class: 'tile' }, h('h3', {}, m.month), m.dates.map(date => row(date, fmtDay(date)))));
-    return h('div', { class: 'comp-section' }, h('div', { class: 'row-between comp-head' }, h('h2', { class: 'comp-title' }, c.label), markAll), tiles);
+    return (sectionEl[c.comp] = h('div', { class: 'comp-section' }, h('div', { class: 'row-between comp-head' }, h('h2', { class: 'comp-title' }, c.label), markAll), tiles));
   });
 
   const saveBtn = h('button', { class: 'btn primary', type: 'button' }, 'Save');
   saveBtn.onclick = busy(saveBtn, async () => {
     const before = { ...((existing && existing.days) || {}), ...savedDays };
+    if (modes.regular) {
+      const keep = new Set((modes.player ? picks : []).flatMap(p => p.dates.map(d => availKey(p.comp, d))));
+      for (const k of Object.keys(days)) if (!modes.comps.includes(k.split(':')[0]) && !keep.has(k)) delete days[k];
+    }
     await saveAvailability();
     Object.assign(savedDays, days);
     saved = true; dirty = false; drawStatus();
@@ -328,7 +365,7 @@ export async function viewMy(ctx) {
 
   setChildren(card,
     h('h2', {}, 'Availability'),
-    h('p', { class: 'muted' }, 'Tap an answer for each date, then Save. Senior, T20 and Junior are separate.'),
+    availIntro,
     sections.length ? sections : h('p', { class: 'muted' }, 'No upcoming dates.'));
   drawModes();
   drawStatus();

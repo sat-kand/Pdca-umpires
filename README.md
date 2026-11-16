@@ -27,8 +27,8 @@ The **Members** page (formerly Umpires) is the association's list of people. Eac
 
 A member can umpire in two ways, and can do both:
 
-- **Give my availability** — answer each date, and the appointments officer gives them games.
-- **Choose my own games (player umpire)** — Senior games only, as PDCA allows player umpires in the Senior competition alone: pick a round, then any game in it (Day 1, Day 2 or both days of a two-day game). Choosing a game marks them available that day. One game per competition per day.
+- **Give my availability** — tick the competitions they umpire (Senior, Junior, T20, any mix), answer each date for those, and the appointments officer gives them games. Competitions they don't tick are hidden from the form, any old answers for them are cleared on save, and the officer's Availability page doesn't count them as missing.
+- **Choose my own games (player umpire)** — Senior games only, as PDCA allows player umpires in the Senior competition alone: pick a round, narrow it to a grade if they like, then choose any game in it (Day 1, Day 2 or both days of a two-day game). Choosing a game marks them available that day. One game per competition per day.
 
 Both are saved with the one **Save** button. When the appointments officer next opens **Allocate** or an **Assign** board, each new choice is put on the board: the game is turned on (so its grade shows as selected for that round) and the member's name is filled in with a **Player umpire** tag. The report and PDF show them as `NAME (PLAYER UMPIRE)`. If the game already has an umpire, a second place is opened; if both places are taken, the game is flagged instead. If a member gives a game back, their name comes off again — unless the officer has already put someone else there, in which case the officer's choice stands. Members choose from a list of each upcoming round's games (`orgs/{id}/fixtures`), which never shows who has been allocated.
 

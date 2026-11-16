@@ -533,7 +533,9 @@ export async function viewSeasonAvailability(ctx) {
     const st = (u, d) => availStatus(by, u, ui.comp, d);
     const answered = u => (by[u.email] && by[u.email].days && Object.keys(by[u.email].days).some(k => k.startsWith(ui.comp + ':')));
     const mem = members();
-    const missing = mem.filter(u => !answered(u));
+    // Someone who has said they don't do this competition (or only chooses their own games) has nothing to answer here.
+    const optedOut = u => { const m = (by[u.email] || {}).modes; return !!m && (m.regular === false || (Array.isArray(m.comps) && !m.comps.includes(ui.comp))); };
+    const missing = mem.filter(u => !answered(u) && !optedOut(u));
     const emails = missing.map(u => u.email);
     const others = people.filter(u => u.active === false && answered(u));
     const q = ui.q.trim().toLowerCase();
