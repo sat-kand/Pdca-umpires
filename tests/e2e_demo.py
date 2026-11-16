@@ -21,8 +21,15 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
         pass
 
 
-socketserver.TCPServer.allow_reuse_address = True
-httpd = socketserver.TCPServer(("", PORT), Quiet)
+class Server(socketserver.ThreadingTCPServer):       # threaded: two browser contexts can load at once
+    allow_reuse_address = True
+    daemon_threads = True
+
+    def handle_error(self, *a):
+        pass                                          # a browser closing a connection is not a test failure
+
+
+httpd = Server(("", PORT), Quiet)
 threading.Thread(target=httpd.serve_forever, daemon=True).start()
 
 today = date.today()
@@ -107,7 +114,7 @@ def sign_out(page):
 
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path=CHROME, headless=True, args=["--no-sandbox"])
-    ctx = browser.new_context(viewport={"width": 1280, "height": 900})
+    ctx = browser.new_context(viewport={"width": 1280, "height": 900}, accept_downloads=True)
     page = ctx.new_page()
     page.on("console", lambda m: errors.append("console: " + m.text) if m.type == "error" and "ERR_" not in m.text and "Failed to fetch" not in m.text else None)
     page.on("pageerror", lambda e: errors.append("pageerror: " + str(e)))
@@ -267,6 +274,13 @@ with sync_playwright() as p:
     check(page.locator("th", has_text=re.compile("junior", re.I)).count() == 0, "this competition's grid has no Junior columns")
     page.click("a.tab:has-text('Report')")
     page.wait_for_selector(".report-table")
+    check(page.locator("text=Copy report as text").count() == 0 and page.locator("text=Print").count() == 0, "no 'Copy report as text' and nothing about printing")
+    with page.expect_download() as dl:
+        page.click("button:has-text('Download PDF')")
+    pdf = dl.value
+    pdf.save_as("/tmp/report-download.pdf")
+    check(pdf.suggested_filename.endswith(".pdf"), f"Download PDF saves a file ({pdf.suggested_filename})")
+    check(open("/tmp/report-download.pdf", "rb").read(5) == b"%PDF-", "the downloaded file is a real PDF")
     check(page.locator(".report-table tbody tr").count() == 13, "report lists the 13 Senior games")
     check(page.locator(".report-table th:has-text('UMPIRES')").count() == 1, "one report table for the Senior round")
     page.click("a.tab:has-text('Allocate')")
@@ -415,8 +429,12 @@ with sync_playwright() as p:
     page.click(".nav-link:has-text('Members')")
     page.wait_for_selector("table.board")
     check(page.locator("h1").first.inner_text() == "Members", "the Umpires page is now called Members")
-    check(page.locator("table.members thead th").all_inner_texts() == ["ACTIVE", "FIRST NAME", "LAST NAME", "D.O.B", "ADDRESS", "EMAIL", "MOBILE"],
-          "members have a first and last name, date of birth and address")
+    check(page.locator("table.members thead th").all_inner_texts() == ["ACTIVE", "FIRST NAME", "LAST NAME", "D.O.B", "ADDRESS", "EMAIL", "MOBILE", "ACCREDITATION NO."],
+          "members have a first and last name, date of birth, address and accreditation number")
+    acc = page.locator("tr:has-text('umpire1@demo.test') input").nth(6)
+    acc.fill("L2-9001"); acc.blur(); page.wait_for_timeout(250)
+    page.reload(); page.wait_for_selector("table.members")
+    check(page.locator("tr:has-text('umpire1@demo.test') input").nth(6).input_value() == "L2-9001", "the accreditation number is saved")
     check(page.locator("text=1 member(s) are waiting for approval").count() == 1, "officer sees the pending member")
     row = page.locator("tr.needs")
     check(row.locator("input").nth(1).input_value() == "New" and row.locator("input").nth(2).input_value() == "Umpire", "the name they typed is split into the two fields")
@@ -438,11 +456,11 @@ with sync_playwright() as p:
     page.reload()
     page.wait_for_selector("table.members")
     check(page.locator("tr:has-text('newbie@demo.test') input").nth(2).input_value() == "Newman", "an officer can correct a member's name")
-    page.fill("textarea", "Pat, Example, pat@example.com, 0400 000 000\nbad line")
+    page.fill("textarea", "Pat, Example, pat@example.com, 0400 000 000, L3-7782\nbad line")
     page.click("button:has-text('Add members')")
     page.wait_for_selector("td:has-text('pat@example.com')")
     pat = page.locator("tr:has-text('pat@example.com') input")
-    check(pat.nth(1).input_value() == "Pat" and pat.nth(2).input_value() == "Example" and pat.nth(5).input_value() == "0400 000 000", "bulk add splits First name, Last name, email, mobile")
+    check(pat.nth(1).input_value() == "Pat" and pat.nth(2).input_value() == "Example" and pat.nth(5).input_value() == "0400 000 000" and pat.nth(6).input_value() == "L3-7782", "bulk add reads First name, Last name, email, mobile and accreditation number")
     page.goto(BASE + "#/admin/members")
     page.wait_for_selector("table.members")
     check(page.locator("h1").first.inner_text() == "Members", "the old /admin/umpires link still opens it")

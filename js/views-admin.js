@@ -6,6 +6,7 @@ import {
   slotOptions, recount, summarise, formatSummary, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
   availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS,
 } from './logic.js';
+import { saveReportPdf } from './report-pdf.js';
 import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, TILE_ORDER } from './rounds.js';
 
 const SLOT_CHOICES = [[1, '1 umpire'], [2, '2 umpires']];
@@ -475,15 +476,6 @@ export async function viewSeasonAvailability(ctx) {
 // Report + email
 // ---------------------------------------------------------------------------
 
-export function reportText(round, sections) {
-  const out = [round.title, ''];
-  for (const s of sections) {
-    out.push(`${s.label} – ${fmtRange(s.dates)}`);
-    for (const g of s.games) if (!g.removed) out.push(`${gradeShort(g.grade)} | ${g.home.name} v ${g.away.name} | ${g.ground} | ${umpireText(g)}`);
-    out.push('');
-  }
-  return out.join('\n');
-}
 
 export async function viewReport(ctx, rid) {
   const { store } = ctx;
@@ -497,9 +489,12 @@ export async function viewReport(ctx, rid) {
   const link = location.origin + location.pathname;
   const body = `Hi all,\n\nUmpire allocations for ${round.title} are attached/below.\n\nYou can also see your own appointments at ${link}\n\nThanks`;
 
-  const print = h('button', { class: 'btn primary', type: 'button', onclick: () => window.print() }, 'Print / Save as PDF');
+  const heading = roundHeading(round);
+  const save = h('button', { class: 'btn primary', type: 'button', onclick: () => {
+    try { saveReportPdf({ heading, dates: round.dates || [], sections }); toast('PDF saved to your downloads', 'ok'); }
+    catch (e) { console.error(e); toast('Could not make the PDF: ' + (e.message || e), 'err'); }
+  } }, 'Download PDF');
   const copyEmails = h('button', { class: 'btn', type: 'button', onclick: async () => toast((await copyText(emails.join(', '))) ? `${emails.length} email addresses copied` : 'Could not copy', 'ok') }, `Copy umpire emails (${emails.length})`);
-  const copyTable = h('button', { class: 'btn', type: 'button', onclick: async () => toast((await copyText(reportText(round, sections))) ? 'Report text copied' : 'Could not copy', 'ok') }, 'Copy report as text');
   const draft = h('button', { class: 'btn', type: 'button', onclick: async () => {
     const url = `mailto:?bcc=${encodeURIComponent(emails.join(','))}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     if (url.length > 1900) { await copyText(emails.join(', ')); toast('Too many addresses for a draft, so the emails were copied. Paste them into BCC.'); location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; }
@@ -512,8 +507,8 @@ export async function viewReport(ctx, rid) {
     h('div', { class: 'card noprint' },
       st.filled < st.needed && h('p', { class: 'notice warn' }, `${st.needed - st.filled} slot(s) are still unallocated and show as "—" on the report.`),
       !round.published && h('p', { class: 'notice' }, 'This round is not published yet, so umpires cannot see it in the app. Publish it from the Allocate tab.'),
-      h('p', {}, print, ' ', copyTable, ' ', copyEmails, ' ', draft),
-      h('p', { class: 'muted' }, 'Tip: choose "Save as PDF" in the print dialog, then attach the PDF to the email.')),
+      h('p', {}, save, ' ', copyEmails, ' ', draft),
+      h('p', { class: 'muted' }, 'Download the PDF, then attach it to the email draft.')),
     h('div', { class: 'report' }, sections.map(s => h('section', { class: 'report-section' },
       h('h2', {}, `${s.label} – ${fmtRange(s.dates)}`),
       h('table', { class: 'report-table' },
@@ -547,7 +542,7 @@ export async function viewUmpires(ctx) {
       h('input', { type, class: cls, value: value !== undefined ? value : (u[key] || ''), placeholder: ph, 'aria-label': key,
         onchange: e => save(u, { [key]: e.target.value.trim() }) });
 
-    const add = h('textarea', { rows: 5, placeholder: 'One member per line:\nFirst name, Last name, email, mobile (optional)\nJane, Smith, j.smith@example.com, 0400 000 000' });
+    const add = h('textarea', { rows: 5, placeholder: 'One member per line:\nFirst name, Last name, email, mobile, accreditation no. (both optional)\nJane, Smith, j.smith@example.com, 0400 000 000, L1-2284' });
     const addBtn = h('button', { class: 'btn primary', type: 'button' }, 'Add members');
     addBtn.onclick = busy(addBtn, async () => {
       const lines = add.value.split('\n').map(l => l.trim()).filter(Boolean);
@@ -561,7 +556,7 @@ export async function viewUmpires(ctx) {
         if (!key || !firstName) { bad.push(line); continue; }
         if (members.some(u => u.email === key)) continue;
         const u = { pid: newPid(), email: key, firstName, lastName, name: fullName(firstName, lastName),
-          phone: parts[at + 1] || '', dob: '', address: '', active: true, updatedAt: new Date().toISOString() };
+          phone: parts[at + 1] || '', accreditation: parts[at + 2] || '', dob: '', address: '', active: true, updatedAt: new Date().toISOString() };
         await store.saveUmpire(u); members.push(u); added++;
       }
       toast(`${added} member(s) added${bad.length ? `; couldn't read ${bad.length} line(s)` : ''}`, bad.length ? 'err' : 'ok');
@@ -569,7 +564,7 @@ export async function viewUmpires(ctx) {
     });
 
     const pending = members.filter(u => !u.active);
-    const COLS = ['Active', 'First name', 'Last name', 'D.O.B', 'Address', 'Email', 'Mobile'];
+    const COLS = ['Active', 'First name', 'Last name', 'D.O.B', 'Address', 'Email', 'Mobile', 'Accreditation no.'];
     setChildren(wrap,
       h('div', { class: 'row-between' }, h('h1', {}, 'Members'), h('a', { class: 'btn', href: '#/admin' }, '\u2190 Allocate')),
       pending.length > 0 && h('p', { class: 'notice warn' }, `${pending.length} member(s) are waiting for approval. Tick "Active" to approve them.`),
@@ -582,7 +577,8 @@ export async function viewUmpires(ctx) {
           h('td', {}, field(u, 'dob', { type: 'date', cls: 'in-dob' })),
           h('td', {}, field(u, 'address', { cls: 'in-addr', ph: 'Street, suburb' })),
           h('td', { class: 'muted' }, u.email),
-          h('td', {}, field(u, 'phone', { cls: 'in-sm' }))); })))),
+          h('td', {}, field(u, 'phone', { cls: 'in-sm' })),
+          h('td', {}, field(u, 'accreditation', { cls: 'in-sm', ph: 'Umpire accreditation' }))); })))),
       !members.length && h('p', { class: 'muted' }, 'No members yet. Add some below, or send them the link from Settings so they can sign in and fill in their own details.')),
       h('div', { class: 'card' }, h('h2', {}, 'Add members'), h('p', { class: 'muted' }, 'Paste your existing list (for example from the Google Form responses). Added members are active straight away and can sign in with that email address. They can fill in their own date of birth and address.'), add, addBtn));
   };

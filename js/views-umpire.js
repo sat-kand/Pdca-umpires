@@ -33,13 +33,14 @@ export async function viewProfile(ctx) {
   const dob = h('input', { type: 'date', value: existing?.dob || '' });
   const address = h('input', { value: existing?.address || '', placeholder: 'Optional', autocomplete: 'street-address' });
   const phone = h('input', { type: 'tel', value: existing?.phone || '', placeholder: 'Optional', autocomplete: 'tel' });
+  const accreditation = h('input', { value: existing?.accreditation || '', placeholder: 'Optional' });
   const btn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
   return h('form', { class: 'card narrow', onsubmit: busy(btn, async e => {
     e.preventDefault();
     await store.saveUmpire({
       pid: existing?.pid || newPid(), email: S.user.email,
       firstName: first.value.trim(), lastName: last.value.trim(), name: fullName(first.value, last.value),
-      dob: dob.value, address: address.value.trim(), phone: phone.value.trim(),
+      dob: dob.value, address: address.value.trim(), phone: phone.value.trim(), accreditation: accreditation.value.trim(),
       active: existing ? existing.active : S.isAdmin,
       updatedAt: new Date().toISOString(),
     });
@@ -53,6 +54,7 @@ export async function viewProfile(ctx) {
   h('label', {}, 'Date of birth', dob),
   h('label', {}, 'Address', address),
   h('label', {}, 'Mobile', phone),
+  h('label', {}, 'Umpire accreditation number', accreditation),
   h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to your appointments officers.'),
   btn);
 }
