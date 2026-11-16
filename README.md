@@ -30,7 +30,7 @@ The **Members** page (formerly Umpires) is the association's list of people. Eac
 
 ### Turning down an appointment
 
-A published appointment on the umpire's page carries an **I can't do this** button. Doing nothing means they are standing: there is no "accept". Pressing it marks them **Not available** for that day in the same competition, which runs the withdrawal below, and the appointment then shows "You said you can't do this".
+A published appointment on the umpire's page carries an **I can't do this** button. Doing nothing means they are standing: there is no "accept". Pressing it marks them **Not available** for that day in the same competition, which runs the withdrawal below, and the appointment is then marked "You said you can't do this".
 
 ### When an umpire pulls out after a round is published
 

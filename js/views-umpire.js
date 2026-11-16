@@ -136,7 +136,7 @@ export async function viewMy(ctx) {
         h('div', {}, h('span', { class: 'chip' }, compLabel(compKeyOf(g))), ' ', h('span', { class: 'chip grade' }, gradeShort(g.grade)), `${g.home.name} v ${g.away.name}`),
         h('div', { class: 'muted' }, link ? h('a', { href: link, target: '_blank', rel: 'noopener' }, g.ground || 'Ground TBC') : (g.ground || 'Ground TBC')),
         h('div', { class: 'appt-action' }, declined
-          ? h('span', { class: 'chip warn' }, "You said you can't do this \u2014 the officer has been told")
+          ? h('span', { class: 'chip warn' }, "You said you can't do this")
           : btn));
     }));
   }
@@ -144,7 +144,6 @@ export async function viewMy(ctx) {
   if (mine.length) {
     drawAppointments();
     root.append(h('section', { class: 'card' }, h('h2', {}, 'My appointments'),
-      h('p', { class: 'muted' }, "Nothing to do if you can umpire these \u2014 you are expected to be there. Press \"I can't do this\" only if you cannot."),
       apptList));
   }
 

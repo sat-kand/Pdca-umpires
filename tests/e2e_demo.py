@@ -532,13 +532,13 @@ with sync_playwright() as p:
     sign_out(page)
     sign_in(page, appt["email"])
     page.wait_for_selector(".appt")
-    check(page.locator(".appt").count() >= 1 and "you are expected to be there" in page.inner_text(".card:has(.appt)"), "appointments say nothing is needed if the umpire can play")
+    check(page.locator(".appt").count() >= 1, "the umpire sees their appointments")
     row = page.locator(".appt").first
     check(row.locator("button:has-text(\"I can't do this\")").count() == 1, "each appointment has an 'I can't do this' button")
     appt_date = row.locator(".appt-date strong").inner_text()
     row.locator("button:has-text(\"I can't do this\")").click()
     page.wait_for_selector(".appt.declined")
-    check("the officer has been told" in page.locator(".appt.declined").first.inner_text(), "turning it down is confirmed on the appointment")
+    check("You said you can't do this" in page.locator(".appt.declined").first.inner_text(), "turning it down is marked on the appointment")
     now_mail = page.evaluate("() => Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.mail || {})")
     check(len(now_mail) == before_mail + 1 and appt["name"] in now_mail[-1]["message"]["subject"], "the officer is emailed")
     sec = page.locator(f".comp-section:has(h2:has-text('Senior')) .drow:has-text('{appt_date}')").first
