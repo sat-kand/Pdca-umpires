@@ -295,14 +295,14 @@ with sync_playwright() as p:
     check(open("/tmp/report-download.pdf", "rb").read(5) == b"%PDF-", "the downloaded file is a real PDF")
     check(page.locator(".report-table tbody tr").count() == 13, "report lists the 13 Senior games")
     check(page.locator(".report-table th:has-text('UMPIRES')").count() == 1, "one report table for the Senior round")
-    page.click("a.tab:has-text('Allocate')")
+    page.click("a.tab:has-text('Assign')")
     page.wait_for_selector("table.board")
-    check(page.locator(".publish .chip").inner_text() == "Not published yet" and page.locator(".publish button:has-text('Publish')").count() == 1
-          and page.locator(".publish input[type=checkbox]").count() == 0, "publishing is a button with the state beside it, not a tick box")
+    check(page.locator(".publish button").first.inner_text() == "Publish" and page.locator(".publish input[type=checkbox]").count() == 0,
+          "publishing is one button, not a tick box")
     page.click(".publish button:has-text('Publish')")
-    page.wait_for_selector(".publish .chip.ok")
-    check(page.locator(".publish .chip").inner_text().startswith("Published ") and page.locator("button:has-text('Unpublish')").count() == 1,
-          "once published it says when, and offers Unpublish")
+    page.wait_for_selector(".publish button:disabled")
+    check(page.locator(".publish button").first.inner_text().startswith("Published ") and page.locator("button:has-text('Unpublish')").count() == 1,
+          "once published the button says when, and Unpublish appears")
     check(page.locator(".publish button").first.is_disabled(), "the Publish button is spent until something changes")
 
     sel0 = page.locator("select.slot").first
@@ -310,8 +310,7 @@ with sync_playwright() as p:
     free = sel0.evaluate("s => [...s.options].map(o => o.value).filter(Boolean)")
     sel0.select_option(value=("" if was else free[0]))
     page.wait_for_timeout(350)
-    check(page.locator(".publish .chip").inner_text() == "Changed since it was published" and page.locator(".publish button:has-text('Re-publish')").count() == 1,
-          "changing an allocation after publishing asks for a re-publish")
+    check(page.locator(".publish button").first.inner_text() == "Re-publish", "changing an allocation after publishing asks for a re-publish")
     page.click("a.tab:has-text('All rounds')")
     page.wait_for_selector(".comp-tile")
     check("Changes to publish" in tile("Senior").inner_text(), "the tile says so too")
@@ -320,8 +319,8 @@ with sync_playwright() as p:
     page.locator("select.slot").first.select_option(value=was)
     page.wait_for_timeout(350)
     page.click(".publish button:has-text('Re-publish')")
-    page.wait_for_selector(".publish .chip.ok")
-    check(page.locator(".publish .chip").inner_text().startswith("Published "), "re-publishing clears the warning")
+    page.wait_for_selector(".publish button:disabled")
+    check(page.locator(".publish button").first.inner_text().startswith("Published "), "re-publishing clears the warning")
     page.click("a.tab:has-text('All rounds')")
     page.wait_for_selector(".comp-tile")
     check("Published" in tile("Senior").inner_text() and "Changes to publish" not in tile("Senior").inner_text(), "and the tile is back to Published")
@@ -543,6 +542,64 @@ with sync_playwright() as p:
     page.wait_for_selector("table.members")
     row1 = page.locator("tr:has-text('umpire1@demo.test')")
     check(row1.locator("select").input_value() == "Junior member" and "$25" in row1.inner_text(), "the choice is saved and the type's fee is shown")
+
+    print("Availability: import a season from a spreadsheet")
+    page.click(".nav-link:has-text('Availability')")
+    page.wait_for_selector(".season-grid")
+    before_rows = page.locator(".season-grid tbody tr").count()
+    page.click(".import-card summary")
+    cal = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.season.calendar.filter(e => (e.comp || 'senior') === 'senior').slice(0, 2)")
+    def heading(entry):
+        ds = [date.fromisoformat(x) for x in entry["dates"]]
+        return f"{entry.get('label', '')} - " + " & ".join(f"{d.day}th" for d in ds) + " " + ds[0].strftime("%b")
+    sheet = ("Name\tEmail\t" + "\t".join(heading(e) for e in cal)
+             + "\nDemo Umpire 10\tumpire10@demo.test\tDay 1, Day 2\tNot Available"
+             + "\nSam Casual\tsam.casual@demo.test\tYes\tYes"
+             + "\nNo Address\t\tYes\tYes")
+    page.fill(".import-card textarea", sheet)
+    page.click("button:has-text('Check it')")
+    page.wait_for_selector(".import-out table")
+    out = page.inner_text(".import-out")
+    check(f"{len(cal)} columns matched to dates" in out, "the preview says which columns it matched to dates")
+    check("1 of 3 people matched a member" in out and "Sam Casual" in out and "No Address" in out, "it says who it could not find on the Members list")
+    check("cannot be added because the sheet has no email" in out, "and which of them cannot be added")
+    page.check(".import-card input[type=checkbox]")
+    page.click("button:has-text('Import')")
+    page.wait_for_selector(".toast:has-text('imported')")
+    check("2 imported, 1 added as non-members, 1 skipped" in page.locator(".toast").last.inner_text(), "two are imported and the stranger with an email is added")
+    page.wait_for_selector(".season-grid tr.nonmember")
+    check(page.locator(".season-grid tbody tr").count() == before_rows + 1 and page.locator("tr.nonmember:has-text('Sam Casual')").count() == 1,
+          "the new person is in the sheet, marked Non-member")
+    check("1 non-member" in page.inner_text(".summary"), "the summary counts them separately")
+    d1 = date.fromisoformat(cal[0]["dates"][0]).strftime("%-d")
+    imported = page.evaluate("""() => {
+        const db = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca;
+        return { u10: db.availability['s-2026-27__umpire10@demo.test'] || Object.values(db.availability).find(a => a.email === 'umpire10@demo.test'),
+                 sam: Object.values(db.availability).find(a => a.email === 'sam.casual@demo.test') };
+      }""")
+    first, second = cal[0]["dates"][0], cal[1]["dates"][0]
+    check(imported["u10"]["days"][f"senior:{first}"] == "yes" and imported["u10"]["days"][f"senior:{second}"] == "no",
+          "a member who had answered nothing now has the sheet's answers")
+    check(imported["sam"]["days"][f"senior:{first}"] == "yes", "so does the new non-member")
+
+    print("Allocate: a non-member is offered in a group of their own")
+    page.goto(BASE + "#/admin")
+    page.wait_for_selector(".comp-tile")
+    tile("Senior").locator("a.tile-body").click()
+    page.wait_for_selector("table.board")
+    groups = page.locator("select.slot").first.evaluate("s => [...s.querySelectorAll('optgroup')].map(g => g.label)")
+    check("Available Non-Member" in groups, f"the dropdown has an Available Non-Member group: {groups}")
+    opt = page.locator("select.slot").first.evaluate("s => { const g = [...s.querySelectorAll('optgroup')].find(g => g.label === 'Available Non-Member'); return g ? { text: g.children[0].text, value: g.children[0].value } : null }")
+    check(opt and "Sam Casual" in opt["text"], "with the non-member in it")
+    page.locator("select.slot").first.select_option(value=opt["value"])
+    page.wait_for_timeout(300)
+    check(page.locator(".warn-icon").count() >= 1, "choosing them raises a warning like the others")
+    page.click("details:has-text('Show warnings') summary")
+    check("Not an active member" in page.inner_text("details:has-text('Show warnings')"), "the warning says they are not an active member")
+    page.locator("select.slot").first.select_option(value="")
+    page.wait_for_timeout(300)
+    page.click(".publish button:has-text('Re-publish')")
+    page.wait_for_selector(".publish button:disabled")
 
     print("Umpire turns down an appointment from their own page")
     appt = page.evaluate("""(today) => {

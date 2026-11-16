@@ -9,6 +9,7 @@ import {
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
 import { membershipTypes, feeFor, money, renewalText } from './views-org.js';
+import { planImport, applyImport } from './import-availability.js';
 import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, TILE_ORDER } from './rounds.js';
 
 const SLOT_CHOICES = [[1, '1 umpire'], [2, '2 umpires']];
@@ -16,7 +17,7 @@ const SLOT_CHOICES = [[1, '1 umpire'], [2, '2 umpires']];
 const roundHeading = r => `${r.comp ? compLabel(r.comp) + ' · ' : ''}${r.title}`;
 
 function tabs(rid, active) {
-  const t = [['', 'Allocate'], ['/availability', 'Availability'], ['/report', 'Report & email']];
+  const t = [['', 'Assign'], ['/availability', 'Availability'], ['/report', 'Report & email']];
   return h('nav', { class: 'tabs noprint' }, t.map(([p, label]) =>
     h('a', { class: 'tab' + (active === p ? ' active' : ''), href: `#/admin/round/${rid}${p}` }, label)),
   h('a', { class: 'tab right', href: '#/admin' }, '← All rounds'));
@@ -217,8 +218,8 @@ export async function viewBoard(ctx, rid) {
     const multi = g.days.length > 1;
     // Two-day games: umpires free on every day come first, so one pick can cover both days.
     const GROUPS = multi
-      ? [['both', 'Available both days'], ['ok', 'Available this day only'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']]
-      : [['ok', 'Available'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']];
+      ? [['both', 'Available both days'], ['ok', 'Available this day only'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']]
+      : [['ok', 'Available'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']];
     const label = o => `${o.umpire.name}${o.load ? ` · ${o.load}` : ''}${o.busy ? ' · busy' : ''}`;
     const sel = h('select', { class: 'slot' + (cur ? '' : ' empty'), 'aria-label': `Umpire ${i + 1}, ${gradeShort(g.grade)} ${g.home.name}, ${fmtDay(date)}`,
       onchange: guard(async () => {
@@ -291,8 +292,8 @@ export async function viewBoard(ctx, rid) {
     // Publishing is a button, not a tick box, so the state is always readable:
     // never published → Publish; published and current → Published <when>; changed since → Re-publish.
     const pub = publishState(B.round);
-    const publishBtn = h('button', { class: 'btn ' + (pub.key === 'live' ? '' : 'primary'), type: 'button' },
-      pub.key === 'stale' ? 'Re-publish' : pub.key === 'live' ? 'Published' : 'Publish');
+    const publishBtn = h('button', { class: 'btn ' + (pub.key === 'live' ? '' : 'primary'), type: 'button', title: pub.label },
+      pub.key === 'stale' ? 'Re-publish' : pub.key === 'live' ? pub.label : 'Publish');
     publishBtn.disabled = pub.key === 'live';
     publishBtn.onclick = guard(async () => {
       if (st.filled < st.needed && !confirm(`${st.needed - st.filled} slot(s) are still empty. ${pub.key === 'stale' ? 'Re-publish' : 'Publish'} anyway?`)) return;
@@ -347,10 +348,7 @@ export async function viewBoard(ctx, rid) {
       h('div', { class: 'row-between' }, h('h1', {}, roundHeading(B.round)), h('span', { class: 'muted' }, fmtRange(B.round.dates))),
       tabs(rid, ''),
       h('div', { class: 'card toolbar' },
-        h('div', { class: 'publish' },
-          h('span', { class: 'chip ' + pub.cls }, pub.label),
-          publishBtn,
-          B.round.published && unpublishBtn),
+        h('div', { class: 'publish' }, publishBtn, B.round.published && unpublishBtn),
         h('div', { class: 'actions' }, gradesBtn, autoBtn, updBtn, clearBtn)),
       h('div', { class: 'summary' },
         h('span', { class: 'chip ' + (st.needed && st.filled === st.needed ? 'ok' : 'warn') }, `${st.filled} of ${st.needed} slots filled`),
@@ -423,7 +421,10 @@ export async function viewSeasonAvailability(ctx) {
   const seasonId = season.id || 'manual';
   const [umpires, availList] = await Promise.all([store.listUmpires(), store.listAvailability(seasonId)]);
   const by = Object.fromEntries(availList.map(a => [a.email, a]));
-  const active = umpires.filter(u => u.active).sort((a, b) => a.name.localeCompare(b.name));
+  // Everyone whose availability is held, members first. Only active members can be appointed, so the
+  // rest are marked: they still appear, because their answers came in with the season's import.
+  let people = umpires.slice().sort((a, b) => Number(b.active !== false) - Number(a.active !== false) || compareMembers(a, b));
+  const members = () => people.filter(u => u.active !== false);
   const comps = [...COMPS].sort((a, b) => TILE_ORDER.indexOf(a.key) - TILE_ORDER.indexOf(b.key)).filter(c => season.calendar.some(e => (e.comp || 'senior') === c.key));
   const wrap = h('div');
   const ui = { comp: comps[0].key, past: false, q: '', on: null };       // on = show only umpires available on this date
@@ -431,6 +432,13 @@ export async function viewSeasonAvailability(ctx) {
   const KLASS = { yes: 'ok', no: 'no', none: 'none' };
   const NEXT = { none: 'yes', yes: 'no', no: 'none' };
   const draw = () => setChildren(wrap, build());
+  const reload = async () => {
+    const [us, list] = await Promise.all([store.listUmpires(), store.listAvailability(seasonId)]);
+    people = us.slice().sort((a, b) => Number(b.active !== false) - Number(a.active !== false) || compareMembers(a, b));
+    for (const k of Object.keys(by)) delete by[k];
+    for (const a of list) by[a.email] = a;
+    draw();
+  };
 
   // The officer's change is saved straight away and marked, so it can be told apart from the umpire's own answer.
   async function setCell(u, date, value) {
@@ -444,6 +452,66 @@ export async function viewSeasonAvailability(ctx) {
     by[u.email] = next;
   }
 
+  // Bringing in the spreadsheet an association already keeps, so umpires do not answer twice.
+  function importCard() {
+    const box = h('textarea', { rows: 6, placeholder: 'Paste the sheet here \u2014 heading row first, one umpire per row.\n\nName\tRound 1 - 20th & 27th Sep\tRound 2 - 11th & 18th Oct\nJ Smith\tDay 1, Day 2\tNot Available' });
+    const file = h('input', { type: 'file', accept: '.csv,.tsv,.txt,text/csv,text/plain' });
+    const addNew = h('input', { type: 'checkbox' });
+    const out = h('div', { class: 'import-out' });
+    const previewBtn = h('button', { class: 'btn', type: 'button' }, 'Check it');
+    const importBtn = h('button', { class: 'btn primary', type: 'button' }, 'Import');
+    importBtn.disabled = true;
+    let plan = null;
+
+    file.onchange = async () => { const f = file.files && file.files[0]; if (f) { box.value = await f.text(); preview(); } };
+
+    function preview() {
+      plan = planImport({ text: box.value, comp: ui.comp, season, members: people, availability: Object.values(by) });
+      importBtn.disabled = !!plan.error || !plan.people.length;
+      if (plan.error) { setChildren(out, h('p', { class: 'notice warn' }, plan.error)); return; }
+      const strangers = plan.strangers.map(p => p.name);
+      setChildren(out,
+        h('p', {}, h('strong', {}, `${plan.used.length} column${plan.used.length === 1 ? '' : 's'} matched to dates`), ' \u2014 ',
+          plan.used.map((c, i) => [i ? ', ' : '', `${c.heading.trim()} \u2192 ${c.dates.map(fmtDay).join(' + ')}`])),
+        plan.unmatchedColumns.length > 0 && h('p', { class: 'notice warn' },
+          `No ${compLabel(ui.comp)} dates found for: ${plan.unmatchedColumns.join(', ')}. Those columns are skipped.`),
+        h('p', {}, `${plan.matched} of ${plan.people.length} people matched a member.`),
+        strangers.length > 0 && h('p', { class: 'muted' }, `Not on the Members list: ${strangers.join(', ')}.`,
+          plan.strangers.some(p => !p.email) ? ` ${plan.strangers.filter(p => !p.email).length} of them cannot be added because the sheet has no email address for them.` : ' Tick the box below to add them as non-members.'),
+        h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
+          h('thead', {}, h('tr', {}, ['Name', 'Member', 'Available', 'Not available', 'Not understood'].map(c => h('th', {}, c)))),
+          h('tbody', {}, plan.people.slice(0, 12).map(p => h('tr', {},
+            h('td', {}, p.name),
+            h('td', {}, p.member ? (p.member.active === false ? h('span', { class: 'chip warn' }, 'Non-member') : h('span', { class: 'chip ok' }, 'Member')) : h('span', { class: 'chip warn' }, 'Not found')),
+            h('td', {}, String(p.yes)), h('td', {}, String(p.no)), h('td', {}, p.unknown ? String(p.unknown) : ''))))),
+          plan.people.length > 12 && h('p', { class: 'muted small' }, `\u2026 and ${plan.people.length - 12} more`)));
+    }
+    previewBtn.onclick = preview;
+    box.oninput = () => { importBtn.disabled = true; };
+
+    importBtn.onclick = busy(importBtn, async () => {
+      if (!plan) preview();
+      if (!plan || plan.error) return;
+      if (!confirm(`Import availability for ${plan.people.length} people into ${compLabel(ui.comp)}? Existing answers for these dates are replaced.`)) return;
+      try {
+        const res = await applyImport(store, plan, { comp: ui.comp, season, addStrangers: addNew.checked, newPid });
+        toast(`${res.saved} imported${res.added ? `, ${res.added} added as non-members` : ''}${res.skipped ? `, ${res.skipped} skipped` : ''}${res.noEmail ? ` (${res.noEmail} had no email address)` : ''}`, res.skipped ? 'warn' : 'ok');
+        plan = null;
+        box.value = '';
+        await reload();
+      } catch (e) { console.error(e); toast(e.message || String(e), 'err'); }
+    });
+
+    return h('details', { class: 'card import-card', open: ui.importOpen, ontoggle: e => { ui.importOpen = e.currentTarget.open; } },
+      h('summary', {}, 'Import from a spreadsheet'),
+      h('p', { class: 'muted' }, `Copy the rows out of your own sheet (including the heading row) and paste them here, or choose a CSV file. This replaces ${compLabel(ui.comp)} answers for the dates in the sheet and leaves everything else alone.`),
+      box,
+      h('p', {}, file),
+      h('label', { class: 'inline' }, addNew, ' Add people who are not on the Members list, as non-members (needs an email column in the sheet)'),
+      h('p', {}, previewBtn, ' ', importBtn),
+      out);
+  }
+
   function build() {
     // Every competition is laid out the same way: one column per playing date, upcoming dates first.
     const all = [...new Set(season.calendar.filter(e => (e.comp || 'senior') === ui.comp).flatMap(e => e.dates))].sort();
@@ -452,15 +520,18 @@ export async function viewSeasonAvailability(ctx) {
     if (ui.on && !dates.includes(ui.on)) ui.on = null;
     const st = (u, d) => availStatus(by, u, ui.comp, d);
     const answered = u => (by[u.email] && by[u.email].days && Object.keys(by[u.email].days).some(k => k.startsWith(ui.comp + ':')));
-    const missing = active.filter(u => !answered(u));
+    const mem = members();
+    const missing = mem.filter(u => !answered(u));
     const emails = missing.map(u => u.email);
+    const others = people.filter(u => u.active === false && answered(u));
     const q = ui.q.trim().toLowerCase();
-    const rows = active.filter(u => (!q || u.name.toLowerCase().includes(q)) && (!ui.on || st(u, ui.on) === 'yes'));
+    const shownPeople = [...mem, ...others];
+    const rows = shownPeople.filter(u => (!q || u.name.toLowerCase().includes(q)) && (!ui.on || st(u, ui.on) === 'yes'));
     const months = [];
     for (const d of dates) { const m = new Date(d + 'T00:00:00Z').toLocaleDateString('en-AU', { month: 'long', timeZone: 'UTC' }); if (months.length && months[months.length - 1][0] === m) months[months.length - 1][1]++; else months.push([m, 1]); }
     const dayHead = d => { const x = new Date(d + 'T00:00:00Z'); return [x.toLocaleDateString('en-AU', { weekday: 'short', timeZone: 'UTC' }), String(x.getUTCDate())]; };
     const countCells = {}, tallyCells = {};
-    const count = d => active.filter(u => st(u, d) === 'yes').length;
+    const count = d => mem.filter(u => st(u, d) === 'yes').length;        // only members can be appointed
     const tally = u => `${dates.filter(d => d >= today && st(u, d) === 'yes').length}/${dates.filter(d => d >= today).length}`;
 
     const cell = (u, d) => {
@@ -490,10 +561,12 @@ export async function viewSeasonAvailability(ctx) {
     return [
       h('div', { class: 'row-between' }, h('h1', {}, 'Availability'), h('span', { class: 'muted' }, season.name || '')),
       h('nav', { class: 'tabs noprint' }, comps.map(c => h('button', { class: 'tab' + (c.key === ui.comp ? ' active' : ''), type: 'button', onclick: () => { ui.comp = c.key; ui.on = null; draw(); } }, c.label))),
+      importCard(),
       h('div', { class: 'card' },
         h('div', { class: 'summary' },
           search,
-          h('span', { class: 'chip ' + (missing.length ? 'warn' : 'ok') }, `${active.length - missing.length} of ${active.length} have answered`),
+          h('span', { class: 'chip ' + (missing.length ? 'warn' : 'ok') }, `${mem.length - missing.length} of ${mem.length} members have answered`),
+          others.length > 0 && h('span', { class: 'chip' }, `${others.length} non-member${others.length === 1 ? '' : 's'}`),
           missing.length > 0 && h('button', { class: 'btn small', type: 'button', onclick: async () => { toast(await copyText(emails.join(', ')) ? 'Emails copied' : 'Could not copy', 'ok'); } }, 'Copy emails of the rest'),
           ui.on && h('button', { class: 'chip ok', type: 'button', onclick: () => { ui.on = null; draw(); } }, `Available ${fmtDay(ui.on)} \u2715`),
           hasPast && h('label', { class: 'inline right' }, (() => { const cb = h('input', { type: 'checkbox', checked: ui.past }); cb.onchange = () => { ui.past = cb.checked; draw(); }; return cb; })(), ' Show past dates')),
@@ -504,9 +577,12 @@ export async function viewSeasonAvailability(ctx) {
               h('tr', {}, h('th', { class: 'stick' }, 'Umpire'), dates.map(d => { const [w, n] = dayHead(d);
                 return h('th', { class: (d < today ? 'past ' : '') + (ui.on === d ? 'on' : '') }, h('button', { type: 'button', class: 'datebtn', title: 'Show only umpires available on ' + fmtDay(d), onclick: () => { ui.on = ui.on === d ? null : d; draw(); } }, h('span', { class: 'sub' }, w), h('span', {}, n))); })),
               h('tr', { class: 'counts' }, h('td', { class: 'stick' }, 'Available'), dates.map(d => (countCells[d] = h('td', { class: d < today ? 'past' : '' }, String(count(d))))))),
-            h('tbody', {}, rows.map(u => h('tr', {}, h('td', { class: 'stick' }, u.name, ' ', (tallyCells[u.pid] = h('span', { class: 'muted tally' }, tally(u)))), dates.map(d => cell(u, d)))),
+            h('tbody', {}, rows.map(u => h('tr', { class: u.active === false ? 'nonmember' : '' },
+              h('td', { class: 'stick' }, u.name, ' ', (tallyCells[u.pid] = h('span', { class: 'muted tally' }, tally(u))),
+                u.active === false && h('span', { class: 'chip warn tag' }, 'Non-member')),
+              dates.map(d => cell(u, d)))),
               !rows.length && h('tr', {}, h('td', { class: 'stick muted' }, 'Nobody matches'), dates.map(() => h('td', {})))))),
-        h('p', { class: 'muted small' }, 'Click a cell to change it: \u2713 available \u2192 \u2717 not available \u2192 blank (no answer). A dot marks cells you set. Click a date to list only the umpires available that day.')),
+        h('p', { class: 'muted small' }, 'The count under each date is members only \u2014 only an active member can be appointed. Click a cell to change it: \u2713 available \u2192 \u2717 not available \u2192 blank (no answer). A dot marks cells you set. Click a date to list only the umpires available that day.')),
     ];
   }
   draw();
@@ -547,7 +623,7 @@ export async function viewReport(ctx, rid) {
     tabs(rid, '/report'),
     h('div', { class: 'card noprint' },
       st.filled < st.needed && h('p', { class: 'notice warn' }, `${st.needed - st.filled} slot(s) are still unallocated and show as "—" on the report.`),
-      !round.published && h('p', { class: 'notice' }, 'This round is not published yet, so umpires cannot see it in the app. Publish it from the Allocate tab.'),
+      !round.published && h('p', { class: 'notice' }, 'This round is not published yet, so umpires cannot see it in the app. Publish it from the Assign tab.'),
       h('p', {}, save, ' ', copyEmails, ' ', draft),
       h('p', { class: 'muted' }, 'Download the PDF, then attach it to the email draft.')),
     h('div', { class: 'report' }, sections.map(s => h('section', { class: 'report-section' },

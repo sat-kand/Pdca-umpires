@@ -189,6 +189,7 @@ export function availStatus(availByEmail, umpire, comp, date) {
 // Warnings for one umpire in one slot. Empty array = clean.
 export function assignmentWarnings({ game, date, slotIndex, umpire, availByEmail, busy }) {
   const w = [];
+  if (umpire.active === false) w.push('Not an active member');
   const comp = compKeyOf(game);
   const st = availStatus(availByEmail, umpire, comp, date);
   if (st === 'no') w.push(`Marked unavailable for ${compLabel(comp)} on this day`);
@@ -204,7 +205,6 @@ export function assignmentWarnings({ game, date, slotIndex, umpire, availByEmail
 export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy, loads }) {
   const rows = [];
   for (const u of umpires) {
-    if (!u.active) continue;
     const st = availStatus(availByEmail, u, compKeyOf(game), date);
     const others = ((busy[availKey(compKeyOf(game), date)] || {})[u.pid] || []).filter(id => id !== game.id);
     const dup = allocFor(game, date).some((a, i) => a && a.p === u.pid && i !== slotIndex);
@@ -215,8 +215,13 @@ export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy
       && !((busy[availKey(compKeyOf(game), dt)] || {})[u.pid] || []).filter(id => id !== game.id).length;
     const okDays = days.filter(freeOn);
     const bothDays = days.length > 1 && okDays.length === days.length;
-    const group = avoid ? 'avoid' : st === 'yes' ? (days.length > 1 ? (bothDays ? 'both' : 'ok') : 'ok') : 'none';
-    rows.push({ umpire: u, status: st, busy: others.length > 0, dup, group, bothDays, okDays, load: (loads && loads[u.pid]) || 0 });
+    // Someone whose membership is not active can still be allocated, but they are kept in a group of
+    // their own so the officer chooses them on purpose.
+    const member = u.active !== false;
+    const group = avoid ? 'avoid'
+      : !member ? (st === 'yes' ? 'nonmember' : 'avoid')
+      : st === 'yes' ? (days.length > 1 ? (bothDays ? 'both' : 'ok') : 'ok') : 'none';
+    rows.push({ umpire: u, status: st, busy: others.length > 0, dup, group, bothDays, okDays, member, load: (loads && loads[u.pid]) || 0 });
   }
   rows.sort((a, b) => a.load - b.load || a.umpire.name.localeCompare(b.umpire.name));
   return rows;

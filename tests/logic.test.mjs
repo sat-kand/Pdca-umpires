@@ -67,14 +67,20 @@ test('warnings: unavailable, no response, double-booked, same umpire twice', () 
   assert.deepEqual(assignmentWarnings({ game: g1, date: D1, slotIndex: 0, umpire: ann, availByEmail: avail({ u1: { [D1]: 'yes' } }), busy: buildBusyMap([g1]) }), []);
 });
 
-test('slotOptions groups yes / no response / avoid and skips inactive umpires', () => {
+test('slotOptions groups yes / no response / non-member / avoid', () => {
   const g = mk('1', 'Senior A Grade', 'A', 'B', [D1]);
   const g2 = mk('2', 'Senior B02', 'C', 'D', [D1], 1, { [D1]: [{ p: 'u4', n: 'Dee' }] });
   const umpires = [U('u1', 'Ann'), U('u2', 'Bob'), U('u3', 'Cat'), U('u4', 'Dee'), U('u5', 'Eve'), U('u6', 'Fay', false)];
   const a = avail({ u1: { [D1]: 'yes' }, u2: { [D1]: 'yes' }, u4: { [D1]: 'yes' }, u5: { [D1]: 'no' }, u6: { [D1]: 'yes' } });
   const opts = slotOptions({ game: g, date: D1, slotIndex: 0, umpires, availByEmail: a, busy: buildBusyMap([g, g2]), loads: {} });
   const by = Object.fromEntries(opts.map(o => [o.umpire.name, o.group]));
-  assert.deepEqual(by, { Ann: 'ok', Bob: 'ok', Cat: 'none', Dee: 'avoid', Eve: 'avoid' });
+  // Fay is not an active member: available, but in a group of her own so she is picked on purpose.
+  assert.deepEqual(by, { Ann: 'ok', Bob: 'ok', Cat: 'none', Dee: 'avoid', Eve: 'avoid', Fay: 'nonmember' });
+
+  const quiet = slotOptions({ game: g, date: D1, slotIndex: 0, umpires: [U('u7', 'Gus', false)], availByEmail: avail({}), busy: {}, loads: {} });
+  assert.equal(quiet[0].group, 'avoid', 'a non-member who has not said they are available is not offered as available');
+  const warn = assignmentWarnings({ game: g, date: D1, slotIndex: 0, umpire: U('u6', 'Fay', false), availByEmail: a, busy: {} });
+  assert.deepEqual(warn, ['Not an active member']);
 });
 
 test('recount counts slot-days and per-umpire appointments', () => {
