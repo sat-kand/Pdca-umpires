@@ -74,6 +74,16 @@ export async function viewMy(ctx) {
   const root = h('div', { class: 'narrow-page' });
   if (!u.active) root.append(h('p', { class: 'notice warn' }, 'Your account is waiting for approval by the appointments officer. You can already give your availability.'));
 
+  // ---- what the umpire has already answered (needed by the appointments below as well)
+  const existing = season ? await store.getAvailability(season.id, u.email) : null;
+  const days = { ...((existing && existing.days) || {}) };
+  const keysOf = c => c.dates.map(d => availKey(c.comp, d));
+  let saved = !!existing, dirty = false;
+  const savedDays = {};                      // what has been saved during this visit, for spotting a withdrawal
+
+
+  const saveAvailability = () => store.saveAvailability({ seasonId: season.id, email: u.email, name: u.name, days, updatedAt: new Date().toISOString() });
+
   // ---- appointments (only shown when there are some)
   const today = todayLocal();
   const mine = [];
@@ -84,33 +94,69 @@ export async function viewMy(ctx) {
     }
   }
   mine.sort((a, b) => a.d.date.localeCompare(b.d.date) || gradeShort(a.g.grade).localeCompare(gradeShort(b.g.grade), undefined, { numeric: true }));
+
+  const apptList = h('ul', { class: 'plain' });
+  let repaintAvailability = () => {};                  // set once the availability buttons exist
+
+  // Turning down an appointment is the same as saying "Not available" for that day: the slot is
+  // freed and the appointments officer is told. Doing nothing means the umpire is standing.
+  async function decline(g, d, btn) {
+    if (!season) { toast('The season dates are not set up yet. Please tell the appointments officer.', 'err'); return; }
+    const key = availKey(compKeyOf(g), d.date);
+    if (!confirm(`Tell the appointments officer you can't umpire ${gradeShort(g.grade)} on ${fmtDay(d.date)}?\n\nYou will be marked "Not available" for that day and taken off the game.`)) return;
+    btn.disabled = true;
+    const before = { ...((existing && existing.days) || {}), ...savedDays, ...days };
+    days[key] = 'no';
+    try {
+      await saveAvailability();
+      Object.assign(savedDays, days);
+      saved = true;
+      await recordWithdrawal(store, { umpire: u, before, after: days });
+      toast('The appointments officer has been told, and you are marked Not available for that day.', 'warn');
+    } catch (e) {
+      console.error(e);
+      delete days[key];
+      btn.disabled = false;
+      toast('Could not save that. Please try again.', 'err');
+      return;
+    }
+    drawAppointments();
+    repaintAvailability(key);
+  }
+
+  function drawAppointments() {
+    setChildren(apptList, mine.map(({ g, d }) => {
+      const link = mapsLink(g);
+      const declined = days[availKey(compKeyOf(g), d.date)] === 'no';
+      const btn = h('button', { class: 'btn small', type: 'button' }, "I can't do this");
+      btn.onclick = () => decline(g, d, btn);
+      return h('li', { class: 'appt' + (declined ? ' declined' : '') },
+        h('div', { class: 'appt-date' }, h('strong', {}, fmtDay(d.date)), d.time && h('span', { class: 'muted' }, d.time),
+          g.days.length > 1 && h('span', { class: 'chip' }, `Day ${d.day}`)),
+        h('div', {}, h('span', { class: 'chip' }, compLabel(compKeyOf(g))), ' ', h('span', { class: 'chip grade' }, gradeShort(g.grade)), `${g.home.name} v ${g.away.name}`),
+        h('div', { class: 'muted' }, link ? h('a', { href: link, target: '_blank', rel: 'noopener' }, g.ground || 'Ground TBC') : (g.ground || 'Ground TBC')),
+        h('div', { class: 'appt-action' }, declined
+          ? h('span', { class: 'chip warn' }, "You said you can't do this \u2014 the officer has been told")
+          : btn));
+    }));
+  }
+
   if (mine.length) {
+    drawAppointments();
     root.append(h('section', { class: 'card' }, h('h2', {}, 'My appointments'),
-      h('ul', { class: 'plain' }, mine.map(({ g, d }) => {
-        const link = mapsLink(g);
-        return h('li', { class: 'appt' },
-          h('div', { class: 'appt-date' }, h('strong', {}, fmtDay(d.date)), d.time && h('span', { class: 'muted' }, d.time),
-            g.days.length > 1 && h('span', { class: 'chip' }, `Day ${d.day}`)),
-          h('div', {}, h('span', { class: 'chip' }, compLabel(compKeyOf(g))), ' ', h('span', { class: 'chip grade' }, gradeShort(g.grade)), `${g.home.name} v ${g.away.name}`),
-          h('div', { class: 'muted' }, link ? h('a', { href: link, target: '_blank', rel: 'noopener' }, g.ground || 'Ground TBC') : (g.ground || 'Ground TBC')));
-      }))));
+      h('p', { class: 'muted' }, "Nothing to do if you can umpire these \u2014 you are expected to be there. Press \"I can't do this\" only if you cannot."),
+      apptList));
   }
 
   // ---- availability
   const comps = season ? upcomingDates(season.calendar, today) : [];
+  const shown = comps.flatMap(keysOf);
   const card = h('section', { class: 'card' });
   if (!season) {
     card.append(h('h2', {}, 'Availability'), h('p', { class: 'muted' }, 'The season dates have not been set up yet. Please check back soon.'));
     root.append(card);
     return root;
   }
-  const existing = await store.getAvailability(season.id, u.email);
-  const days = { ...((existing && existing.days) || {}) };
-  const keysOf = c => c.dates.map(d => availKey(c.comp, d));
-  const shown = comps.flatMap(keysOf);
-  let saved = !!existing, dirty = false;
-  const savedDays = {};                      // what has been saved during this visit, for spotting a withdrawal
-
   const chip = h('span', { class: 'chip' });
   const hint = h('span', { class: 'muted' });
   const drawStatus = () => {
@@ -126,6 +172,7 @@ export async function viewMy(ctx) {
     if (days[key] === v) delete days[key]; else days[key] = v;
     dirty = true; paint(key); drawStatus();
   };
+  repaintAvailability = key => { if (buttons[key]) { paint(key); drawStatus(); } };
   const optBtn = (key, v, label) => h('button', { type: 'button', class: `opt ${v}`, 'aria-pressed': String(days[key] === v), onclick: () => choose(key, v) }, label);
 
   // One section per competition: availability is separate for Senior, T20 and Junior,
@@ -151,11 +198,12 @@ export async function viewMy(ctx) {
   const saveBtn = h('button', { class: 'btn primary', type: 'button' }, 'Save');
   saveBtn.onclick = busy(saveBtn, async () => {
     const before = { ...((existing && existing.days) || {}), ...savedDays };
-    await store.saveAvailability({ seasonId: season.id, email: u.email, name: u.name, days, updatedAt: new Date().toISOString() });
+    await saveAvailability();
     Object.assign(savedDays, days);
     saved = true; dirty = false; drawStatus();
     // Pulling out of a game that is already published: free the slot and tell the appointments officer.
     const w = await recordWithdrawal(store, { umpire: u, before, after: days });
+    if (mine.length) drawAppointments();
     if (w) toast(`Saved. You were down for ${w.games.length} game${w.games.length === 1 ? '' : 's'} on those dates \u2014 the appointments officer has been told.`, 'warn');
     else toast('Availability saved');
   });

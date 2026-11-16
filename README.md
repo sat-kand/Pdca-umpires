@@ -28,9 +28,13 @@ The **Members** page (formerly Umpires) is the association's list of people. Eac
 - **Membership**: the **renewal day** — a day and a month, with no year, because membership falls due on the same day every year (PDCA: 30 June) — and the **membership types** the association offers, each with its own fee (Ordinary, Junior, Life, or whatever it uses). Members are given one of these on the Members page. Members who have not renewed by that day are meant to lose their membership; registration, renewal and payment are not built yet.
 - **Send alerts to**: where to email when an umpire pulls out.
 
+### Turning down an appointment
+
+A published appointment on the umpire's page carries an **I can't do this** button. Doing nothing means they are standing: there is no "accept". Pressing it marks them **Not available** for that day in the same competition, which runs the withdrawal below, and the appointment then shows "You said you can't do this".
+
 ### When an umpire pulls out after a round is published
 
-If an umpire changes an answer to *Not available* for a date they have already been given a game on, the app takes them off those games (the slots go back to empty and the game is flagged on the board), tells the umpire what happened, shows the officer a banner on the Allocate page until they dismiss it, and queues an email to the **Send alerts to** address.
+If an umpire turns down an appointment, or changes an answer to *Not available* for a date they have already been given a game on, the app takes them off those games (the slots go back to empty and the game is flagged on the board), tells the umpire what happened, shows the officer a banner on the Allocate page until they dismiss it, and queues an email to the **Send alerts to** address.
 
 Sending that email needs the Firebase **Trigger Email from Firestore** extension: install it from the Firebase console (Extensions → Trigger Email), point it at the `mail` collection, and give it an SMTP account to send through. Without the extension everything else still works — the slot is freed and the banner appears — but no email goes out.
 
