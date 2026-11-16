@@ -214,7 +214,7 @@ export async function viewBoard(ctx, rid) {
           if (!a) return;
           const u = B.umpires.find(x => x.pid === a.p);
           if (!u) { out.push({ g, d, text: `${a.n}: umpire not found in the umpire list` }); return; }
-          const w = assignmentWarnings({ game: g, date: d.date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy });
+          const w = assignmentWarnings({ game: g, date: d.date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy, chosen: !!a.pu });
           if (w.length) out.push({ g, d, text: `${u.name}: ${w.join('; ')}` });
         });
       }
@@ -260,7 +260,7 @@ export async function viewBoard(ctx, rid) {
     if (cur && !opts.some(o => o.umpire.pid === cur.p)) sel.append(h('option', { value: cur.p, selected: true }, `${cur.n} (inactive)`));
     const warn = cur ? (() => {
       const u = B.umpires.find(x => x.pid === cur.p);
-      return u ? assignmentWarnings({ game: g, date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy: busyMap }) : ['Umpire not in list'];
+      return u ? assignmentWarnings({ game: g, date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy: busyMap, chosen: !!cur.pu }) : ['Umpire not in list'];
     })() : [];
     return h('div', { class: 'slot-wrap' }, sel,
       cur && cur.pu && h('span', { class: 'chip pu', title: 'Chose this game themselves' }, 'Player umpire'),

@@ -77,10 +77,11 @@ export async function viewMy(ctx) {
 
   // ---- what the umpire has already answered (needed by the appointments below as well)
   const existing = season ? await store.getAvailability(season.id, u.email) : null;
+  // Two copies: what is saved, and what is on screen. Only the parts that are ticked are ever saved,
+  // and "Unsaved changes" is worked out per part by comparing the two.
   const days = { ...((existing && existing.days) || {}) };
+  let savedDays = { ...days };
   const keysOf = c => c.dates.map(d => availKey(c.comp, d));
-  let saved = !!existing, dirty = false;
-  const savedDays = {};                      // what has been saved during this visit, for spotting a withdrawal
 
   // How this member umpires: give their availability for the officer to allocate, choose games
   // themselves (player umpire), or both. Their chosen games are saved with their availability.
@@ -96,11 +97,16 @@ export async function viewMy(ctx) {
     const answered = ALL_COMPS.filter(k => Object.keys((existing && existing.days) || {}).some(x => x.startsWith(k + ':')));
     modes.comps = answered.length ? answered : [...ALL_COMPS];
   }
-  let picks = ((existing && existing.picks) || []).filter(p => PLAYER_UMPIRE_COMPS.includes(p.comp));
+  let savedPicks = ((existing && existing.picks) || []).filter(p => PLAYER_UMPIRE_COMPS.includes(p.comp));
+  let picks = savedPicks.map(p => ({ ...p, dates: [...p.dates] }));
 
-  const saveAvailability = () => store.saveAvailability({
-    seasonId: season.id, email: u.email, name: u.name, days,
-    modes: { ...modes }, picks: modes.player ? picks : [], updatedAt: new Date().toISOString(),
+  const keysFor = comp => [...new Set([...Object.keys(days), ...Object.keys(savedDays)].filter(x => x.startsWith(comp + ':')))];
+  const regularChanged = () => modes.regular && modes.comps.some(k => keysFor(k).some(x => days[x] !== savedDays[x]));
+  const pickSig = list => list.map(p => `${p.gameId}:${[...p.dates].sort().join('+')}`).sort().join('|');
+  const picksChanged = () => puOn && modes.player && pickSig(picks) !== pickSig(savedPicks);
+  const put = (d, p) => store.saveAvailability({
+    seasonId: season.id, email: u.email, name: u.name, days: d,
+    modes: { ...modes, comps: [...modes.comps] }, picks: p, updatedAt: new Date().toISOString(),
   });
 
   // ---- appointments (only shown when there are some)
@@ -124,23 +130,23 @@ export async function viewMy(ctx) {
     const key = availKey(compKeyOf(g), d.date);
     if (!confirm(`Tell the appointments officer you can't umpire ${gradeShort(g.grade)} on ${fmtDay(d.date)}?\n\nYou will be marked "Not available" for that day and taken off the game.`)) return;
     btn.disabled = true;
-    const before = { ...((existing && existing.days) || {}), ...savedDays, ...days };
-    days[key] = 'no';
+    const before = savedDays;
+    const next = { ...savedDays, [key]: 'no' };
     try {
-      await saveAvailability();
-      Object.assign(savedDays, days);
-      saved = true;
-      await recordWithdrawal(store, { umpire: u, before, after: days });
+      await put(next, savedPicks);
+      savedDays = next;
+      days[key] = 'no';
+      await recordWithdrawal(store, { umpire: u, before, after: next });
       toast('The appointments officer has been told, and you are marked Not available for that day.', 'warn');
     } catch (e) {
       console.error(e);
-      delete days[key];
       btn.disabled = false;
       toast('Could not save that. Please try again.', 'err');
       return;
     }
     drawAppointments();
     repaintAvailability(key);
+    drawStatus();
   }
 
   function drawAppointments() {
@@ -178,14 +184,13 @@ export async function viewMy(ctx) {
   const modeBox = (key, title, hint) => {
     const cb = h('input', { type: 'checkbox', checked: modes[key], 'aria-label': title });
     cb.onchange = () => {
-      if (key === 'player' && !cb.checked && picks.length
-        && !confirm(`Give back the ${picks.length} game${picks.length === 1 ? '' : 's'} you chose? The appointments officer will be able to give them to someone else.`)) { cb.checked = true; return; }
-      modes[key] = cb.checked;
-      dirty = true;
+      modes[key] = cb.checked;                   // shows or hides that part; only Save sends anything
       drawModes();
       drawStatus();
     };
-    return h('label', { class: 'mode' }, cb, h('span', {}, h('strong', {}, title), hint && h('span', { class: 'muted' }, hint)));
+    return h('div', { class: 'row-between mode-row' },
+      h('label', { class: 'mode' }, cb, h('span', {}, h('strong', {}, title), hint && h('span', { class: 'muted' }, hint))),
+      statusChips[key]);
   };
 
   // Player umpire: the games this member has chosen, and a way to choose more.
@@ -195,20 +200,14 @@ export async function viewMy(ctx) {
   const takenOn = (comp, date, gameId) => picks.find(p => p.comp === comp && p.gameId !== gameId && p.dates.includes(date));
 
   function choosePick(list, g, dates) {
-    const before = pickFor(g.id);
-    if (before && !modes.regular) before.dates.forEach(d => { delete days[availKey(list.comp, d)]; });
     picks = picks.filter(p => p.gameId !== g.id);
     picks.push({ roundId: list.roundId, gameId: g.id, comp: list.comp, grade: g.grade, label: `${g.home.name} v ${g.away.name}`, ground: g.ground || '', dates });
     picks.sort((a, b) => a.dates[0].localeCompare(b.dates[0]));
-    for (const d of dates) { const k = availKey(list.comp, d); days[k] = 'yes'; repaintAvailability(k); }   // choosing a game means available that day
-    dirty = true;
     drawPlayer();
     drawStatus();
   }
   function release(p) {
     picks = picks.filter(x => x !== p);
-    if (!modes.regular) p.dates.forEach(d => { delete days[availKey(p.comp, d)]; });
-    dirty = true;
     drawPlayer();
     drawStatus();
   }
@@ -278,7 +277,6 @@ export async function viewMy(ctx) {
     const cb = h('input', { type: 'checkbox', checked: modes.comps.includes(key), 'aria-label': compLabel(key) });
     cb.onchange = () => {
       modes.comps = ALL_COMPS.filter(k => (k === key ? cb.checked : modes.comps.includes(k)));
-      dirty = true;
       drawModes();
       drawStatus();
     };
@@ -287,7 +285,7 @@ export async function viewMy(ctx) {
 
   function drawModes() {
     setChildren(modeCard,
-      h('div', { class: 'row-between' }, h('h2', {}, puOn ? 'How I will umpire' : 'Regular umpire'), statusChip),
+      puOn ? h('h2', {}, 'How I will umpire') : h('div', { class: 'row-between' }, h('h2', {}, 'Regular umpire'), statusChips.regular),
       puOn && modeBox('regular', 'Regular umpire'),
       modes.regular && h('div', { class: 'comp-picks' + (puOn ? '' : ' flush') }, h('span', { class: 'muted' }, 'For'), ALL_COMPS.filter(k => compsOffered.includes(k)).map(compBox)),
       modes.regular && !modes.comps.some(k => compsOffered.includes(k)) && h('p', { class: 'notice warn' }, 'Tick at least one competition.'),
@@ -305,23 +303,28 @@ export async function viewMy(ctx) {
   const sectionEl = {};
   const availIntro = h('p', { class: 'muted' });
   const card = h('div', { class: 'avail-body' });
-  const statusChip = h('span', { class: 'chip' });
+  const statusChips = { regular: h('span', { class: 'chip' }), player: h('span', { class: 'chip' }) };
   if (!season) {
     root.append(h('section', { class: 'card' }, h('h2', {}, 'Availability'), h('p', { class: 'muted' }, 'The season dates have not been set up yet. Please check back soon.')));
     return root;
   }
-  const chip = statusChip;
   const hint = h('span', { class: 'muted' });
   const saveBtn = h('button', { class: 'btn primary', type: 'button' }, 'Save');
   const savebar = h('div', { class: 'savebar' }, hint, saveBtn);
   drawStatus = () => {
-    chip.className = 'chip ' + (dirty ? 'warn' : saved ? 'ok' : 'warn');
-    chip.textContent = dirty ? 'Unsaved changes' : saved ? '✓ Submitted' : 'Not submitted';
+    const regDirty = regularChanged(), plDirty = picksChanged();
+    const paintChip = (c, on, changed, has) => {
+      c.hidden = !on;
+      c.className = 'chip ' + (changed || !has ? 'warn' : 'ok');
+      c.textContent = changed ? 'Unsaved changes' : has ? '\u2713 Submitted' : 'Not submitted';
+    };
+    paintChip(statusChips.regular, modes.regular, regDirty, modes.comps.some(k => Object.keys(savedDays).some(x => x.startsWith(k + ':'))));
+    paintChip(statusChips.player, puOn && modes.player, plDirty, savedPicks.length > 0);
     const left = comps.filter(c => modes.comps.includes(c.comp)).flatMap(keysOf).filter(d => !days[d]).length;
     const regularOn = modes.regular && modes.comps.some(k => compsOffered.includes(k));
     const playerOn = puOn && modes.player;
     savebar.hidden = !regularOn && !playerOn;            // nothing chosen: nothing to save
-    saveBtn.disabled = !dirty;                           // nothing changed since the last save
+    saveBtn.disabled = !regDirty && !plDirty;            // nothing ticked has changed since the last save
     const parts = [];
     if (regularOn) parts.push(left ? `${left} date${left > 1 ? 's' : ''} not answered yet` : 'All dates answered');
     if (puOn && modes.player) parts.push(`${picks.length} game${picks.length === 1 ? '' : 's'} chosen`);
@@ -332,7 +335,7 @@ export async function viewMy(ctx) {
   const paint = key => buttons[key].forEach(([v, b]) => { b.classList.toggle('on', days[key] === v); b.setAttribute('aria-pressed', String(days[key] === v)); });
   const choose = (key, v) => {
     if (days[key] === v) delete days[key]; else days[key] = v;
-    dirty = true; paint(key); drawStatus();
+    paint(key); drawStatus();
   };
   repaintAvailability = key => { if (buttons[key]) { paint(key); drawStatus(); } };
   const optBtn = (key, v, label) => h('button', { type: 'button', class: `opt ${v}`, 'aria-pressed': String(days[key] === v), onclick: () => choose(key, v) }, label);
@@ -340,7 +343,7 @@ export async function viewMy(ctx) {
   // One section per competition: availability is separate for Senior, T20 and Junior,
   // even when the dates overlap.
   const sections = comps.map(c => {
-    const markAll = h('button', { class: 'link', type: 'button', onclick: () => { keysOf(c).forEach(k => { days[k] = 'yes'; paint(k); }); dirty = true; drawStatus(); } }, 'Mark all available');
+    const markAll = h('button', { class: 'link', type: 'button', onclick: () => { keysOf(c).forEach(k => { days[k] = 'yes'; paint(k); }); drawStatus(); } }, 'Mark all available');
     const row = (date, label, key = availKey(c.comp, date)) => {
       const yes = optBtn(key, 'yes', 'Available'), no = optBtn(key, 'no', 'Not available');
       buttons[key] = [['yes', yes], ['no', no]];
@@ -358,20 +361,22 @@ export async function viewMy(ctx) {
   });
 
   const saveOnce = busy(saveBtn, async () => {
-    if (!dirty || savebar.hidden) return;
-    const before = { ...((existing && existing.days) || {}), ...savedDays };
-    if (modes.regular) {
-      const keep = new Set((modes.player ? picks : []).flatMap(p => p.dates.map(d => availKey(p.comp, d))));
-      for (const k of Object.keys(days)) if (!modes.comps.includes(k.split(':')[0]) && !keep.has(k)) delete days[k];
-    }
-    await saveAvailability();
-    Object.assign(savedDays, days);
-    saved = true; dirty = false; drawStatus();
+    if ((!regularChanged() && !picksChanged()) || savebar.hidden) return;
+    const before = savedDays;
+    // Answers for a competition that is not ticked (or with Regular umpire unticked) stay as last saved,
+    // and so do the chosen games when Player umpire is unticked.
+    const next = { ...savedDays };
+    if (modes.regular) for (const k of modes.comps) for (const x of keysFor(k)) { if (days[x]) next[x] = days[x]; else delete next[x]; }
+    const nextPicks = puOn && modes.player ? picks.map(p => ({ ...p, dates: [...p.dates] })) : savedPicks;
+    await put(next, nextPicks);
+    savedDays = next;
+    savedPicks = nextPicks;
+    drawStatus();
     // Pulling out of a game that is already published: free the slot and tell the appointments officer.
-    const w = await recordWithdrawal(store, { umpire: u, before, after: days });
+    const w = await recordWithdrawal(store, { umpire: u, before, after: next });
     if (mine.length) drawAppointments();
     if (w) toast(`Saved. You were down for ${w.games.length} game${w.games.length === 1 ? '' : 's'} on those dates \u2014 the appointments officer has been told.`, 'warn');
-    else toast(puOn && modes.player && picks.length ? 'Saved. The appointments officer will see the games you chose.' : 'Availability saved');
+    else toast(puOn && modes.player && nextPicks.length ? 'Saved. The appointments officer will see the games you chose.' : 'Availability saved');
   });
   saveBtn.onclick = async () => { await saveOnce(); drawStatus(); };   // busy() re-enables the button; put it back to how it should be
 

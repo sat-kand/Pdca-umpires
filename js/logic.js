@@ -187,11 +187,12 @@ export function availStatus(availByEmail, umpire, comp, date) {
 }
 
 // Warnings for one umpire in one slot. Empty array = clean.
-export function assignmentWarnings({ game, date, slotIndex, umpire, availByEmail, busy }) {
+export function assignmentWarnings({ game, date, slotIndex, umpire, availByEmail, busy, chosen = false }) {
   const w = [];
   if (umpire.active === false) w.push('Not an active member');
   const comp = compKeyOf(game);
-  const st = availStatus(availByEmail, umpire, comp, date);
+  // A player umpire picked this game themselves: their date answers are for the officer's own allocations.
+  const st = chosen ? 'yes' : availStatus(availByEmail, umpire, comp, date);
   if (st === 'no') w.push(`Marked unavailable for ${compLabel(comp)} on this day`);
   else if (st === 'none') w.push(`No ${compLabel(comp)} availability submitted`);
   const others = ((busy[availKey(comp, date)] || {})[umpire.pid] || []).filter(id => id !== game.id);

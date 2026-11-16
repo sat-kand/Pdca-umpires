@@ -32,7 +32,7 @@ const pick = (gameId, dates) => ({ roundId: 'r1', gameId, comp: 'senior', grade:
 test('only a player umpire\'s future choices count', () => {
   assert.deepEqual(wantedKeys({ modes: { player: true }, picks: [pick('g1', ['2026-11-21', '2026-11-28'])] }, TODAY),
     [pickKey('r1', 'g1', '2026-11-21'), pickKey('r1', 'g1', '2026-11-28')]);
-  assert.deepEqual(wantedKeys({ modes: { player: false }, picks: [pick('g1', ['2026-11-21'])] }, TODAY), [], 'switched off');
+  assert.equal(wantedKeys({ modes: { player: false }, picks: [pick('g1', ['2026-11-21'])] }, TODAY).length, 1, 'the tick box only hides the section; saved games still count');
   assert.deepEqual(wantedKeys({ modes: { player: true }, picks: [pick('g1', ['2026-11-01'])] }, TODAY), [], 'already played');
   assert.deepEqual(wantedKeys(null, TODAY), []);
   assert.deepEqual(wantedKeys({ modes: { player: true }, picks: [{ ...pick('g1', ['2026-11-21']), comp: 'junior' }] }, TODAY), [], 'Senior games only');
@@ -70,10 +70,10 @@ test('the officer\'s own change stands, and a withdrawn choice is taken off', as
   store.db.avail[0].picks = [pick('g1', ['2026-11-21'])];
   await applyPlayerUmpires(store, { today: TODAY });
   assert.equal(store.db.games.r1[0].alloc['2026-11-21'][0].p, 'p1');
-  store.db.avail[0].modes = { regular: true, player: false };
+  store.db.avail[0].picks = [];
   const res = await applyPlayerUmpires(store, { today: TODAY });
   assert.equal(res.removed.length, 1);
-  assert.deepEqual(store.db.games.r1[0].alloc['2026-11-21'], [null], 'switching player umpire off gives the game back');
+  assert.deepEqual(store.db.games.r1[0].alloc['2026-11-21'], [null], 'removing the game and saving gives it back');
 });
 
 test('a full game gets a second place, and when that is taken too the officer is told', async () => {

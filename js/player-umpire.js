@@ -16,9 +16,10 @@ export const PLAYER_UMPIRE_COMPS = ['senior'];
 export const pickKey = (roundId, gameId, date) => `${roundId}|${gameId}|${date}`;
 const splitKey = k => { const [roundId, gameId, date] = k.split('|'); return { roundId, gameId, date }; };
 
-// The board games a member's saved choices stand for, as keys. Nothing when they are not a player umpire.
+// The board games a member's saved choices stand for, as keys. The Player umpire tick box only shows or
+// hides that part of their page; a game is given back by removing it and saving.
 export function wantedKeys(avail, today) {
-  if (!avail || !avail.modes || !avail.modes.player) return [];
+  if (!avail) return [];
   return (avail.picks || []).filter(p => PLAYER_UMPIRE_COMPS.includes(p.comp)).flatMap(p => (p.dates || []).filter(d => d >= today).map(d => pickKey(p.roundId, p.gameId, d)));
 }
 
