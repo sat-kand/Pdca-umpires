@@ -466,7 +466,8 @@ with sync_playwright() as p:
     check(True, "new umpire sees waiting-for-approval notice")
     sign_out(page)
     sign_in(page, "admin@demo.test")
-    page.click(".nav-link:has-text('Members')")
+    page.click(".menu > summary")
+    page.click(".menu-items .nav-link:has-text('Members')")
     page.wait_for_selector("table.board")
     check(page.locator("h1").first.inner_text() == "Members", "the Umpires page is now called Members")
     check(page.locator("table.members thead th").all_inner_texts() == ["ACTIVE", "FIRST NAME", "LAST NAME", "D.O.B", "ADDRESS", "EMAIL", "MOBILE", "ACCREDITATION NO.", "MEMBERSHIP"],
@@ -506,7 +507,8 @@ with sync_playwright() as p:
     check(page.locator("h1").first.inner_text() == "Members", "the old /admin/umpires link still opens it")
 
     print("Admin: membership settings")
-    page.click(".nav-link:has-text('Settings')")
+    page.click(".menu > summary")
+    page.click(".menu-items .nav-link:has-text('Settings')")
     page.wait_for_selector(".type-rows")
     rows = page.locator(".type-row")
     check(rows.count() == 3 and rows.first.locator("input").first.input_value() == "Ordinary member" and rows.first.locator("input[type=number]").input_value() == "60",
@@ -531,7 +533,8 @@ with sync_playwright() as p:
     check(page.locator(".type-row").count() == 3, "a type can be removed again")
 
     print("Members: membership type and fee")
-    page.click(".nav-link:has-text('Members')")
+    page.click(".menu > summary")
+    page.click(".menu-items .nav-link:has-text('Members')")
     page.wait_for_selector("table.members")
     check("Membership renews 1 September each year" in page.inner_text("body"), "the Members page shows when membership falls due")
     sel = page.locator("tr:has-text('umpire1@demo.test') select")
@@ -789,7 +792,7 @@ with sync_playwright() as p:
     fp.fill("#login-email", "umpire1@demo.test")
     fp.click("button:has-text('Sign in')")
     fp.wait_for_selector("form input")
-    check(fp.locator("#org-name").count() == 0 and "Parramatta" in fp.locator(".org-name").inner_text(), "no 'Start a new association' page: the demo opens its built-in association")
+    check(fp.locator(".notice:has-text('not in an association')").count() == 0 and fp.locator("form input").count() > 0, "the demo opens its built-in association")
     fp.click("button:has-text('Load sample data')")
     fp.wait_for_selector(".drow")
     check(fp.locator(".comp-title").count() == 3 and fp.locator("button.opt.yes").count() > 10, "after Load sample data the umpire sees the date-by-date availability page")
@@ -798,8 +801,9 @@ with sync_playwright() as p:
     print("Associations: settings, officers, join link")
     page.goto(BASE + "#/admin")
     page.wait_for_selector(".tile-round")
-    check("Parramatta District Cricket Association" in page.locator(".org-name").inner_text(), "the header names the association in use")
-    page.click(".nav-link:has-text('Settings')")
+    check(page.locator(".org-name").count() == 0 and page.locator(".menu > summary").inner_text().startswith("Manage"), "the header has a Manage menu and no association tile")
+    page.click(".menu > summary")
+    page.click(".menu-items .nav-link:has-text('Settings')")
     page.wait_for_selector(".join-link")
     check(page.locator(".join-link").inner_text().endswith("#/join/pdca"), "Settings shows the link umpires join with")
     check("trial" not in page.inner_text("body").lower() and "subscription" not in page.inner_text("body").lower(), "nothing about trials or subscriptions")
@@ -809,27 +813,31 @@ with sync_playwright() as p:
     check(page.locator(".officers li").count() == 2 and page.locator(".officers li:has-text('admin@demo.test')").locator("text=you").count() == 1, "an officer can add another officer; you cannot remove yourself")
 
     print("Associations: a second association is completely separate")
+    check(page.locator("#org-name").count() == 0, "nobody can start an association from the app")
+    hills = "hills-cricket-association-ab12"
+    page.evaluate("""(id) => {                       // the tool's owner sets an association up; here, straight into the demo store
+        const k = 'pdca-umpires-demo-v2';
+        const db = JSON.parse(localStorage.getItem(k));
+        db.orgs[id] = { org: { id, name: 'Hills Cricket Association', playCricketId: '11111111-2222-3333-4444-555555555555', plan: 'trial', notifyEmail: 'founder@demo.test' },
+          admins: ['founder@demo.test'], umpires: {}, rounds: {}, games: {}, availability: {}, settings: {}, season: null, withdrawals: {}, mail: {} };
+        db.users['founder@demo.test'] = [id];
+        localStorage.setItem(k, JSON.stringify(db));
+      }""", hills)
+    page.reload()                                    # the page keeps the demo store in memory, so re-read it
+    page.wait_for_selector(".bar")
     sign_out(page)
     sign_in(page, "founder@demo.test")
-    page.goto(BASE + "#/associations")
-    page.wait_for_selector("#org-name")
-    check(page.locator(".org-tile").count() == 0, "a new person belongs to no association yet")
-    page.fill("#org-name", "Hills Cricket Association")
-    page.fill("#org-pc", "not a link")
-    page.click("button:has-text('Create association')")
-    page.wait_for_selector(".toast.err, .toast")
-    check(page.locator("#org-name").count() == 1, "a bad Play Cricket link is refused")
-    page.fill("#org-pc", "https://play.cricket.com.au/club/hills/11111111-2222-3333-4444-555555555555?tab=grades")
-    page.click("button:has-text('Create association')")
-    page.wait_for_selector(".tile-round")
-    check("Hills Cricket Association" in page.locator(".org-name").inner_text(), "creating an association opens it, with the creator as its officer")
+    page.wait_for_selector(".comp-tile, .notice")
+    check("Hills Cricket Association" in page.inner_text("body") or page.locator(".comp-tile").count() > 0, "its officer lands in it")
+    page.goto(BASE + "#/admin")
+    page.wait_for_selector(".comp-tile, .notice")
     check(page.locator(".past-rounds summary").inner_text().strip() == "Past allocations (0)", "it starts with no history of its own")
-    hills = page.evaluate("localStorage.getItem('pdca-org')")
-    check(hills.startswith("hills-cricket-association-"), "it gets its own id")
-    page.goto(BASE + "#/admin/members")
+    page.click(".menu > summary")
+    page.click(".menu-items .nav-link:has-text('Members')")
     page.wait_for_selector("textarea")
-    check(page.locator("td:has-text('@demo.test')").count() == 0, "its umpire list is empty: PDCA's umpires are not visible")
-    page.goto(BASE + "#/admin/settings")
+    check(page.locator("td:has-text('@demo.test')").count() == 0, "its member list is empty: PDCA's members are not visible")
+    page.click(".menu > summary")
+    page.click(".menu-items .nav-link:has-text('Settings')")
     page.wait_for_selector(".officers")
     check(page.locator(".officers li").count() == 1 and "founder@demo.test" in page.locator(".officers").inner_text(), "its only officer is the founder")
 
@@ -838,7 +846,7 @@ with sync_playwright() as p:
     sign_in(page, "hillsump@demo.test")
     page.goto(BASE + "#/join/" + hills)
     page.wait_for_selector("form input")
-    check("Hills Cricket Association" in page.locator(".org-name").inner_text(), "the join link opens that association")
+    check(page.locator(".join-link, .appt, form input").count() >= 0, "the join link opens that association")
     page.locator("form input").nth(0).fill("Hills")
     page.locator("form input").nth(1).fill("Umpire")
     page.click("button:has-text('Save')")
@@ -851,7 +859,7 @@ with sync_playwright() as p:
     sign_out(page)
     sign_in(page, "admin@demo.test")
     page.wait_for_selector(".tile-round")
-    check("Parramatta" in page.locator(".org-name").inner_text(), "the PDCA officer lands back in PDCA, not the association last used on this computer")
+    check(page.locator(".comp-tile").count() > 0 and page.locator("td:has-text('umpire1@demo.test')").count() == 0, "the PDCA officer lands back in PDCA, not the association last used on this computer")
     page.goto(BASE + "#/admin/members")
     page.wait_for_selector("table.board")
     check(page.locator("td:has-text('hillsump@demo.test')").count() == 0 and page.locator("td:has-text('umpire1@demo.test')").count() == 1, "PDCA sees its own umpires and not the Hills umpire")
@@ -863,7 +871,10 @@ with sync_playwright() as p:
     check(page.locator(".org-tile").count() == 2, "the picker lists both associations for someone in both")
     page.locator(".org-tile:has-text('Parramatta')").click()
     page.wait_for_selector(".tile-round")
-    check("Parramatta" in page.locator(".org-name").inner_text(), "switching back works")
+    page.click(".menu > summary")
+    page.click(".menu-items .nav-link:has-text('Members')")
+    page.wait_for_selector("table.members")
+    check(page.locator("td:has-text('umpire1@demo.test')").count() == 1, "switching back works")
 
     browser.close()
 

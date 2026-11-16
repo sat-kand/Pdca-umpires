@@ -55,9 +55,9 @@ Sending that email needs the Firebase **Trigger Email from Firestore** extension
 
 The app holds many associations, each completely separate: its own officers, umpires, Play Cricket link, fixtures, availability and allocations.
 
-- **Starting one:** sign in → *Your associations* → *Start a new association* (name + the address of its page on play.cricket.com.au). The creator becomes its first appointments officer.
-- **Settings** (officers only): rename the association, set its Play Cricket link, add or remove officers, and copy the **link for umpires**. Umpires open that link, sign in, add their name and wait for approval.
-- **Switching:** the association name in the top bar opens the picker for people who belong to more than one.
+- **Starting one:** only the product owner sets an association up, in the Firebase console: add a document to `orgs` (`id` matching the document id, `name`, `playCricketId`, `plan: trial`, `notifyEmail`), then add the first officer at `orgs/{id}/admins/{their email}`. Nobody can create one from inside the app.
+- **Manage → Settings** (officers only): rename the association, set its Play Cricket link, add or remove officers, and copy the **link for umpires**. Umpires open that link, sign in, add their name and wait for approval.
+- **Switching:** **Manage → Your associations** lists the ones a person belongs to, for anyone in more than one.
 - **Read-only:** an association can be set to `plan: suspended` by hand in the Firebase console, which makes it read-only. The tool is free and says nothing about plans or payment.
 
 ## One-time setup for the product owner (about 20 minutes)

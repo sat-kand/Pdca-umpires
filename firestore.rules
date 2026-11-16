@@ -71,13 +71,8 @@ service cloud.firestore {
       allow get: if signedIn();
       allow list: if isPlatformAdmin();
 
-      // Sign-up: a new association always starts as a trial owned by its creator.
-      allow create: if signedIn()
-        && request.resource.data.id == orgId
-        && request.resource.data.createdBy == me()
-        && request.resource.data.plan == 'trial'
-        && request.resource.data.name is string && request.resource.data.name.size() > 0
-        && request.resource.data.keys().hasOnly(['id', 'name', 'playCricketId', 'plan', 'trialEnds', 'createdAt', 'createdBy']);
+      // Associations are set up by the product owner, in the console or signed in as a platform admin.
+      allow create: if isPlatformAdmin() && request.resource.data.id == orgId;
 
       // Officers may rename it and set its Play Cricket link, never its plan.
       allow update: if isPlatformAdmin()
@@ -88,8 +83,7 @@ service cloud.firestore {
       match /admins/{id} {
         allow get: if signedIn() && (id == me() || isOrgAdmin(orgId));
         allow list: if isOrgAdmin(orgId);
-        allow create: if isOrgAdmin(orgId)
-          || (signedIn() && id == me() && orgData(orgId).createdBy == me());   // the creator becomes the first officer
+        allow create: if isOrgAdmin(orgId) || isPlatformAdmin();
         allow delete: if isOrgAdmin(orgId) && id != me();                       // you cannot remove yourself, so one officer always remains
         allow update: if false;
       }

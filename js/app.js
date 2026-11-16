@@ -72,9 +72,12 @@ function drawHeader() {
       h('button', { class: 'link', type: 'button', onclick: () => { if (confirm('Erase all demo data in this browser?')) { localStorage.removeItem(ORG_KEY); S.store.demoReset(); location.hash = '#/'; } } }, 'Reset')),
     h('div', { class: 'bar' },
       h('a', { class: 'brand', href: '#/' }, '🏏 ', CONFIG.appName),
-      S.isAdmin && h('nav', { class: 'nav' }, link('#/admin', 'Allocate'), link('#/admin/availability', 'Availability'), link('#/admin/members', 'Members'), link('#/admin/settings', 'Settings'), link('#/my', 'My availability')),
+      S.isAdmin && h('nav', { class: 'nav' }, link('#/admin', 'Allocate'), link('#/admin/availability', 'Availability'),
+        // Members, Settings and the association picker sit together, out of the way of the weekly work.
+        h('details', { class: 'menu' }, h('summary', { class: 'nav-link' }, 'Manage'),
+          h('div', { class: 'menu-items' }, link('#/admin/members', 'Members'), link('#/admin/settings', 'Settings'), link('#/associations', 'Your associations'))),
+        link('#/my', 'My availability')),
       S.user && h('div', { class: 'who' },
-        S.org && h('a', { class: 'org-name', href: '#/associations', title: 'Switch association' }, S.org.name),
         h('a', { class: 'who-name', href: '#/profile', title: 'Edit my details' }, (S.umpire && S.umpire.name) || S.user.email),
         h('button', { class: 'btn small', type: 'button', onclick: async () => { await S.store.signOut(); location.hash = '#/'; } }, 'Sign out'))),
     S.org && S.org.plan === 'suspended' && h('div', { class: 'demo-banner' }, 'This association has been set to read-only, so changes cannot be saved.'));

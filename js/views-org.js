@@ -4,7 +4,7 @@
 import { h, toast, busy, copyText, setChildren } from './ui.js';
 import { emailKey } from './logic.js';
 
-// A starting point for a new association; every association edits its own list in Settings.
+// Used when the tool's owner sets up an association; it then edits its own list in Settings.
 export const DEFAULT_TYPES = [
   { name: 'Ordinary member', fee: 0 },
   { name: 'Junior member', fee: 0 },
@@ -33,6 +33,7 @@ export function playCricketIdFrom(text) {
   return m ? m[0].toLowerCase() : '';
 }
 
+// The id format for a new association, for whoever sets one up.
 // 'Parramatta District Cricket Association' -> 'parramatta-district-cricket-association-x7k2'
 export function orgIdFrom(name, rand = Math.random) {
   const slug = (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'association';
@@ -42,38 +43,16 @@ export function orgIdFrom(name, rand = Math.random) {
 export const joinLink = id => `${location.origin}${location.pathname}#/join/${id}`;
 
 
-// Signed in, but no association chosen: pick one, or start a new one.
+// The associations this person belongs to. Associations themselves are set up by the tool's owner.
 export async function viewAssociations(ctx) {
   const { store, S } = ctx;
   const mine = await store.listMyOrgs(S.user.email);
-  const name = h('input', { required: true, placeholder: 'e.g. Parramatta District Cricket Association', id: 'org-name' });
-  const pc = h('input', { placeholder: 'https://play.cricket.com.au/club/…', id: 'org-pc' });
-  const btn = h('button', { class: 'btn primary', type: 'submit' }, 'Create association');
-  const form = h('form', { class: 'card narrow left', onsubmit: busy(btn, async e => {
-    e.preventDefault();
-    const playCricketId = playCricketIdFrom(pc.value);
-    if (pc.value.trim() && !playCricketId) { toast('That does not look like a Play Cricket link. Copy the address of your association\'s page on play.cricket.com.au.', 'err'); return; }
-    const org = { id: orgIdFrom(name.value), name: name.value.trim(), playCricketId, plan: 'trial', notifyEmail: S.user.email,
-      membership: { renewalDay: '', types: DEFAULT_TYPES.map(t => ({ ...t })) },
-      createdAt: new Date().toISOString() };
-    await store.createOrg(org, S.user.email);
-    await ctx.chooseOrg(org.id);
-    toast('Association created. You are its first appointments officer.', 'ok');
-  }) },
-  h('h2', {}, 'Start a new association'),
-  h('p', { class: 'muted' }, 'You become its appointments officer.'),
-  h('label', {}, 'Association name', name),
-  h('label', {}, 'Its page on Play Cricket (link)', pc),
-  h('p', { class: 'muted small' }, 'Fixtures are read from this page. You can add it later in Settings.'),
-  btn);
-
   return h('div', {},
     h('h1', {}, 'Your associations'),
     mine.length
       ? h('div', { class: 'cards' }, mine.map(o => h('button', { class: 'card comp-tile org-tile', type: 'button', onclick: () => ctx.chooseOrg(o.id) },
         h('h2', {}, o.name), h('span', { class: 'muted' }, S.org && S.org.id === o.id ? 'Open now' : 'Open'))))
-      : h('p', { class: 'notice' }, 'You are not in an association yet. If you are an umpire, open the link your appointments officer sent you.'),
-    form);
+      : h('p', { class: 'notice' }, 'You are not in an association yet. Open the link your appointments officer sent you, and they will approve you.'));
 }
 
 // Officers only: name, Play Cricket link, who the officers are, and the link umpires join with.
