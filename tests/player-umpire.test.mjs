@@ -35,6 +35,7 @@ test('only a player umpire\'s future choices count', () => {
   assert.deepEqual(wantedKeys({ modes: { player: false }, picks: [pick('g1', ['2026-11-21'])] }, TODAY), [], 'switched off');
   assert.deepEqual(wantedKeys({ modes: { player: true }, picks: [pick('g1', ['2026-11-01'])] }, TODAY), [], 'already played');
   assert.deepEqual(wantedKeys(null, TODAY), []);
+  assert.deepEqual(wantedKeys({ modes: { player: true }, picks: [{ ...pick('g1', ['2026-11-21']), comp: 'junior' }] }, TODAY), [], 'Senior games only');
 });
 
 test('a chosen game goes on the board with the name filled in and the grade turned on', async () => {

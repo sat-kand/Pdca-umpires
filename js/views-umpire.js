@@ -2,6 +2,7 @@
 
 import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
 import { recordWithdrawal } from './withdrawals.js';
+import { PLAYER_UMPIRE_COMPS } from './player-umpire.js';
 import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName } from './logic.js';
 
 export function viewLogin(ctx) {
@@ -84,7 +85,7 @@ export async function viewMy(ctx) {
   // How this member umpires: give their availability for the officer to allocate, choose games
   // themselves (player umpire), or both. Their chosen games are saved with their availability.
   const modes = { regular: true, player: !!(existing && (existing.picks || []).length), ...((existing && existing.modes) || {}) };
-  let picks = [...((existing && existing.picks) || [])];
+  let picks = ((existing && existing.picks) || []).filter(p => PLAYER_UMPIRE_COMPS.includes(p.comp));
 
   const saveAvailability = () => store.saveAvailability({
     seasonId: season.id, email: u.email, name: u.name, days,
@@ -201,7 +202,7 @@ export async function viewMy(ctx) {
     if (!modes.player) { setChildren(playerCard); return; }
     if (!lists) {
       setChildren(playerCard, h('h2', {}, 'Games I want to umpire'), h('p', { class: 'muted' }, 'Loading the fixtures\u2026'));
-      try { lists = (await store.listFixtureLists()).filter(l => (l.end || '') >= today && (l.games || []).length).sort((a, b) => (a.start || '').localeCompare(b.start || '')); }
+      try { lists = (await store.listFixtureLists()).filter(l => PLAYER_UMPIRE_COMPS.includes(l.comp) && (l.end || '') >= today && (l.games || []).length).sort((a, b) => (a.start || '').localeCompare(b.start || '')); }
       catch (e) { console.error(e); lists = []; }
     }
     const order = ['senior', 'junior', 't20'];
@@ -244,8 +245,8 @@ export async function viewMy(ctx) {
         : h('p', { class: 'muted' }, 'You have not chosen any games yet.'),
       lists.length
         ? h('div', { class: 'chooser' },
-          h('h3', {}, 'Choose a game'),
-          h('div', { class: 'chooser-pick' }, compSel, roundSel),
+          h('h3', {}, 'Choose a Senior game'),
+          h('div', { class: 'chooser-pick' }, compsHere.length > 1 && compSel, roundSel),
           list && h('ul', { class: 'plain pick-list' }, [...list.games].sort((a, b) => compareGrades(a.grade, b.grade) || a.home.name.localeCompare(b.home.name))
             .filter(g => g.days.some(d => d.date >= today)).map(gameRow)))
         : h('p', { class: 'muted' }, 'No fixtures are available to choose from yet.'));
@@ -255,7 +256,7 @@ export async function viewMy(ctx) {
     setChildren(modeCard,
       h('div', { class: 'row-between' }, h('h2', {}, 'How I will umpire'), statusChip),
       modeBox('regular', 'Give my availability', 'The appointments officer gives me games on the days I am free.'),
-      modeBox('player', 'Choose my own games (player umpire)', 'Pick any round, grade or fixture you want to umpire.'),
+      modeBox('player', 'Choose my own games (player umpire)', 'Pick any Senior round, grade or fixture you want to umpire.'),
       !modes.regular && !modes.player && h('p', { class: 'notice warn' }, 'Tick one or both to give your availability.'));
     card.hidden = !modes.regular;
     drawPlayer();

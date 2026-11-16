@@ -10,13 +10,16 @@
 
 import { fmtDay, gradeShort, summarise } from './logic.js';
 
+// In PDCA a player umpire may only take Senior games.
+export const PLAYER_UMPIRE_COMPS = ['senior'];
+
 export const pickKey = (roundId, gameId, date) => `${roundId}|${gameId}|${date}`;
 const splitKey = k => { const [roundId, gameId, date] = k.split('|'); return { roundId, gameId, date }; };
 
 // The board games a member's saved choices stand for, as keys. Nothing when they are not a player umpire.
 export function wantedKeys(avail, today) {
   if (!avail || !avail.modes || !avail.modes.player) return [];
-  return (avail.picks || []).flatMap(p => (p.dates || []).filter(d => d >= today).map(d => pickKey(p.roundId, p.gameId, d)));
+  return (avail.picks || []).filter(p => PLAYER_UMPIRE_COMPS.includes(p.comp)).flatMap(p => (p.dates || []).filter(d => d >= today).map(d => pickKey(p.roundId, p.gameId, d)));
 }
 
 // Officer side: bring the board in line with every member's choices. Returns what changed.

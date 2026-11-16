@@ -713,8 +713,10 @@ with sync_playwright() as p:
     check(regular.is_checked() and not player.is_checked(), "giving availability is the default; choosing games is a second option")
     player.check()
     page.wait_for_selector(".pick-list")
-    check(page.locator(".chooser-pick select").count() == 2, "they pick a competition and a round")
-    page.locator(".chooser-pick select").nth(1).select_option(index=1)          # a round that is not published yet
+    opts = page.locator(".chooser-pick select").first.locator("option").all_inner_texts()
+    check(page.locator(".chooser-pick select").count() == 1 and "Senior" in page.inner_text(".chooser h3"), "only Senior games can be chosen: one dropdown, for the round")
+    check(page.locator(".pick-list .chip.grade").filter(has_text=re.compile(r"^U\d")).count() == 0 and not any("T20" in o for o in opts), "no Junior or T20 fixtures are offered")
+    page.locator(".chooser-pick select").first.select_option(index=1)          # a round that is not published yet
     page.wait_for_timeout(200)
     row = page.locator(".pick-row").filter(has=page.locator("button:has-text('Day 1')")).first
     game_text = row.locator("div").first.inner_text().strip()
