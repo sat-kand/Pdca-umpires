@@ -87,7 +87,7 @@ Then **Authentication → Settings → Authorized domains → Add domain**: `YOU
 Free GitHub Pages needs a public repository. That is fine here: the code contains no secrets (the Firebase web config is meant to be public — security comes from the Firestore rules) and the data lives in Firebase, not in the repo.
 
 ### 5. Create the first association
-Open the site → sign in → **Start a new association** (PDCA, with its Play Cricket page link) → **Members → Add members** → send umpires the link from **Settings**.
+In the Firebase console create the PDCA association as described under *Associations* below (a document in `orgs`, then yourself in its `admins`). Then open the site → sign in → **Manage → Members → Add members** → send umpires the link from **Manage → Settings**.
 
 ## Notes
 
