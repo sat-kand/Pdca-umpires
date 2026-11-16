@@ -261,3 +261,19 @@ test('membership: a renewal day and month, types and fees', async () => {
   assert.equal(money(12.5), '$12.50');
   assert.equal(money(null), '');
 });
+
+test('publish state: never published, published, changed since publishing', async () => {
+  const { publishState, fmtWhen } = await import('../js/logic.js');
+  assert.deepEqual(publishState({}), { key: 'never', cls: '', label: 'Not published yet', short: 'Not published' });
+  const live = publishState({ published: true, publishedAt: '2026-11-16T02:14:00Z' });
+  assert.equal(live.key, 'live');
+  assert.match(live.label, /^Published /);
+  assert.equal(live.short, 'Published');
+  assert.equal(publishState({ published: true, publishedAt: '2026-11-16T02:14:00Z', changedAt: '2026-11-16T01:00:00Z' }).key, 'live', 'a change before publishing does not count');
+  const stale = publishState({ published: true, publishedAt: '2026-11-16T02:14:00Z', changedAt: '2026-11-16T03:00:00Z' });
+  assert.equal(stale.key, 'stale');
+  assert.equal(stale.short, 'Changes to publish');
+  assert.equal(publishState({ published: false, publishedAt: '2026-11-16T02:14:00Z' }).short, 'Unpublished');
+  assert.equal(fmtWhen('not a date'), '');
+  assert.match(fmtWhen('2026-11-16T02:14:00Z'), /, 16 Nov$/);
+});

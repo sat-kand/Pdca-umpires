@@ -130,7 +130,7 @@ export async function applyFresh(store, round, fresh, settings) {
   for (const g of res.games) byId.set(g.id, g);
   const all = [...byId.values()];
   const dates = datesOf(all.filter(g => !g.removed));
-  await store.saveRound({ id: round.id, dates, start: dates[0] || round.start, end: dates[dates.length - 1] || round.end, ...summarise(all) });
+  await store.saveRound({ id: round.id, dates, start: dates[0] || round.start, end: dates[dates.length - 1] || round.end, ...summarise(all), changedAt: new Date().toISOString() });
   return { ...res, all };
 }
 

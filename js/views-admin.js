@@ -3,7 +3,7 @@
 import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './ui.js';
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
-  slotOptions, recount, summarise, formatSummary, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
+  slotOptions, recount, summarise, formatSummary, publishState, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
   availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS,
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
@@ -59,8 +59,9 @@ async function openGradesModal({ store, round, onDone }) {
       if (n !== (g.slots || 0)) { g.slots = n; changed.push({ ...g, slots: n }); }
     }
     if (changed.length) await store.saveGames(round.id, changed);
-    await store.saveRound({ id: round.id, ...summarise(games) });
-    Object.assign(round, summarise(games));
+    const patch = { ...summarise(games), changedAt: new Date().toISOString() };
+    await store.saveRound({ id: round.id, ...patch });
+    Object.assign(round, patch);
     const slotsByGrade = { ...(settings.slotsByGrade || {}) };
     for (const gr of grades) slotsByGrade[gr] = want[gr] ? Math.max(...live.filter(g => g.grade === gr).map(perGame)) : 0;   // remembered for the next round
     await store.saveSettings({ slotsByGrade });
@@ -105,7 +106,7 @@ export async function viewAdminHome(ctx) {
         h('div', { class: 'tile-stats' },
           h('span', { class: 'chip' }, `${picked} grade${picked === 1 ? '' : 's'}`),
           h('span', { class: 'chip ' + (st.needed && st.filled >= st.needed ? 'ok' : 'warn') }, `${st.filled}/${st.needed} slots filled`),
-          r.published && h('span', { class: 'chip ok' }, 'Published'))));
+          (p => h('span', { class: 'chip ' + p.cls }, p.short))(publishState(r)))));
   }
 
   function draw() {
@@ -163,7 +164,12 @@ export async function viewBoard(ctx, rid) {
   const otherStats = rounds.filter(r => r.id !== rid && r.season && round.season && r.season.id === round.season.id).map(r => r.stats);
   const wrap = h('div');
 
-  const persistStats = async () => { Object.assign(B.round, summarise(B.games)); await store.saveRound({ id: rid, ...summarise(B.games) }); };
+  // Every change to the allocation is stamped, so the board can say whether what umpires can see is current.
+  const persistStats = async () => {
+    const patch = { ...summarise(B.games), changedAt: new Date().toISOString() };
+    Object.assign(B.round, patch);
+    await store.saveRound({ id: rid, ...patch });
+  };
   // Only the grades the officer picked are listed; the rest of the competition stays out of the way.
   const visible = () => B.games.filter(isPicked);
   const draw = () => { const y = window.scrollY; setChildren(wrap, build()); window.scrollTo(0, y); };
@@ -282,6 +288,29 @@ export async function viewBoard(ctx, rid) {
     const warnings = collectWarnings();
     const sections = groupSections(visible());
 
+    // Publishing is a button, not a tick box, so the state is always readable:
+    // never published → Publish; published and current → Published <when>; changed since → Re-publish.
+    const pub = publishState(B.round);
+    const publishBtn = h('button', { class: 'btn ' + (pub.key === 'live' ? '' : 'primary'), type: 'button' },
+      pub.key === 'stale' ? 'Re-publish' : pub.key === 'live' ? 'Published' : 'Publish');
+    publishBtn.disabled = pub.key === 'live';
+    publishBtn.onclick = guard(async () => {
+      if (st.filled < st.needed && !confirm(`${st.needed - st.filled} slot(s) are still empty. ${pub.key === 'stale' ? 'Re-publish' : 'Publish'} anyway?`)) return;
+      const patch = { published: true, publishedAt: new Date().toISOString() };
+      Object.assign(B.round, patch);
+      await store.saveRound({ id: rid, ...patch });
+      toast(pub.key === 'stale' ? 'Re-published: umpires can see the changes' : 'Published: umpires can see their allocations', 'ok');
+      draw();
+    });
+    const unpublishBtn = h('button', { class: 'link', type: 'button' }, 'Unpublish');
+    unpublishBtn.onclick = guard(async () => {
+      if (!confirm('Hide these allocations from umpires again?')) return;
+      Object.assign(B.round, { published: false });
+      await store.saveRound({ id: rid, published: false });
+      toast('Unpublished: umpires can no longer see this round');
+      draw();
+    });
+
     const toggle = (label, field, hint, confirmFn) => {
       const cb = h('input', { type: 'checkbox', checked: !!B.round[field], onchange: guard(async () => {
         if (cb.checked && confirmFn && !confirm(confirmFn())) { cb.checked = false; return; }
@@ -318,8 +347,10 @@ export async function viewBoard(ctx, rid) {
       h('div', { class: 'row-between' }, h('h1', {}, roundHeading(B.round)), h('span', { class: 'muted' }, fmtRange(B.round.dates))),
       tabs(rid, ''),
       h('div', { class: 'card toolbar' },
-        h('div', { class: 'toggles' },
-          toggle('Published', 'published', 'Umpires can see their allocations', () => st.filled < st.needed ? `${st.needed - st.filled} slot(s) are still empty. Publish anyway?` : 'Publish allocations to umpires?')),
+        h('div', { class: 'publish' },
+          h('span', { class: 'chip ' + pub.cls }, pub.label),
+          publishBtn,
+          B.round.published && unpublishBtn),
         h('div', { class: 'actions' }, gradesBtn, autoBtn, updBtn, clearBtn)),
       h('div', { class: 'summary' },
         h('span', { class: 'chip ' + (st.needed && st.filled === st.needed ? 'ok' : 'warn') }, `${st.filled} of ${st.needed} slots filled`),

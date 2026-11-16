@@ -148,7 +148,7 @@ with sync_playwright() as p:
     check("T20" in tile("T20").inner_text().replace("T20\n", "", 1), "T20 tile shows the match type T20")
     check("One Day & Two Day" in tile("Junior").inner_text(), "Junior tile shows its match types before any grade is picked: One Day & Two Day")
     check("2 grades" in tile("T20").inner_text() and "0/4 slots filled" in tile("T20").inner_text(), "T20 tile: 2 grades, 0/4 slots filled")
-    check("0 grades" in tile("Junior").inner_text() and "0/0 slots filled" in tile("Junior").inner_text() and tile("Junior").locator(".chip").count() == 2, "Junior tile with nothing picked still shows the same two tags: 0 grades, 0/0 slots filled")
+    check("0 grades" in tile("Junior").inner_text() and "0/0 slots filled" in tile("Junior").inner_text() and "Not published" in tile("Junior").inner_text(), "Junior tile with nothing picked: 0 grades, 0/0 slots filled, Not published")
     check(page.locator("a.tile-body").count() == 4, "each tile opens its own round")
     check(page.locator(".comp-tile button:has-text('Select grades')").count() == 0, "no Select grades button on the tiles")
 
@@ -297,7 +297,36 @@ with sync_playwright() as p:
     check(page.locator(".report-table th:has-text('UMPIRES')").count() == 1, "one report table for the Senior round")
     page.click("a.tab:has-text('Allocate')")
     page.wait_for_selector("table.board")
-    page.locator(".toggle:has-text('Published') input").check()
+    check(page.locator(".publish .chip").inner_text() == "Not published yet" and page.locator(".publish button:has-text('Publish')").count() == 1
+          and page.locator(".publish input[type=checkbox]").count() == 0, "publishing is a button with the state beside it, not a tick box")
+    page.click(".publish button:has-text('Publish')")
+    page.wait_for_selector(".publish .chip.ok")
+    check(page.locator(".publish .chip").inner_text().startswith("Published ") and page.locator("button:has-text('Unpublish')").count() == 1,
+          "once published it says when, and offers Unpublish")
+    check(page.locator(".publish button").first.is_disabled(), "the Publish button is spent until something changes")
+
+    sel0 = page.locator("select.slot").first
+    was = sel0.input_value()
+    free = sel0.evaluate("s => [...s.options].map(o => o.value).filter(Boolean)")
+    sel0.select_option(value=("" if was else free[0]))
+    page.wait_for_timeout(350)
+    check(page.locator(".publish .chip").inner_text() == "Changed since it was published" and page.locator(".publish button:has-text('Re-publish')").count() == 1,
+          "changing an allocation after publishing asks for a re-publish")
+    page.click("a.tab:has-text('All rounds')")
+    page.wait_for_selector(".comp-tile")
+    check("Changes to publish" in tile("Senior").inner_text(), "the tile says so too")
+    tile("Senior").locator("a.tile-body").click()
+    page.wait_for_selector("table.board")
+    page.locator("select.slot").first.select_option(value=was)
+    page.wait_for_timeout(350)
+    page.click(".publish button:has-text('Re-publish')")
+    page.wait_for_selector(".publish .chip.ok")
+    check(page.locator(".publish .chip").inner_text().startswith("Published "), "re-publishing clears the warning")
+    page.click("a.tab:has-text('All rounds')")
+    page.wait_for_selector(".comp-tile")
+    check("Published" in tile("Senior").inner_text() and "Changes to publish" not in tile("Senior").inner_text(), "and the tile is back to Published")
+    tile("Senior").locator("a.tile-body").click()
+    page.wait_for_selector("table.board")
 
     print("Umpire: one page - appointments + season availability")
     sign_out(page)

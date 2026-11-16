@@ -99,6 +99,22 @@ export function formatSummary(games) {
   return [...new Set(games.map(g => g.matchType).filter(Boolean))].sort((a, b) => order(a) - order(b) || a.localeCompare(b)).join(' & ');
 }
 
+// Where a round stands with umpires: never published, published and current, or changed since.
+export function publishState(round = {}) {
+  if (!round.published) return { key: round.publishedAt ? 'off' : 'never', cls: '', label: round.publishedAt ? 'Unpublished' : 'Not published yet', short: round.publishedAt ? 'Unpublished' : 'Not published' };
+  const stale = round.changedAt && round.publishedAt && round.changedAt > round.publishedAt;
+  if (stale) return { key: 'stale', cls: 'warn', label: 'Changed since it was published', short: 'Changes to publish' };
+  return { key: 'live', cls: 'ok', label: round.publishedAt ? `Published ${fmtWhen(round.publishedAt)}` : 'Published', short: 'Published' };
+}
+
+// '2026-11-16T02:14:00Z' -> '1:14pm, 16 Nov'
+export function fmtWhen(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(+d)) return '';
+  const t = d.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' }).replace(/\s/g, '').toLowerCase();
+  return `${t}, ${d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}`;
+}
+
 // ---------- sections (how the report groups games) ------------------------
 
 export function sectionKey(g) {

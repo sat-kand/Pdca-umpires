@@ -102,7 +102,7 @@ export async function applyWithdrawals(store) {
         freed++;
         touched = true;
       }
-      if (touched) await store.saveRound({ id: roundId, ...summarise(games) });
+      if (touched) await store.saveRound({ id: roundId, ...summarise(games), changedAt: new Date().toISOString() });
     }
     w.handled = true; w.handledAt = new Date().toISOString(); w.freed = freed;
     await store.saveWithdrawal(w);

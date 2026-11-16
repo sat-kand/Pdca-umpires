@@ -203,3 +203,4 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; }
 .daymonth { display: flex; gap: .5rem; } .daymonth select { margin: 0; }
 .appt-action { margin-top: .4rem; }
 .appt.declined { opacity: .7; }
+.publish { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
