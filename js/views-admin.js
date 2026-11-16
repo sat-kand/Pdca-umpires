@@ -7,6 +7,8 @@ import {
   availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS,
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
+import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
+import { membershipTypes, feeFor, money } from './views-org.js';
 import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, TILE_ORDER } from './rounds.js';
 
 const SLOT_CHOICES = [[1, '1 umpire'], [2, '2 umpires']];
@@ -82,9 +84,12 @@ export async function viewAdminHome(ctx) {
   const { store } = ctx;
   const today = todayLocal();
   const wrap = h('div');
-  const state = { rounds: [], season: null, syncing: false, error: '', more: 0 };
+  const state = { rounds: [], season: null, syncing: false, error: '', more: 0, dropouts: [] };
 
-  async function load() { [state.rounds, state.season] = await Promise.all([store.listRounds(), store.getSeason()]); }
+  async function load() {
+    state.dropouts = await applyWithdrawals(store);         // umpires who pulled out of a published round, until the officer says 'Got it'
+    [state.rounds, state.season] = await Promise.all([store.listRounds(), store.getSeason()]);
+  }
 
   const empty = c => h('div', { class: 'card comp-tile empty' }, h('h2', {}, c.label), h('p', { class: 'muted' }, state.syncing ? 'Loading fixtures…' : 'No upcoming games'));
 
@@ -93,9 +98,8 @@ export async function viewAdminHome(ctx) {
     const st = r.stats || { needed: 0, filled: 0 };
     const picked = r.picked || 0;
     return h('div', { class: 'card comp-tile' },
-      h('div', { class: 'row-between' }, h('h2', {}, c.label),
-        h('button', { class: 'btn small', type: 'button', onclick: () => openGradesModal({ store, round: r, onDone: async () => { await load(); draw(); } }) }, 'Select grades')),
       h('a', { class: 'tile-body', href: `#/admin/round/${r.id}` },
+        h('h2', {}, c.label),
         h('div', { class: 'tile-round' }, fmtRange(r.dates || [])),
         h('div', { class: 'muted' }, r.formats || ''),
         h('div', { class: 'tile-stats' },
@@ -111,6 +115,12 @@ export async function viewAdminHome(ctx) {
     setChildren(wrap,
       h('div', { class: 'row-between' }, h('h1', {}, 'Allocate'), state.syncing && h('span', { class: 'muted' }, 'Updating fixtures from Play Cricket…')),
       state.error && h('p', { class: 'notice warn' }, state.error, ' ', h('button', { class: 'link', type: 'button', onclick: () => sync(true) }, 'Try again')),
+      state.dropouts.length > 0 && h('div', { class: 'notice warn dropouts' },
+        h('strong', {}, 'Umpires have pulled out of published games'),
+        h('ul', { class: 'plain' }, state.dropouts.map(d => h('li', {}, `${d.name}: `,
+          d.games.map((g, i) => [i ? ', ' : '', h('a', { href: `#/admin/round/${g.roundId}` }, `${g.label} (${fmtDay(g.date)})`)])))),
+        h('p', { class: 'muted' }, 'Those slots are now empty and the games are flagged on the board.'),
+        h('button', { class: 'btn small', type: 'button', onclick: async ev => { ev.currentTarget.disabled = true; await dismissWithdrawals(store, state.dropouts); state.dropouts = []; draw(); } }, 'Got it')),
       shown.sets.map((set, i) => [i > 0 && h('hr', { class: 'set-break' }), h('div', { class: 'cards' }, set.map(tile))]),
       COMPS.some(c => !currentRound(state.rounds, c.key, today)) && h('div', { class: 'cards' }, [...COMPS].sort((a, b) => TILE_ORDER.indexOf(a.key) - TILE_ORDER.indexOf(b.key)).filter(c => !currentRound(state.rounds, c.key, today)).map(empty)),
       shown.hasMore && h('div', { class: 'load-more' }, h('button', { class: 'btn', type: 'button', onclick: () => { state.more++; draw(); } }, 'Load more')),
@@ -563,8 +573,19 @@ export async function viewUmpires(ctx) {
       draw();
     });
 
+    // Membership type comes from the list the officer set up in Settings; the fee follows the type.
+    const types = membershipTypes(store.org);
+    const membershipCell = u => {
+      if (!types.length) return h('a', { class: 'muted', href: '#/admin/settings' }, 'Set up types');
+      const sel = h('select', { class: 'in-sm', 'aria-label': 'membership',
+        onchange: e => save(u, { membership: e.target.value }) },
+        h('option', { value: '' }, '—'),
+        types.map(t => h('option', { value: t.name, selected: u.membership === t.name }, t.name)));
+      const fee = feeFor(store.org, u.membership);
+      return h('div', { class: 'member-type' }, sel, fee ? h('span', { class: 'muted fee' }, money(fee)) : null);
+    };
     const pending = members.filter(u => !u.active);
-    const COLS = ['Active', 'First name', 'Last name', 'D.O.B', 'Address', 'Email', 'Mobile', 'Accreditation no.'];
+    const COLS = ['Active', 'First name', 'Last name', 'D.O.B', 'Address', 'Email', 'Mobile', 'Accreditation no.', 'Membership'];
     setChildren(wrap,
       h('div', { class: 'row-between' }, h('h1', {}, 'Members'), h('a', { class: 'btn', href: '#/admin' }, '\u2190 Allocate')),
       pending.length > 0 && h('p', { class: 'notice warn' }, `${pending.length} member(s) are waiting for approval. Tick "Active" to approve them.`),
@@ -578,8 +599,11 @@ export async function viewUmpires(ctx) {
           h('td', {}, field(u, 'address', { cls: 'in-addr', ph: 'Street, suburb' })),
           h('td', { class: 'muted' }, u.email),
           h('td', {}, field(u, 'phone', { cls: 'in-sm' })),
-          h('td', {}, field(u, 'accreditation', { cls: 'in-sm', ph: 'Umpire accreditation' }))); })))),
+          h('td', {}, field(u, 'accreditation', { cls: 'in-sm', ph: 'Umpire accreditation' })),
+          h('td', {}, membershipCell(u))); })))),
       !members.length && h('p', { class: 'muted' }, 'No members yet. Add some below, or send them the link from Settings so they can sign in and fill in their own details.')),
+      store.org && store.org.membership && store.org.membership.renewalDate
+        && h('p', { class: 'muted' }, `Membership renewal date: ${fmtDay(store.org.membership.renewalDate)}. Types and fees are set in Settings.`),
       h('div', { class: 'card' }, h('h2', {}, 'Add members'), h('p', { class: 'muted' }, 'Paste your existing list (for example from the Google Form responses). Added members are active straight away and can sign in with that email address. They can fill in their own date of birth and address.'), add, addBtn));
   };
   draw();

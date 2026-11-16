@@ -11,7 +11,9 @@
 //   orgs/{orgId}/rounds/{roundId}            title, dates, published, stats
 //   orgs/{orgId}/rounds/{roundId}/games/{id} fixture + slots + alloc
 //   orgs/{orgId}/availability/{seasonId__email}
+//   orgs/{orgId}/withdrawals/{id}            an umpire who pulled out of a published round
 //   orgs/{orgId}/settings/defaults           default umpires-per-game by grade
+//   mail/{id}                                outgoing email, sent by the Firebase "Trigger Email" extension
 
 import { FIREBASE_SDK } from './config.js';
 
@@ -129,6 +131,14 @@ export async function createFirebaseStore(cfg) {
     },
 
     // ----- settings -----
+    async listWithdrawals() {
+      const snap = await fs.getDocs(fs.collection(db, ...P('withdrawals')));
+      return snap.docs.map(d => d.data());
+    },
+    saveWithdrawal: w => fs.setDoc(fs.doc(db, ...P('withdrawals', w.id)), clean(w), { merge: true }),
+    // Picked up by the "Trigger Email from Firestore" extension, if the owner has installed it.
+    queueMail: m => fs.addDoc(fs.collection(db, 'mail'), clean(m)),
+
     async getSettings() { return (await getOne(...P('settings', 'defaults'))) || {}; },
     saveSettings: s => fs.setDoc(fs.doc(db, ...P('settings', 'defaults')), clean(s), { merge: true }),
   };

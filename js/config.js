@@ -30,4 +30,6 @@ export const DEMO_ORG = {
   name: 'Parramatta District Cricket Association',
   playCricketId: 'ee7d89d9-6732-ec11-981f-501ac52e1666',
   plan: 'trial',
+  notifyEmail: 'admin@demo.test',
+  membership: { renewalDate: '', types: [{ name: 'Ordinary member', fee: 60 }, { name: 'Junior member', fee: 25 }, { name: 'Life member', fee: 0 }] },
 };

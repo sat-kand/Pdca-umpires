@@ -5,6 +5,15 @@ import { h, toast, busy, copyText, setChildren } from './ui.js';
 import { emailKey } from './logic.js';
 
 const TRIAL_DAYS = 30;
+// A starting point for a new association; every association edits its own list in Settings.
+export const DEFAULT_TYPES = [
+  { name: 'Ordinary member', fee: 0 },
+  { name: 'Junior member', fee: 0 },
+  { name: 'Life member', fee: 0 },
+];
+export const membershipTypes = org => ((org && org.membership && org.membership.types) || []).filter(t => t.name);
+export const feeFor = (org, type) => { const t = membershipTypes(org).find(x => x.name === type); return t ? t.fee : null; };
+export const money = v => (v || v === 0 ? `$${Number(v).toFixed(2).replace(/\.00$/, '')}` : '');
 
 // A Play Cricket page link (or the bare id) -> the organisation id.
 export function playCricketIdFrom(text) {
@@ -39,7 +48,8 @@ export async function viewAssociations(ctx) {
     e.preventDefault();
     const playCricketId = playCricketIdFrom(pc.value);
     if (pc.value.trim() && !playCricketId) { toast('That does not look like a Play Cricket link. Copy the address of your association\'s page on play.cricket.com.au.', 'err'); return; }
-    const org = { id: orgIdFrom(name.value), name: name.value.trim(), playCricketId, plan: 'trial',
+    const org = { id: orgIdFrom(name.value), name: name.value.trim(), playCricketId, plan: 'trial', notifyEmail: S.user.email,
+      membership: { renewalDate: '', types: DEFAULT_TYPES.map(t => ({ ...t })) },
       trialEnds: new Date(Date.now() + TRIAL_DAYS * 86400000).toISOString(), createdAt: new Date().toISOString() };
     await store.createOrg(org, S.user.email);
     await ctx.chooseOrg(org.id);
@@ -67,12 +77,46 @@ export async function viewOrgSettings(ctx) {
   const wrap = h('div');
   const draw = async () => setChildren(wrap, await build());
 
+  // Membership: when it falls due, and the types an association offers, each with its own fee.
+  function membershipCard() {
+    const org = store.org;
+    const m = org.membership || {};
+    const rows = [...(m.types || [])];
+    if (!rows.length) rows.push({ name: '', fee: '' });
+    const renewal = h('input', { type: 'date', value: m.renewalDate || '' });
+    const list = h('div', { class: 'type-rows' });
+    const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save membership');
+
+    const drawRows = () => setChildren(list, rows.map((t, i) => h('div', { class: 'type-row' },
+      (() => { const n = h('input', { value: t.name, placeholder: 'e.g. Ordinary member', 'aria-label': 'Membership type' }); n.oninput = () => { rows[i].name = n.value; }; return n; })(),
+      (() => { const f = h('input', { type: 'number', min: '0', step: '0.01', value: t.fee === '' || t.fee == null ? '' : t.fee, placeholder: 'Fee', 'aria-label': 'Membership fee' }); f.oninput = () => { rows[i].fee = f.value; }; return f; })(),
+      h('button', { class: 'link', type: 'button', onclick: () => { rows.splice(i, 1); if (!rows.length) rows.push({ name: '', fee: '' }); drawRows(); } }, 'Remove'))));
+    drawRows();
+
+    return h('form', { class: 'card', onsubmit: busy(saveBtn, async e => {
+      e.preventDefault();
+      const types = rows.filter(t => (t.name || '').trim()).map(t => ({ name: t.name.trim(), fee: t.fee === '' || t.fee == null ? 0 : Number(t.fee) }));
+      if (types.some(t => Number.isNaN(t.fee))) { toast('A fee is not a number', 'err'); return; }
+      await store.saveOrg({ membership: { renewalDate: renewal.value, types }, updatedAt: new Date().toISOString() });
+      await ctx.refreshUser();
+      toast('Membership saved', 'ok');
+      await draw();
+    }) },
+    h('h2', {}, 'Membership'),
+    h('label', {}, 'Renewal date (when membership falls due)', renewal),
+    h('p', { class: 'muted small' }, 'Membership types and their fees. Members are given one of these on the Members page.'),
+    list,
+    h('p', {}, h('button', { class: 'btn small', type: 'button', onclick: () => { rows.push({ name: '', fee: '' }); drawRows(); } }, 'Add type')),
+    saveBtn);
+  }
+
   async function build() {
     const org = store.org;
     const admins = (await store.listAdmins()).sort();
     const link = joinLink(org.id);
     const name = h('input', { required: true, value: org.name || '' });
     const pc = h('input', { value: org.playCricketId ? `https://play.cricket.com.au/club/-/${org.playCricketId}` : '', placeholder: 'https://play.cricket.com.au/club/…' });
+    const notify = h('input', { type: 'email', value: org.notifyEmail || '', placeholder: S.user.email });
     const save = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
     const add = h('input', { type: 'email', placeholder: 'officer@example.com', 'aria-label': 'Email of the new officer' });
     const addBtn = h('button', { class: 'btn', type: 'submit' }, 'Add officer');
@@ -83,7 +127,7 @@ export async function viewOrgSettings(ctx) {
         e.preventDefault();
         const playCricketId = playCricketIdFrom(pc.value);
         if (pc.value.trim() && !playCricketId) { toast('That does not look like a Play Cricket link.', 'err'); return; }
-        await store.saveOrg({ name: name.value.trim(), playCricketId, updatedAt: new Date().toISOString() });
+        await store.saveOrg({ name: name.value.trim(), playCricketId, notifyEmail: (notify.value || '').trim().toLowerCase(), updatedAt: new Date().toISOString() });
         await ctx.refreshUser(); ctx.redrawHeader();
         toast('Saved', 'ok');
       }) },
@@ -91,7 +135,11 @@ export async function viewOrgSettings(ctx) {
       h('label', {}, 'Name', name),
       h('label', {}, 'Its page on Play Cricket (link)', pc),
       h('p', { class: 'muted small' }, 'Fixtures are read from this page.'),
+      h('label', {}, 'Send alerts to', notify),
+      h('p', { class: 'muted small' }, 'Where to email when an umpire pulls out of a published game.'),
       save),
+
+      membershipCard(),
 
       h('div', { class: 'card' }, h('h2', {}, 'Link for umpires'),
         h('p', { class: 'muted' }, 'Send this link to your umpires. They sign in, add their details, and wait for you to approve them on the Members page.'),

@@ -12,7 +12,7 @@ It is a static site (no build step) that runs on **GitHub Pages**, with **Fireba
 ## How a round works
 
 1. **Open Allocate.** There is nothing to set up: the app reads the Play Cricket fixture list by itself (when it is missing or older than 12 hours) and shows **one tile per competition – Senior, T20 and Junior – for that competition's next round.** Each tile shows the dates, the match types Play Cricket gives its games (`Two Day`, `One Day`, `T20`), how many grades are picked and `filled/needed` umpire slots. If a competition has a two-day round, the one-day games that start on that round's second Saturday get **their own extra tile** (own date, own grades in the popup) so both weeks can be done together. Tiles are grouped into **sets** (the appointment work for one stretch of play) with a line between sets, and **Load more**, centred below, adds the next set.
-2. **Select grades** (button on each tile) → a popup lists that competition's grades playing the round with a tick box and a game count. The committee usually asks for only some grades, so tick those (use *1 umpire / 2 umpires* per grade when needed). The tile's slot total follows the ticks: 5 grades × 3 one-day games = 0/15. A two-day game counts one slot per day. Your choice is remembered for the next round.
+2. **Click the tile**, then **Select grades** → a popup lists that competition's grades playing the round with a tick box and a game count. The committee usually asks for only some grades, so tick those (use *1 umpire / 2 umpires* per grade when needed). The tile's slot total follows the ticks: 5 grades × 3 one-day games = 0/15. A two-day game counts one slot per day. Your choice is remembered for the next round.
 3. **Click the tile** → the board for that competition only, listing only the ticked grades (the *Select grades* button is there too). For a two-day game the drop-down lists *Available both days* first, and picking someone for Day 1 also fills Day 2 when they are free. Drop-downs are sorted: available umpires first, then no reply, then unavailable/already busy. ⚠ appears for anything questionable (unavailable, double-booked that day in the same competition). **Suggest allocations** fills only empty slots using umpires who said *Available*, least-used first.
 4. **Availability tab** shows everyone's answers for the round and who hasn't replied yet. The **Availability** page in the top bar is the whole season at a glance: a tab per competition, a row per umpire, a column per upcoming playing date (past dates are hidden unless you tick *Show past dates*), with a count of available umpires under each date. Click a cell to override an umpire's answer (✓ → ✗ → blank; a dot marks cells the officer set), click a date to list only the umpires free that day, or type a name to find someone.
 5. **Published** → umpires see their appointments. Finished rounds move to **Past allocations** at the bottom of the Allocate page; click one to open its final report. **Report & email** → **Download PDF** (made by the app itself, nothing to print), copy the BCC list, or open an email draft.
@@ -21,7 +21,18 @@ It is a static site (no build step) that runs on **GitHub Pages**, with **Fireba
 
 ## Members
 
-The **Members** page (formerly Umpires) is the association's list of people. Each member has a **first name**, **last name**, **date of birth**, **address**, email, mobile and **umpire accreditation number**. Members fill in their own details when they join by the link; officers can correct anything and approve new sign-ups with the **Active** tick. Paste an existing list as `First name, Last name, email, mobile, accreditation no.` lines (the last two optional). The allocation board, dropdowns and reports show the full name.
+The **Members** page (formerly Umpires) is the association's list of people. Each member has a **first name**, **last name**, **date of birth**, **address**, email, mobile, **umpire accreditation number** and **membership type** (from the list in Settings; the fee follows the type). Members fill in their own details when they join by the link; officers can correct anything and approve new sign-ups with the **Active** tick. Paste an existing list as `First name, Last name, email, mobile, accreditation no.` lines (the last two optional). The allocation board, dropdowns and reports show the full name.
+
+## Membership and alerts (Settings)
+
+- **Membership**: a **renewal date** for the association, and the **membership types** it offers, each with its own fee (Ordinary, Junior, Life, or whatever the association uses). Members are given one of these on the Members page.
+- **Send alerts to**: where to email when an umpire pulls out.
+
+### When an umpire pulls out after a round is published
+
+If an umpire changes an answer to *Not available* for a date they have already been given a game on, the app takes them off those games (the slots go back to empty and the game is flagged on the board), tells the umpire what happened, shows the officer a banner on the Allocate page until they dismiss it, and queues an email to the **Send alerts to** address.
+
+Sending that email needs the Firebase **Trigger Email from Firestore** extension: install it from the Firebase console (Extensions → Trigger Email), point it at the `mail` collection, and give it an SMTP account to send through. Without the extension everything else still works — the slot is freed and the banner appears — but no email goes out.
 
 ## Associations (accounts)
 

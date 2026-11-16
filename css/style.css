@@ -194,3 +194,9 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; }
 .members input { margin: 0; }
 .two-up { display: flex; gap: .75rem; } .two-up label { flex: 1; }
 @media (max-width: 520px) { .two-up { display: block; } }
+.type-rows { display: grid; gap: .4rem; }
+.type-row { display: flex; gap: .5rem; align-items: center; }
+.type-row input { margin: 0; } .type-row input:first-child { flex: 1; max-width: 18rem; } .type-row input[type=number] { width: 7rem; }
+.member-type { display: flex; gap: .35rem; align-items: center; } .member-type .fee { font-size: .8rem; }
+.members select { margin: 0; min-width: 9rem; }
+.dropouts ul { margin: .4rem 0; } .dropouts a { color: inherit; }

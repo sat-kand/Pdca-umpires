@@ -46,6 +46,15 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
     }
 
+    // Outgoing email, sent by the "Trigger Email from Firestore" extension (if installed).
+    // Write-only, and only to the address the association set in Settings.
+    match /mail/{id} {
+      allow read, update, delete: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['to', 'message', 'orgId', 'createdAt'])
+        && request.resource.data.to == get(/databases/$(database)/documents/orgs/$(request.resource.data.orgId)).data.notifyEmail;
+    }
+
     // Product owners: you can only check whether YOU are one.
     match /platformAdmins/{id} {
       allow get: if signedIn() && id == me();
@@ -72,7 +81,7 @@ service cloud.firestore {
 
       // Officers may rename it and set its Play Cricket link, never its plan.
       allow update: if isPlatformAdmin()
-        || (isOrgAdmin(orgId) && onlyChanges(['name', 'playCricketId', 'updatedAt']));
+        || (isOrgAdmin(orgId) && onlyChanges(['name', 'playCricketId', 'notifyEmail', 'membership', 'updatedAt']));
       allow delete: if false;
 
       // Officers of this association.
@@ -136,6 +145,14 @@ service cloud.firestore {
             && request.resource.data.email == me()
             && request.resource.data.seasonId == id.split('__')[0]
           ));
+      }
+
+      // An umpire who turns an answer to "Not available" after a round is published records it here;
+      // the officer's app frees the slot and marks it handled.
+      match /withdrawals/{id} {
+        allow get, list: if isOrgAdmin(orgId);
+        allow create: if signedIn() && orgOpen(orgId) && request.resource.data.email == me() && request.resource.data.handled == false;
+        allow update, delete: if isOrgAdmin(orgId) && orgOpen(orgId);
       }
 
       match /settings/{id} {

@@ -1,6 +1,7 @@
 // Screens for umpires: sign-in, profile, availability, my appointments.
 
 import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
+import { recordWithdrawal } from './withdrawals.js';
 import { fmtDay, gradeShort, allocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName } from './logic.js';
 
 export function viewLogin(ctx) {
@@ -108,6 +109,7 @@ export async function viewMy(ctx) {
   const keysOf = c => c.dates.map(d => availKey(c.comp, d));
   const shown = comps.flatMap(keysOf);
   let saved = !!existing, dirty = false;
+  const savedDays = {};                      // what has been saved during this visit, for spotting a withdrawal
 
   const chip = h('span', { class: 'chip' });
   const hint = h('span', { class: 'muted' });
@@ -148,9 +150,14 @@ export async function viewMy(ctx) {
 
   const saveBtn = h('button', { class: 'btn primary', type: 'button' }, 'Save');
   saveBtn.onclick = busy(saveBtn, async () => {
+    const before = { ...((existing && existing.days) || {}), ...savedDays };
     await store.saveAvailability({ seasonId: season.id, email: u.email, name: u.name, days, updatedAt: new Date().toISOString() });
+    Object.assign(savedDays, days);
     saved = true; dirty = false; drawStatus();
-    toast('Availability saved');
+    // Pulling out of a game that is already published: free the slot and tell the appointments officer.
+    const w = await recordWithdrawal(store, { umpire: u, before, after: days });
+    if (w) toast(`Saved. You were down for ${w.games.length} game${w.games.length === 1 ? '' : 's'} on those dates \u2014 the appointments officer has been told.`, 'warn');
+    else toast('Availability saved');
   });
 
   setChildren(card,

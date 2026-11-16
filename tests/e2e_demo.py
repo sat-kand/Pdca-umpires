@@ -150,11 +150,22 @@ with sync_playwright() as p:
     check("2 grades" in tile("T20").inner_text() and "0/4 slots filled" in tile("T20").inner_text(), "T20 tile: 2 grades, 0/4 slots filled")
     check("0 grades" in tile("Junior").inner_text() and "0/0 slots filled" in tile("Junior").inner_text() and tile("Junior").locator(".chip").count() == 2, "Junior tile with nothing picked still shows the same two tags: 0 grades, 0/0 slots filled")
     check(page.locator("a.tile-body").count() == 4, "each tile opens its own round")
+    check(page.locator(".comp-tile button:has-text('Select grades')").count() == 0, "no Select grades button on the tiles")
 
     print("Admin: Select grades")
-    tile("Junior").locator("button:has-text('Select grades')").click()
     dlg = page.locator("dialog.modal")
-    dlg.wait_for(state="visible")
+
+    def open_grades(name, n=0):                      # the popup now lives on the board, not the tile
+        tile(name, n).locator("a.tile-body").click()
+        page.wait_for_selector("button:has-text('Select grades')")
+        page.click("button:has-text('Select grades')")
+        dlg.wait_for(state="visible")
+
+    def back_to_rounds():
+        page.click("a.tab:has-text('All rounds')")
+        page.wait_for_selector(".comp-tile")
+
+    open_grades("Junior")
     check(dlg.locator(".grade-row").count() == 2, "popup lists the Junior grades that play this round (U12 Gold, U14 Blue)")
     check("2 games" in dlg.locator(".grade-row:has-text('U12')").inner_text() and "1 game" in dlg.locator(".grade-row:has-text('U14')").inner_text(), "each grade shows its game count")
     check("One Day" in dlg.locator(".grade-row:has-text('U12')").inner_text() and "Two Day" in dlg.locator(".grade-row:has-text('U14')").inner_text() and "Round" not in dlg.locator(".grade-list").inner_text(), "each grade shows its Play Cricket match type, not the round")
@@ -166,10 +177,10 @@ with sync_playwright() as p:
     check(dlg.locator("select").count() == 0 and "umpire" not in dlg.locator(".grade-row").first.inner_text(), "no 1 / 2 umpires choice in the popup (that is set per game on the board)")
     dlg.locator("button:has-text('Done')").click()
     dlg.wait_for(state="detached")
+    back_to_rounds()
     check("2 grades" in tile("Junior").inner_text() and "0/4 slots filled" in tile("Junior").inner_text(), "Junior tile updates to 2 grades, 0/4 slots filled")
     check("One Day & Two Day" in tile("Junior").inner_text(), "picking U12 (One Day) and U14 (Two Day) keeps One Day & Two Day")
-    tile("Junior").locator("button:has-text('Select grades')").click()
-    dlg.wait_for(state="visible")
+    open_grades("Junior")
     check(dlg.locator(".grade-row:has-text('U14') input[type=checkbox]").is_checked(), "ticked grades stay ticked when the popup is reopened")
     check([t.split()[0] for t in dlg.locator(".grade-row .chip").all_inner_texts()] == ["U14", "U12"], "Junior grades are listed oldest age group first (U14 before U12)")
     dlg.locator("button:has-text('None')").click()
@@ -177,6 +188,7 @@ with sync_playwright() as p:
     dlg.locator(".grade-row:has-text('U12') input[type=checkbox]").check()
     dlg.locator("button:has-text('Done')").click()
     dlg.wait_for(state="detached")
+    back_to_rounds()
     check("1 grade" in tile("Junior").inner_text() and "0/2 slots filled" in tile("Junior").inner_text(), "Junior tile settles at 1 grade, 0/2 slots filled")
     check("One Day" in tile("Junior").inner_text() and "Two Day" not in tile("Junior").inner_text(), "with only U12 picked the Junior tile says One Day")
 
@@ -429,8 +441,8 @@ with sync_playwright() as p:
     page.click(".nav-link:has-text('Members')")
     page.wait_for_selector("table.board")
     check(page.locator("h1").first.inner_text() == "Members", "the Umpires page is now called Members")
-    check(page.locator("table.members thead th").all_inner_texts() == ["ACTIVE", "FIRST NAME", "LAST NAME", "D.O.B", "ADDRESS", "EMAIL", "MOBILE", "ACCREDITATION NO."],
-          "members have a first and last name, date of birth, address and accreditation number")
+    check(page.locator("table.members thead th").all_inner_texts() == ["ACTIVE", "FIRST NAME", "LAST NAME", "D.O.B", "ADDRESS", "EMAIL", "MOBILE", "ACCREDITATION NO.", "MEMBERSHIP"],
+          "members have a first and last name, date of birth, address, accreditation number and membership type")
     acc = page.locator("tr:has-text('umpire1@demo.test') input").nth(6)
     acc.fill("L2-9001"); acc.blur(); page.wait_for_timeout(250)
     page.reload(); page.wait_for_selector("table.members")
@@ -465,6 +477,93 @@ with sync_playwright() as p:
     page.wait_for_selector("table.members")
     check(page.locator("h1").first.inner_text() == "Members", "the old /admin/umpires link still opens it")
 
+    print("Admin: membership settings")
+    page.click(".nav-link:has-text('Settings')")
+    page.wait_for_selector(".type-rows")
+    rows = page.locator(".type-row")
+    check(rows.count() == 3 and rows.first.locator("input").first.input_value() == "Ordinary member" and rows.first.locator("input[type=number]").input_value() == "60",
+          "Settings lists the membership types with their own fees")
+    page.click("button:has-text('Add type')")
+    page.locator(".type-row").last.locator("input").first.fill("Student member")
+    page.locator(".type-row").last.locator("input[type=number]").fill("15")
+    page.locator("input[type=date]").first.fill("2027-06-30")
+    page.click("button:has-text('Save membership')")
+    page.wait_for_selector(".toast:has-text('Membership saved')")
+    page.reload()
+    page.wait_for_selector(".type-rows")
+    check(page.locator(".type-row").count() == 4 and page.locator("input[type=date]").first.input_value() == "2027-06-30", "the renewal date and the new type are saved")
+    page.locator(".type-row").last.locator("button:has-text('Remove')").click()
+    page.click("button:has-text('Save membership')")
+    page.wait_for_selector(".toast:has-text('Membership saved')")
+    check(page.locator(".type-row").count() == 3, "a type can be removed again")
+
+    print("Members: membership type and fee")
+    page.click(".nav-link:has-text('Members')")
+    page.wait_for_selector("table.members")
+    check("Membership renewal date" in page.inner_text("body") and "30 Jun" in page.inner_text("body"), "the Members page shows when membership falls due")
+    sel = page.locator("tr:has-text('umpire1@demo.test') select")
+    check(sel.locator("option").all_inner_texts() == ["\u2014", "Ordinary member", "Junior member", "Life member"], "the dropdown offers the types set up in Settings")
+    sel.select_option("Junior member")
+    page.wait_for_timeout(300)
+    page.reload()
+    page.wait_for_selector("table.members")
+    row1 = page.locator("tr:has-text('umpire1@demo.test')")
+    check(row1.locator("select").input_value() == "Junior member" and "$25" in row1.inner_text(), "the choice is saved and the type's fee is shown")
+
+    print("Umpire pulls out of a published game")
+    info = page.evaluate("""(today) => {
+        const db = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca;
+        const r = Object.values(db.rounds).find(x => x.published && x.comp === 'senior' && x.end >= today);
+        for (const g of Object.values(db.games[r.id] || {})) {
+          for (const [d, arr] of Object.entries(g.alloc || {})) {
+            const a = (arr || []).find(Boolean);
+            if (a && d >= today) { const u = Object.values(db.umpires).find(u => u.pid === a.p);
+              return { email: u.email, name: u.name, date: d, roundId: r.id, gameId: g.id }; }
+          }
+        }
+        return null;
+      }""", today.isoformat())
+    check(bool(info), f"a published Senior game has an umpire on it ({info and info['name']})")
+    d = date.fromisoformat(info["date"])
+    label = d.strftime("%a, ") + str(d.day) + d.strftime(" %b")
+    sign_out(page)
+    sign_in(page, info["email"])
+    page.wait_for_selector(".comp-section")
+    page.locator(f".comp-section:has(h2:has-text('Senior')) .drow:has-text('{label}')").first.locator("button.opt.no").click()
+    page.click(".savebar button:has-text('Save')")
+    page.wait_for_selector(".toast")
+    check("appointments officer has been told" in page.locator(".toast").inner_text(), "the umpire is told their change affects a game they were given")
+    mail = page.evaluate("() => Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.mail || {})")
+    check(len(mail) >= 1 and mail[-1]["to"] == "admin@demo.test" and info["name"] in mail[-1]["message"]["subject"], f"an email to the officer is queued ({len(mail)})")
+    check(label.split(", ")[1] in mail[-1]["message"]["text"], "the email lists the date and game")
+    page.click(".savebar button:has-text('Save')")
+    page.wait_for_timeout(500)
+    again = page.evaluate("() => Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.mail || {}).length")
+    check(again == len(mail), "saving again with no change does not email the officer twice")
+
+    sign_out(page)
+    sign_in(page, "admin@demo.test")
+    page.wait_for_selector(".dropouts")
+    check(info["name"] in page.locator(".dropouts").inner_text(), "the officer sees a banner on Allocate naming who pulled out")
+    freed = page.evaluate("""(info) => {
+        const db = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca;
+        const g = db.games[info.roundId][info.gameId];
+        return { still: (g.alloc[info.date] || []).some(a => a && a.n === info.name), note: g.changeNote || '' };
+      }""", info)
+    check(not freed["still"], "the slot is unallocated again")
+    check(info["name"] in freed["note"] and "no longer available" in freed["note"], "the game carries a note for the officer")
+    page.locator(".dropouts a").first.click()
+    page.wait_for_selector("table.board")
+    check(page.locator(".change:has-text('no longer available')").count() >= 1, "the board flags the game")
+    page.click("a.tab:has-text('All rounds')")
+    page.wait_for_selector(".comp-tile")
+    check(page.locator(".dropouts").count() == 1, "the banner is still there until the officer dismisses it")
+    page.click(".dropouts button:has-text('Got it')")
+    check(page.locator(".dropouts").count() == 0, "the banner can be dismissed")
+    page.reload()
+    page.wait_for_selector(".comp-tile")
+    check(page.locator(".dropouts").count() == 0, "and it does not come back: the withdrawal is handled")
+
     print("Admin: fixtures load automatically from Play Cricket (mocked service)")
     API_DOWN = False
     page.locator("button:has-text('Reset')").click()      # demo reset: start from an empty app
@@ -475,11 +574,11 @@ with sync_playwright() as p:
     page.wait_for_selector(".tile-round")
     check(page.locator(".comp-tile h2").all_inner_texts() == ["Senior", "Junior", "Senior", "T20"], "no button needed: next rounds appear by themselves; Senior has a second tile for its one-day Women's game")
     check("Two Day" in tile("Senior", 0).inner_text() and "28 NOV" in tile("Senior", 1).inner_text().upper() and "T20" in tile("Senior", 1).inner_text() and "Two Day" not in tile("Senior", 1).inner_text(), "second Senior tile: its own date and its own match type (T20 in the mock)")
-    tile("Senior", 1).locator("button:has-text('Select grades')").click()
-    dlg.wait_for(state="visible")
+    open_grades("Senior", 1)
     check(dlg.locator(".grade-row").count() == 1 and "Women" in dlg.locator(".grade-row").first.inner_text(), "its popup lists only the grade that plays then (Senior Women)")
     dlg.locator("button:has-text('Cancel')").click()
     dlg.wait_for(state="detached")
+    back_to_rounds()
     check(page.locator("button:has-text('Load more')").count() == 1, "Load more is offered: later rounds exist")
     page.click("button:has-text('Load more')")
     check(page.locator(".comp-tile").count() > 4, "Load more reveals more round tiles")
@@ -489,13 +588,13 @@ with sync_playwright() as p:
     check("21/28 NOV" in tile("Senior").inner_text().upper() and "28 NOV" in tile("T20").inner_text().upper(), "each competition shows the dates of its own next round")
     check(page.locator("text=Updating fixtures").count() == 0, "loading finished")
     check("0 grades" in tile("Senior").inner_text() and "0/0 slots filled" in tile("Senior").inner_text(), "nothing is picked until the officer picks grades")
-    tile("Senior").locator("button:has-text('Select grades')").click()
-    dlg.wait_for(state="visible")
+    open_grades("Senior")
     check(dlg.locator(".grade-row").count() == 2, "Senior popup lists the 2 grades playing this round")
     dlg.locator("button:has-text('All')").click()
     check("2 grades" in dlg.inner_text() and "4 umpire slots" in dlg.inner_text(), "All = 2 grades, 4 umpire slots (two-day games)")
     dlg.locator("button:has-text('Done')").click()
     dlg.wait_for(state="detached")
+    back_to_rounds()
     check("0/4 slots filled" in tile("Senior").inner_text(), "tile shows 0/4 slots filled")
     tile("Senior").locator("a.tile-body").click()
     page.wait_for_selector("table.board")

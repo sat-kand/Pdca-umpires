@@ -10,7 +10,7 @@ import { DEMO_ORG } from './config.js';
 
 const KEY = 'pdca-umpires-demo-v2';
 const clone = x => (x === undefined ? x : JSON.parse(JSON.stringify(x)));
-const blank = org => ({ org, admins: [], umpires: {}, rounds: {}, games: {}, availability: {}, settings: {}, season: null });
+const blank = org => ({ org, admins: [], umpires: {}, rounds: {}, games: {}, availability: {}, settings: {}, season: null, withdrawals: {}, mail: {} });
 
 export function createDemoStore() {
   let db = null;
@@ -75,6 +75,11 @@ export function createDemoStore() {
     async getAvailability(seasonId, email) { return clone(o().availability[`${seasonId}__${email}`]) || null; },
     async saveAvailability(a) { o().availability[`${a.seasonId}__${a.email}`] = clone(a); save(); },
     async listAvailability(seasonId) { return Object.values(clone(o().availability)).filter(a => a.seasonId === seasonId); },
+
+    // An umpire who pulls out after a round is published: the officer's app picks these up.
+    async listWithdrawals() { return Object.values(clone(o().withdrawals || {})); },
+    async saveWithdrawal(w) { (o().withdrawals ||= {})[w.id] = { ...(o().withdrawals[w.id] || {}), ...clone(w) }; save(); },
+    async queueMail(m) { (o().mail ||= {})[`m${Date.now()}${Math.random().toString(36).slice(2, 6)}`] = clone(m); save(); },
 
     async getSettings() { return clone(o().settings); },
     async saveSettings(s) { o().settings = { ...o().settings, ...clone(s) }; save(); },
