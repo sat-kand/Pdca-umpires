@@ -127,7 +127,7 @@ export async function viewOrgSettings(ctx) {
     }) },
     h('h2', {}, 'Player umpires'),
     h('label', { class: 'inline' }, on, ' Let members choose their own Senior games to umpire'),
-    h('p', { class: 'muted small' }, 'When this is off, members only see "Give my availability". Games already chosen stay where they are.'),
+    h('p', { class: 'muted small' }, 'When this is off, members only see "Regular umpire". Games already chosen stay where they are.'),
     h('label', {}, 'What members are told (leave empty to show nothing)', text),
     saveBtn);
   }

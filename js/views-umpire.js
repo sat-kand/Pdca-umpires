@@ -167,9 +167,12 @@ export async function viewMy(ctx) {
   }
 
   // ---- how this member umpires
-  const modeCard = h('section', { class: 'card' });                 // Give my availability, with the date form inside it
-  const playerCard = h('section', { class: 'card player-card' });    // Choose my own games
-  const playerBody = h('div');
+  // Layout: one card with the choices (Regular umpire and its competitions, Player umpire), then the
+  // date form, then the games chosen as a player umpire.
+  const modeCard = h('section', { class: 'card' });
+  const availCard = h('section', { class: 'card' });
+  const playerCard = h('section', { class: 'card player-card' });
+  const playerBody = playerCard;
   let drawStatus = () => {};
 
   const modeBox = (key, title, hint) => {
@@ -211,9 +214,8 @@ export async function viewMy(ctx) {
   }
 
   async function drawPlayer() {
-    if (!puOn) return;
-    setChildren(playerCard, modeBox('player', 'Choose my own games (player umpire)', (pu.description || '').trim()), playerBody);
-    if (!modes.player) { setChildren(playerBody); return; }
+    playerCard.hidden = !puOn || !modes.player;
+    if (!puOn || !modes.player) { setChildren(playerBody); return; }
     if (!lists) {
       setChildren(playerBody, h('p', { class: 'muted' }, 'Loading the fixtures\u2026'));
       try { lists = (await store.listFixtureLists()).filter(l => PLAYER_UMPIRE_COMPS.includes(l.comp) && (l.end || '') >= today && (l.games || []).length).sort((a, b) => (a.start || '').localeCompare(b.start || '')); }
@@ -256,7 +258,7 @@ export async function viewMy(ctx) {
     };
 
     setChildren(playerBody,
-      h('h3', {}, 'Games I want to umpire'),
+      h('h2', {}, 'Games I want to umpire'),
       picks.length
         ? h('ul', { class: 'plain my-picks' }, picks.map(p => h('li', { class: 'row-between' },
           h('span', {}, h('strong', {}, p.dates.map(fmtDay).join(' + ')), ' ', h('span', { class: 'chip' }, compLabel(p.comp)), ' ', h('span', { class: 'chip grade' }, gradeShort(p.grade)), ` ${p.label}`),
@@ -285,13 +287,12 @@ export async function viewMy(ctx) {
 
   function drawModes() {
     setChildren(modeCard,
-      h('div', { class: 'row-between' },
-        puOn ? modeBox('regular', 'Give my availability') : h('h2', {}, 'Give my availability'),
-        statusChip),
+      h('div', { class: 'row-between' }, h('h2', {}, puOn ? 'How I will umpire' : 'Regular umpire'), statusChip),
+      puOn && modeBox('regular', 'Regular umpire'),
       modes.regular && h('div', { class: 'comp-picks' + (puOn ? '' : ' flush') }, h('span', { class: 'muted' }, 'For'), ALL_COMPS.filter(k => compsOffered.includes(k)).map(compBox)),
       modes.regular && !modes.comps.some(k => compsOffered.includes(k)) && h('p', { class: 'notice warn' }, 'Tick at least one competition.'),
-      card);
-    card.hidden = !modes.regular || !modes.comps.some(k => compsOffered.includes(k));
+      puOn && modeBox('player', 'Choose my own games (player umpire)', (pu.description || '').trim()));
+    availCard.hidden = !modes.regular || !modes.comps.some(k => compsOffered.includes(k));
     for (const [k, el] of Object.entries(sectionEl)) el.hidden = !modes.comps.includes(k);
     const n = modes.comps.filter(k => compsOffered.includes(k)).length;
     availIntro.textContent = 'Tap an answer for each date, then Save.' + (n > 1 ? ' Each competition is answered separately.' : '');
@@ -311,12 +312,18 @@ export async function viewMy(ctx) {
   }
   const chip = statusChip;
   const hint = h('span', { class: 'muted' });
+  const saveBtn = h('button', { class: 'btn primary', type: 'button' }, 'Save');
+  const savebar = h('div', { class: 'savebar' }, hint, saveBtn);
   drawStatus = () => {
     chip.className = 'chip ' + (dirty ? 'warn' : saved ? 'ok' : 'warn');
     chip.textContent = dirty ? 'Unsaved changes' : saved ? '✓ Submitted' : 'Not submitted';
     const left = comps.filter(c => modes.comps.includes(c.comp)).flatMap(keysOf).filter(d => !days[d]).length;
+    const regularOn = modes.regular && modes.comps.some(k => compsOffered.includes(k));
+    const playerOn = puOn && modes.player;
+    savebar.hidden = !regularOn && !playerOn;            // nothing chosen: nothing to save
+    saveBtn.disabled = !dirty;                           // nothing changed since the last save
     const parts = [];
-    if (modes.regular) parts.push(left ? `${left} date${left > 1 ? 's' : ''} not answered yet` : 'All dates answered');
+    if (regularOn) parts.push(left ? `${left} date${left > 1 ? 's' : ''} not answered yet` : 'All dates answered');
     if (puOn && modes.player) parts.push(`${picks.length} game${picks.length === 1 ? '' : 's'} chosen`);
     hint.textContent = parts.join(' \u00b7 ');
   };
@@ -350,8 +357,8 @@ export async function viewMy(ctx) {
     return (sectionEl[c.comp] = h('div', { class: 'comp-section' }, h('div', { class: 'row-between comp-head' }, h('h2', { class: 'comp-title' }, c.label), markAll), tiles));
   });
 
-  const saveBtn = h('button', { class: 'btn primary', type: 'button' }, 'Save');
-  saveBtn.onclick = busy(saveBtn, async () => {
+  const saveOnce = busy(saveBtn, async () => {
+    if (!dirty || savebar.hidden) return;
     const before = { ...((existing && existing.days) || {}), ...savedDays };
     if (modes.regular) {
       const keep = new Set((modes.player ? picks : []).flatMap(p => p.dates.map(d => availKey(p.comp, d))));
@@ -366,12 +373,14 @@ export async function viewMy(ctx) {
     if (w) toast(`Saved. You were down for ${w.games.length} game${w.games.length === 1 ? '' : 's'} on those dates \u2014 the appointments officer has been told.`, 'warn');
     else toast(puOn && modes.player && picks.length ? 'Saved. The appointments officer will see the games you chose.' : 'Availability saved');
   });
+  saveBtn.onclick = async () => { await saveOnce(); drawStatus(); };   // busy() re-enables the button; put it back to how it should be
 
+  setChildren(availCard, h('h2', {}, 'Availability'), card);
   setChildren(card,
     availIntro,
     sections.length ? sections : h('p', { class: 'muted' }, 'No upcoming dates.'));
   drawModes();
   drawStatus();
-  root.append(modeCard, puOn && playerCard, h('div', { class: 'savebar' }, hint, saveBtn));
+  root.append(modeCard, availCard, playerCard, savebar);
   return root;
 }
