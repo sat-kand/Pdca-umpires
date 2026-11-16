@@ -322,7 +322,7 @@ export function applyChanges(game, changes) {
 export function umpireText(game) {
   if (!slotCount(game)) return '';
   const days = game.days;
-  const per = days.map(d => allocFor(game, d.date).map(a => (a ? a.n : null)));
+  const per = days.map(d => allocFor(game, d.date).map(a => (a && a.n ? a.n + (a.pu ? ' (Player umpire)' : '') : null)));
   if (days.length === 1) return per[0].map(n => n || '—').join(' & ').toUpperCase();
   const sameAll = per.every(p => JSON.stringify(p) === JSON.stringify(per[0]));
   if (sameAll) return per[0].map(n => n || '—').join(' & ').toUpperCase();

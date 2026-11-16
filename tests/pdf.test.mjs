@@ -68,3 +68,11 @@ test('an unfilled slot shows as a dash, and two umpires on one game both appear'
   assert.ok(s.includes('(FIRST UMP & SECOND UMP)') || (s.includes('(FIRST UMP &)') && s.includes('(SECOND UMP)')));
   assert.match(s, /\\227/, 'the empty slot is an em dash');
 });
+
+test('a player umpire is named as one in the report', async () => {
+  const { umpireText } = await import('../js/logic.js');
+  const g = game('B9', 'KSS', 'WENTY', 'ERIC MOBBS', ['S Kandhaswami'], ['2026-11-21', '2026-11-28']);
+  g.alloc['2026-11-21'][0].pu = true;
+  g.alloc['2026-11-28'] = [null];
+  assert.equal(umpireText(g), 'S KANDHASWAMI (PLAYER UMPIRE) (DAY 1) / \u2014 (DAY 2)');
+});

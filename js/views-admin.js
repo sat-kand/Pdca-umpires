@@ -8,6 +8,7 @@ import {
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
+import { applyPlayerUmpires } from './player-umpire.js';
 import { membershipTypes, feeFor, money, renewalText } from './views-org.js';
 import { planImport, applyImport } from './import-availability.js';
 import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, TILE_ORDER } from './rounds.js';
@@ -90,6 +91,7 @@ export async function viewAdminHome(ctx) {
 
   async function load() {
     state.dropouts = await applyWithdrawals(store);         // umpires who pulled out of a published round, until the officer says 'Got it'
+    try { state.pu = await applyPlayerUmpires(store, { today }); } catch (e) { console.error('player umpires', e); }
     [state.rounds, state.season] = await Promise.all([store.listRounds(), store.getSeason()]);
   }
 
@@ -117,6 +119,12 @@ export async function viewAdminHome(ctx) {
     setChildren(wrap,
       h('div', { class: 'row-between' }, h('h1', {}, 'Allocate'), state.syncing && h('span', { class: 'muted' }, 'Updating fixtures from Play Cricket…')),
       state.error && h('p', { class: 'notice warn' }, state.error, ' ', h('button', { class: 'link', type: 'button', onclick: () => sync(true) }, 'Try again')),
+      state.pu && (state.pu.added.length + state.pu.removed.length + state.pu.blocked.length) > 0 && h('div', { class: 'notice pu-note' },
+        h('strong', {}, 'Player umpires'),
+        h('ul', { class: 'plain' },
+          state.pu.added.map(x => h('li', {}, `${x.name} chose `, h('a', { href: `#/admin/round/${x.roundId}` }, `${x.label} (${fmtDay(x.date)})`), ' \u2014 added to the board')),
+          state.pu.removed.map(x => h('li', {}, `${x.name} no longer wants `, h('a', { href: `#/admin/round/${x.roundId}` }, `${x.label} (${fmtDay(x.date)})`), ' \u2014 taken off')),
+          state.pu.blocked.map(x => h('li', { class: 'warn-text' }, `${x.name} chose `, h('a', { href: `#/admin/round/${x.roundId}` }, `${x.label} (${fmtDay(x.date)})`), ', but both places are taken')))),
       state.dropouts.length > 0 && h('div', { class: 'notice warn dropouts' },
         h('strong', {}, 'Umpires have pulled out of published games'),
         h('ul', { class: 'plain' }, state.dropouts.map(d => h('li', {}, `${d.name}: `,
@@ -156,6 +164,7 @@ export async function viewAdminHome(ctx) {
 
 export async function viewBoard(ctx, rid) {
   const { store } = ctx;
+  try { await applyPlayerUmpires(store, { today: todayLocal() }); } catch (e) { console.error('player umpires', e); }   // games members chose themselves
   const round = await store.getRound(rid);
   if (!round) return h('p', { class: 'notice warn' }, 'Round not found.');
   const [games, umpires, availList, rounds, settings] = await Promise.all([
@@ -252,7 +261,9 @@ export async function viewBoard(ctx, rid) {
       const u = B.umpires.find(x => x.pid === cur.p);
       return u ? assignmentWarnings({ game: g, date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy: busyMap }) : ['Umpire not in list'];
     })() : [];
-    return h('div', { class: 'slot-wrap' }, sel, warn.length > 0 && h('span', { class: 'warn-icon', title: warn.join('\n'), tabindex: 0 }, '⚠'));
+    return h('div', { class: 'slot-wrap' }, sel,
+      cur && cur.pu && h('span', { class: 'chip pu', title: 'Chose this game themselves' }, 'Player umpire'),
+      warn.length > 0 && h('span', { class: 'warn-icon', title: warn.join('\n'), tabindex: 0 }, '⚠'));
   }
 
   function gameRow(g, busyMap, loads) {

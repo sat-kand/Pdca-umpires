@@ -10,7 +10,7 @@ import { DEMO_ORG } from './config.js';
 
 const KEY = 'pdca-umpires-demo-v2';
 const clone = x => (x === undefined ? x : JSON.parse(JSON.stringify(x)));
-const blank = org => ({ org, admins: [], umpires: {}, rounds: {}, games: {}, availability: {}, settings: {}, season: null, withdrawals: {}, mail: {} });
+const blank = org => ({ org, admins: [], umpires: {}, rounds: {}, games: {}, availability: {}, settings: {}, season: null, withdrawals: {}, mail: {}, fixtures: {} });
 
 export function createDemoStore() {
   let db = null;
@@ -80,6 +80,10 @@ export function createDemoStore() {
     async listWithdrawals() { return Object.values(clone(o().withdrawals || {})); },
     async saveWithdrawal(w) { (o().withdrawals ||= {})[w.id] = { ...(o().withdrawals[w.id] || {}), ...clone(w) }; save(); },
     async queueMail(m) { (o().mail ||= {})[`m${Date.now()}${Math.random().toString(36).slice(2, 6)}`] = clone(m); save(); },
+
+    // A plain list of each round's games, which every member can read (the games themselves carry allocations).
+    async saveFixtureList(rid, list) { (o().fixtures ||= {})[rid] = clone(list); save(); },
+    async listFixtureLists() { return Object.values(clone(o().fixtures || {})); },
 
     async getSettings() { return clone(o().settings); },
     async saveSettings(s) { o().settings = { ...o().settings, ...clone(s) }; save(); },

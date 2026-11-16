@@ -123,6 +123,13 @@ service cloud.firestore {
         }
       }
 
+      // Each round's games with no allocations, so a member can choose games to umpire
+      // (player umpire) before a round is published.
+      match /fixtures/{roundId} {
+        allow read: if signedIn();
+        allow write: if isOrgAdmin(orgId) && orgOpen(orgId);
+      }
+
       // The season calendar (dates umpires answer for). Officers sync it from Play Cricket.
       match /config/{id} {
         allow read: if signedIn();

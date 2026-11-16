@@ -217,3 +217,20 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; }
   border-radius: 10px; padding: .3rem; box-shadow: 0 8px 24px rgba(0,0,0,.18); display: grid; }
 .menu-items .nav-link { color: var(--ink); padding: .45rem .6rem; border-radius: 7px; opacity: 1; }
 .menu-items .nav-link:hover { background: var(--green-l); }
+.mode { display: flex; gap: .7rem; align-items: flex-start; padding: .55rem 0; cursor: pointer; }
+.mode input { margin-top: .2rem; width: 1.1rem; height: 1.1rem; }
+.mode > span { display: grid; gap: .1rem; }
+.player-card:empty { display: none; }
+.chooser { margin-top: .8rem; border-top: 1px solid var(--line); padding-top: .6rem; }
+.chooser h3 { margin: .2rem 0 .5rem; font-size: 1rem; }
+.chooser-pick { display: flex; gap: .5rem; flex-wrap: wrap; } .chooser-pick select { margin: 0; }
+.pick-list { max-height: 26rem; overflow: auto; margin-top: .5rem; }
+.pick-row { display: grid; gap: .25rem; }
+.pick-row.chosen { background: var(--green-l); border-radius: 8px; padding-left: .5rem; padding-right: .5rem; }
+.pick-row .opts { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+.my-picks li { gap: .5rem; }
+.chip.pu { background: #ede7f6; color: #4a2c82; font-size: .7rem; margin-left: .3rem; }
+.pu-note ul { margin: .4rem 0 0; }
+.warn-text { color: var(--amber, #8a5a00); }
+/* The save bar now sits below the cards (one Save for availability and chosen games), not inside one. */
+.narrow-page > .savebar { margin: 0 0 1rem; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 -4px 14px rgba(0,0,0,.06); }

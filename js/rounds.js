@@ -7,7 +7,7 @@ import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures, mergeFixtures }
 import { buildCalendar, compKeyOf, summarise, COMPS } from './logic.js';
 
 // Bump when the information saved on each round changes shape, so stored rounds are rebuilt on the next visit.
-export const SCHEMA = 4;
+export const SCHEMA = 5;
 export const STALE_MS = 12 * 60 * 60 * 1000;   // refetch the fixtures at most twice a day on its own
 
 export const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
@@ -121,6 +121,17 @@ export function needsSync(season, rounds, today, now = Date.now()) {
   return season.calendar.some(c => !currentRound(rounds, c.comp || 'senior', today) && c.dates.some(d => d >= today));
 }
 
+// A round's games as members may see them: no allocations, no officer notes.
+export function fixtureList(round, games) {
+  return {
+    roundId: round.id, comp: round.comp, dates: round.dates || [], start: round.start, end: round.end, title: round.title || '',
+    games: games.filter(g => !g.removed).map(g => ({
+      id: g.id, grade: g.grade, comp: g.comp, home: { name: g.home.name }, away: { name: g.away.name },
+      ground: g.ground || '', matchType: g.matchType || '', days: g.days.map(d => ({ date: d.date, day: d.day, time: d.time || '' })),
+    })),
+  };
+}
+
 // Save a freshly fetched set of games into a round, keeping allocations. Returns a summary.
 export async function applyFresh(store, round, fresh, settings) {
   const old = await store.listGames(round.id);
@@ -130,7 +141,9 @@ export async function applyFresh(store, round, fresh, settings) {
   for (const g of res.games) byId.set(g.id, g);
   const all = [...byId.values()];
   const dates = datesOf(all.filter(g => !g.removed));
-  await store.saveRound({ id: round.id, dates, start: dates[0] || round.start, end: dates[dates.length - 1] || round.end, ...summarise(all), changedAt: new Date().toISOString() });
+  const patch = { id: round.id, dates, start: dates[0] || round.start, end: dates[dates.length - 1] || round.end, ...summarise(all), changedAt: new Date().toISOString() };
+  await store.saveRound(patch);
+  if (store.saveFixtureList) await store.saveFixtureList(round.id, fixtureList({ ...round, ...patch }, all));
   return { ...res, all };
 }
 
@@ -167,8 +180,10 @@ export async function saveSeasonAndRounds(store, { season, games, comps = [], to
       const have = existing.find(r => r.id === id);
       if (have) { await applyFresh(store, have, win.games, settings); made.push(id); continue; }
       const fullGames = win.games.map(g => ({ ...g, slots: defaultSlotsFn(settings)(g), alloc: {} }));
-      await store.saveRound(buildRound({ key, win, games: fullGames, season, compIds, source }));
+      const round = buildRound({ key, win, games: fullGames, season, compIds, source });
+      await store.saveRound(round);
       await store.saveGames(id, fullGames);
+      if (store.saveFixtureList) await store.saveFixtureList(id, fixtureList(round, fullGames));
       made.push(id);
     }
   }

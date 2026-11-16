@@ -12,6 +12,7 @@
 //   orgs/{orgId}/rounds/{roundId}/games/{id} fixture + slots + alloc
 //   orgs/{orgId}/availability/{seasonId__email}
 //   orgs/{orgId}/withdrawals/{id}            an umpire who pulled out of a published round
+//   orgs/{orgId}/fixtures/{roundId}          each round's games with no allocations, readable by every member
 //   orgs/{orgId}/settings/defaults           default umpires-per-game by grade
 //   mail/{id}                                outgoing email, sent by the Firebase "Trigger Email" extension
 
@@ -138,6 +139,12 @@ export async function createFirebaseStore(cfg) {
     saveWithdrawal: w => fs.setDoc(fs.doc(db, ...P('withdrawals', w.id)), clean(w), { merge: true }),
     // Picked up by the "Trigger Email from Firestore" extension, if the owner has installed it.
     queueMail: m => fs.addDoc(fs.collection(db, 'mail'), clean(m)),
+
+    saveFixtureList: (rid, list) => putOne(list, ...P('fixtures', rid)),
+    async listFixtureLists() {
+      const snap = await fs.getDocs(fs.collection(db, ...P('fixtures')));
+      return snap.docs.map(d => d.data());
+    },
 
     async getSettings() { return (await getOne(...P('settings', 'defaults'))) || {}; },
     saveSettings: s => fs.setDoc(fs.doc(db, ...P('settings', 'defaults')), clean(s), { merge: true }),

@@ -23,6 +23,15 @@ It is a static site (no build step) that runs on **GitHub Pages**, with **Fireba
 
 The **Members** page (formerly Umpires) is the association's list of people. Each member has a **first name**, **last name**, **date of birth**, **address**, email, mobile, **umpire accreditation number** and **membership type** (from the list in Settings; the fee follows the type). Members fill in their own details when they join by the link; officers can correct anything and approve new sign-ups with the **Active** tick. Paste an existing list as `First name, Last name, email, mobile, accreditation no.` lines (the last two optional). The allocation board, dropdowns and reports show the full name.
 
+## Player umpires
+
+A member can umpire in two ways, and can do both:
+
+- **Give my availability** — answer each date, and the appointments officer gives them games.
+- **Choose my own games (player umpire)** — pick a competition and a round, then any game in it (Day 1, Day 2 or both days of a two-day game). Choosing a game marks them available that day. One game per competition per day.
+
+Both are saved with the one **Save** button. When the appointments officer next opens **Allocate** or an **Assign** board, each new choice is put on the board: the game is turned on (so its grade shows as selected for that round) and the member's name is filled in with a **Player umpire** tag. The report and PDF show them as `NAME (PLAYER UMPIRE)`. If the game already has an umpire, a second place is opened; if both places are taken, the game is flagged instead. If a member gives a game back, their name comes off again — unless the officer has already put someone else there, in which case the officer's choice stands. Members choose from a list of each upcoming round's games (`orgs/{id}/fixtures`), which never shows who has been allocated.
+
 ## Bringing a season's availability in from a spreadsheet
 
 **Availability → Import from a spreadsheet** takes the sheet an association already keeps (the Google Form responses), so umpires do not answer everything again. Copy the rows out of the sheet, including the heading row, and paste them in, or choose a CSV file.
