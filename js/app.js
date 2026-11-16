@@ -77,7 +77,7 @@ function drawHeader() {
         S.org && h('a', { class: 'org-name', href: '#/associations', title: 'Switch association' }, S.org.name),
         h('a', { class: 'who-name', href: '#/profile', title: 'Edit my details' }, (S.umpire && S.umpire.name) || S.user.email),
         h('button', { class: 'btn small', type: 'button', onclick: async () => { await S.store.signOut(); location.hash = '#/'; } }, 'Sign out'))),
-    S.org && S.org.plan === 'suspended' && h('div', { class: 'demo-banner' }, 'This association\'s subscription is paused, so changes cannot be saved.'));
+    S.org && S.org.plan === 'suspended' && h('div', { class: 'demo-banner' }, 'This association has been set to read-only, so changes cannot be saved.'));
 }
 
 async function render() {

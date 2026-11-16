@@ -4,7 +4,6 @@
 import { h, toast, busy, copyText, setChildren } from './ui.js';
 import { emailKey } from './logic.js';
 
-const TRIAL_DAYS = 30;
 // A starting point for a new association; every association edits its own list in Settings.
 export const DEFAULT_TYPES = [
   { name: 'Ordinary member', fee: 0 },
@@ -42,13 +41,6 @@ export function orgIdFrom(name, rand = Math.random) {
 
 export const joinLink = id => `${location.origin}${location.pathname}#/join/${id}`;
 
-export function planText(org, now = Date.now()) {
-  if (!org) return '';
-  if (org.plan === 'active') return 'Subscription active';
-  if (org.plan === 'suspended') return 'Suspended';
-  const left = org.trialEnds ? Math.ceil((Date.parse(org.trialEnds) - now) / 86400000) : null;
-  return left === null ? 'Free trial' : left > 0 ? `Free trial: ${left} day${left === 1 ? '' : 's'} left` : 'Free trial ended';
-}
 
 // Signed in, but no association chosen: pick one, or start a new one.
 export async function viewAssociations(ctx) {
@@ -63,13 +55,13 @@ export async function viewAssociations(ctx) {
     if (pc.value.trim() && !playCricketId) { toast('That does not look like a Play Cricket link. Copy the address of your association\'s page on play.cricket.com.au.', 'err'); return; }
     const org = { id: orgIdFrom(name.value), name: name.value.trim(), playCricketId, plan: 'trial', notifyEmail: S.user.email,
       membership: { renewalDay: '', types: DEFAULT_TYPES.map(t => ({ ...t })) },
-      trialEnds: new Date(Date.now() + TRIAL_DAYS * 86400000).toISOString(), createdAt: new Date().toISOString() };
+      createdAt: new Date().toISOString() };
     await store.createOrg(org, S.user.email);
     await ctx.chooseOrg(org.id);
     toast('Association created. You are its first appointments officer.', 'ok');
   }) },
   h('h2', {}, 'Start a new association'),
-  h('p', { class: 'muted' }, `You become its appointments officer. Free for ${TRIAL_DAYS} days.`),
+  h('p', { class: 'muted' }, 'You become its appointments officer.'),
   h('label', {}, 'Association name', name),
   h('label', {}, 'Its page on Play Cricket (link)', pc),
   h('p', { class: 'muted small' }, 'Fixtures are read from this page. You can add it later in Settings.'),
@@ -152,7 +144,7 @@ export async function viewOrgSettings(ctx) {
     const addBtn = h('button', { class: 'btn', type: 'submit' }, 'Add officer');
 
     return [
-      h('div', { class: 'row-between' }, h('h1', {}, 'Settings'), h('span', { class: 'chip ' + (org.plan === 'suspended' ? 'warn' : 'ok') }, planText(org))),
+      h('h1', {}, 'Settings'),
       h('form', { class: 'card', onsubmit: busy(save, async e => {
         e.preventDefault();
         const playCricketId = playCricketIdFrom(pc.value);

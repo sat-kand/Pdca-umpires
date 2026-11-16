@@ -215,19 +215,14 @@ test('sets on the real PDCA fixtures (16 Nov 2026): one-day weekends, a two-day 
   assert.equal(v.hasMore, true);
 });
 
-test('association helpers: Play Cricket id from a link, association id, plan wording', async () => {
+test('association helpers: Play Cricket id from a link, association id', async () => {
   globalThis.location ||= { origin: 'https://x.test', pathname: '/app/' };
-  const { playCricketIdFrom, orgIdFrom, planText } = await import('../js/views-org.js');
+  const { playCricketIdFrom, orgIdFrom } = await import('../js/views-org.js');
   assert.equal(playCricketIdFrom('https://play.cricket.com.au/club/parramatta-district-cricket-association/EE7D89D9-6732-ec11-981f-501ac52e1666?tab=grades'), 'ee7d89d9-6732-ec11-981f-501ac52e1666');
   assert.equal(playCricketIdFrom('ee7d89d9-6732-ec11-981f-501ac52e1666'), 'ee7d89d9-6732-ec11-981f-501ac52e1666');
   assert.equal(playCricketIdFrom('https://play.cricket.com.au/'), '');
   assert.equal(orgIdFrom('Hills District Cricket Assoc.!', () => 0), 'hills-district-cricket-assoc-0000');
   assert.match(orgIdFrom(''), /^association-[0-9a-z]{4}$/);
-  const now = Date.parse('2026-11-16T00:00:00Z');
-  assert.equal(planText({ plan: 'trial', trialEnds: '2026-11-26T00:00:00Z' }, now), 'Free trial: 10 days left');
-  assert.equal(planText({ plan: 'trial', trialEnds: '2026-11-01T00:00:00Z' }, now), 'Free trial ended');
-  assert.equal(planText({ plan: 'active' }, now), 'Subscription active');
-  assert.equal(planText({ plan: 'suspended' }, now), 'Suspended');
 });
 
 test('member names: two fields, with a fallback for records that only have a full name', async () => {

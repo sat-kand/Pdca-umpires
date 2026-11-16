@@ -55,10 +55,10 @@ Sending that email needs the Firebase **Trigger Email from Firestore** extension
 
 The app holds many associations, each completely separate: its own officers, umpires, Play Cricket link, fixtures, availability and allocations.
 
-- **Starting one:** sign in → *Your associations* → *Start a new association* (name + the address of its page on play.cricket.com.au). The creator becomes its first appointments officer and it starts on a free trial.
+- **Starting one:** sign in → *Your associations* → *Start a new association* (name + the address of its page on play.cricket.com.au). The creator becomes its first appointments officer.
 - **Settings** (officers only): rename the association, set its Play Cricket link, add or remove officers, and copy the **link for umpires**. Umpires open that link, sign in, add their name and wait for approval.
 - **Switching:** the association name in the top bar opens the picker for people who belong to more than one.
-- **Plan:** each association has a plan (`trial`, `active` or `suspended`). A suspended association is read-only. There is no payment system yet: the product owner changes the `plan` field by hand in the Firebase console (see below). Trial length is shown but not enforced automatically.
+- **Read-only:** an association can be set to `plan: suspended` by hand in the Firebase console, which makes it read-only. The tool is free and says nothing about plans or payment.
 
 ## One-time setup for the product owner (about 20 minutes)
 

@@ -802,7 +802,7 @@ with sync_playwright() as p:
     page.click(".nav-link:has-text('Settings')")
     page.wait_for_selector(".join-link")
     check(page.locator(".join-link").inner_text().endswith("#/join/pdca"), "Settings shows the link umpires join with")
-    check("Free trial" in page.locator("h1 + .chip, .row-between .chip").first.inner_text(), "Settings shows the plan (free trial)")
+    check("trial" not in page.inner_text("body").lower() and "subscription" not in page.inner_text("body").lower(), "nothing about trials or subscriptions")
     page.fill(".inline-form input[type=email]", "Second.Officer@demo.test")
     page.click("button:has-text('Add officer')")
     page.wait_for_selector(".officers li:has-text('second.officer@demo.test')")
