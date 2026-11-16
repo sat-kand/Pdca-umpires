@@ -200,3 +200,4 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; }
 .member-type { display: flex; gap: .35rem; align-items: center; } .member-type .fee { font-size: .8rem; }
 .members select { margin: 0; min-width: 9rem; }
 .dropouts ul { margin: .4rem 0; } .dropouts a { color: inherit; }
+.daymonth { display: flex; gap: .5rem; } .daymonth select { margin: 0; }

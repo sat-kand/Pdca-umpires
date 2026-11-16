@@ -25,7 +25,7 @@ The **Members** page (formerly Umpires) is the association's list of people. Eac
 
 ## Membership and alerts (Settings)
 
-- **Membership**: a **renewal date** for the association, and the **membership types** it offers, each with its own fee (Ordinary, Junior, Life, or whatever the association uses). Members are given one of these on the Members page.
+- **Membership**: the **renewal day** — a day and a month, with no year, because membership falls due on the same day every year (PDCA: 30 June) — and the **membership types** the association offers, each with its own fee (Ordinary, Junior, Life, or whatever it uses). Members are given one of these on the Members page. Members who have not renewed by that day are meant to lose their membership; registration, renewal and payment are not built yet.
 - **Send alerts to**: where to email when an umpire pulls out.
 
 ### When an umpire pulls out after a round is published

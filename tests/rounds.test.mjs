@@ -242,3 +242,22 @@ test('member names: two fields, with a fallback for records that only have a ful
   const list = [{ name: 'Zoe Adams' }, { firstName: 'Al', lastName: 'Zane' }, { firstName: 'Bea', lastName: 'Adams' }];
   assert.deepEqual(list.sort(compareMembers).map(u => fullName(...Object.values(nameParts(u)))), ['Bea Adams', 'Zoe Adams', 'Al Zane']);
 });
+
+test('membership: a renewal day and month, types and fees', async () => {
+  globalThis.location ||= { origin: 'https://x.test', pathname: '/app/' };
+  const { renewalOf, renewalText, daysInMonth, membershipTypes, feeFor, money } = await import('../js/views-org.js');
+  assert.equal(renewalOf({ membership: { renewalDay: '06-30' } }), '06-30');
+  assert.equal(renewalOf({ membership: { renewalDate: '2027-06-30' } }), '06-30', 'a full date saved by an older version still reads');
+  assert.equal(renewalOf({}), '');
+  assert.equal(renewalText({ membership: { renewalDay: '09-01' } }), '1 September each year');
+  assert.equal(renewalText({ membership: { renewalDay: '' } }), '');
+  assert.equal(daysInMonth('02'), 29);
+  assert.equal(daysInMonth('09'), 30);
+  const org = { membership: { types: [{ name: 'Ordinary member', fee: 60 }, { name: '', fee: 5 }, { name: 'Life member', fee: 0 }] } };
+  assert.deepEqual(membershipTypes(org).map(t => t.name), ['Ordinary member', 'Life member'], 'a blank row is not a type');
+  assert.equal(feeFor(org, 'Ordinary member'), 60);
+  assert.equal(feeFor(org, 'Nobody'), null);
+  assert.equal(money(60), '$60');
+  assert.equal(money(12.5), '$12.50');
+  assert.equal(money(null), '');
+});

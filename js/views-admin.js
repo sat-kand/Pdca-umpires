@@ -8,7 +8,7 @@ import {
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
-import { membershipTypes, feeFor, money } from './views-org.js';
+import { membershipTypes, feeFor, money, renewalText } from './views-org.js';
 import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, TILE_ORDER } from './rounds.js';
 
 const SLOT_CHOICES = [[1, '1 umpire'], [2, '2 umpires']];
@@ -602,8 +602,7 @@ export async function viewUmpires(ctx) {
           h('td', {}, field(u, 'accreditation', { cls: 'in-sm', ph: 'Umpire accreditation' })),
           h('td', {}, membershipCell(u))); })))),
       !members.length && h('p', { class: 'muted' }, 'No members yet. Add some below, or send them the link from Settings so they can sign in and fill in their own details.')),
-      store.org && store.org.membership && store.org.membership.renewalDate
-        && h('p', { class: 'muted' }, `Membership renewal date: ${fmtDay(store.org.membership.renewalDate)}. Types and fees are set in Settings.`),
+      renewalText(store.org) && h('p', { class: 'muted' }, `Membership renews ${renewalText(store.org)}. Types and fees are set in Settings.`),
       h('div', { class: 'card' }, h('h2', {}, 'Add members'), h('p', { class: 'muted' }, 'Paste your existing list (for example from the Google Form responses). Added members are active straight away and can sign in with that email address. They can fill in their own date of birth and address.'), add, addBtn));
   };
   draw();

@@ -13,6 +13,19 @@ export const DEFAULT_TYPES = [
 ];
 export const membershipTypes = org => ((org && org.membership && org.membership.types) || []).filter(t => t.name);
 export const feeFor = (org, type) => { const t = membershipTypes(org).find(x => x.name === type); return t ? t.fee : null; };
+// Membership renews on the same day every year, so only a day and month are stored, as 'MM-DD'.
+export const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+export const daysInMonth = m => [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][(Number(m) || 1) - 1];
+export function renewalOf(org) {
+  const m = (org && org.membership) || {};
+  if (m.renewalDay) return m.renewalDay;
+  return m.renewalDate ? m.renewalDate.slice(5, 10) : '';       // an older association stored a full date
+}
+export function renewalText(org) {
+  const v = renewalOf(org);
+  const [mm, dd] = v.split('-').map(Number);
+  return mm && dd ? `${dd} ${MONTHS[mm - 1]} each year` : '';
+}
 export const money = v => (v || v === 0 ? `$${Number(v).toFixed(2).replace(/\.00$/, '')}` : '');
 
 // A Play Cricket page link (or the bare id) -> the organisation id.
@@ -49,7 +62,7 @@ export async function viewAssociations(ctx) {
     const playCricketId = playCricketIdFrom(pc.value);
     if (pc.value.trim() && !playCricketId) { toast('That does not look like a Play Cricket link. Copy the address of your association\'s page on play.cricket.com.au.', 'err'); return; }
     const org = { id: orgIdFrom(name.value), name: name.value.trim(), playCricketId, plan: 'trial', notifyEmail: S.user.email,
-      membership: { renewalDate: '', types: DEFAULT_TYPES.map(t => ({ ...t })) },
+      membership: { renewalDay: '', types: DEFAULT_TYPES.map(t => ({ ...t })) },
       trialEnds: new Date(Date.now() + TRIAL_DAYS * 86400000).toISOString(), createdAt: new Date().toISOString() };
     await store.createOrg(org, S.user.email);
     await ctx.chooseOrg(org.id);
@@ -83,7 +96,21 @@ export async function viewOrgSettings(ctx) {
     const m = org.membership || {};
     const rows = [...(m.types || [])];
     if (!rows.length) rows.push({ name: '', fee: '' });
-    const renewal = h('input', { type: 'date', value: m.renewalDate || '' });
+    // Day and month only: membership falls due on the same day every year.
+    const [curM, curD] = (renewalOf(org) || '').split('-');
+    const dayPick = h('select', { 'aria-label': 'Renewal day' });
+    const monthPick = h('select', { 'aria-label': 'Renewal month' },
+      h('option', { value: '' }, 'Month'),
+      MONTHS.map((name, i) => h('option', { value: String(i + 1).padStart(2, '0'), selected: String(i + 1).padStart(2, '0') === curM }, name)));
+    const fillDays = () => {
+      const keep = dayPick.value || curD || '';
+      const max = monthPick.value ? daysInMonth(monthPick.value) : 31;
+      setChildren(dayPick, h('option', { value: '' }, 'Day'),
+        Array.from({ length: max }, (_, i) => { const v = String(i + 1).padStart(2, '0');
+          return h('option', { value: v, selected: v === keep }, String(i + 1)); }));
+    };
+    fillDays();
+    monthPick.onchange = fillDays;
     const list = h('div', { class: 'type-rows' });
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save membership');
 
@@ -97,13 +124,16 @@ export async function viewOrgSettings(ctx) {
       e.preventDefault();
       const types = rows.filter(t => (t.name || '').trim()).map(t => ({ name: t.name.trim(), fee: t.fee === '' || t.fee == null ? 0 : Number(t.fee) }));
       if (types.some(t => Number.isNaN(t.fee))) { toast('A fee is not a number', 'err'); return; }
-      await store.saveOrg({ membership: { renewalDate: renewal.value, types }, updatedAt: new Date().toISOString() });
+      const renewalDay = dayPick.value && monthPick.value ? `${monthPick.value}-${dayPick.value}` : '';
+      if ((dayPick.value || monthPick.value) && !renewalDay) { toast('Choose both a day and a month for the renewal date', 'err'); return; }
+      await store.saveOrg({ membership: { renewalDay, types }, updatedAt: new Date().toISOString() });
       await ctx.refreshUser();
       toast('Membership saved', 'ok');
       await draw();
     }) },
     h('h2', {}, 'Membership'),
-    h('label', {}, 'Renewal date (when membership falls due)', renewal),
+    h('label', {}, 'Renewal date (the same day every year)', h('div', { class: 'daymonth' }, dayPick, monthPick)),
+    h('p', { class: 'muted small' }, 'Members who have not renewed by this date each year lose their membership. Registration and payment are not built yet.'),
     h('p', { class: 'muted small' }, 'Membership types and their fees. Members are given one of these on the Members page.'),
     list,
     h('p', {}, h('button', { class: 'btn small', type: 'button', onclick: () => { rows.push({ name: '', fee: '' }); drawRows(); } }, 'Add type')),
