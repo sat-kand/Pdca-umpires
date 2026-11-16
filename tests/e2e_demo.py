@@ -209,7 +209,7 @@ with sync_playwright() as p:
             "(els, [pat, day]) => els.findIndex(e => new RegExp(pat).test(e.getAttribute('aria-label')) && e.getAttribute('aria-label').endsWith(day))", [pattern, d1_label])
     i_jun = slot_for(r"^Umpire 1, U12 Gold Kings Langley")
     check(i_jun >= 0, "found the Junior slot")
-    pick(i_jun, "Demo Umpire 2")
+    pick(i_jun, "D Everton")
     page.click("a.tab:has-text('All rounds')")
     page.wait_for_selector(".comp-tile")
     check("1/2 slots filled" in tile("Junior").inner_text(), "Junior tile now shows 1/2 slots filled")
@@ -222,7 +222,7 @@ with sync_playwright() as p:
     check(page.locator("section.card h2").count() == 1, "one section: the Senior round")
     check(page.locator("text=0 of 26 slots filled").count() == 1, "26 slot-days: 13 two-day games")
     i_sen = slot_for(r"^Umpire 1, A GLCC Senior Maroon")
-    pick(i_sen, "Demo Umpire 2")
+    pick(i_sen, "D Everton")
     check(page.locator(".warn-icon").count() == 0, "Umpire 2 is on a Junior game and a Senior game the same day: no warning")
     check(page.locator("select.slot").nth(i_sen + 1).evaluate("s => s.value") == "", "Umpire 2 is not free on Day 2, so Day 2 is left empty")
     page.locator("select.slot").nth(i_sen).select_option(value="")
@@ -271,6 +271,9 @@ with sync_playwright() as p:
     check(all(len(v) == len(set(v)) for v in by_day.values()), "no umpire is allocated to two Senior games on the same day")
 
     print("Admin: umpires per game")
+    check(page.locator("table.board thead th").last.inner_text().upper() == "UMPIRES"
+          and page.locator("table.board tbody tr").first.locator("td").last.locator("select.n-slots").count() == 1,
+          "the number of umpires is the last column, after the names")
     page.wait_for_timeout(300)
     page.locator("select.n-slots").first.select_option("2")
     page.wait_for_timeout(300)
@@ -396,7 +399,7 @@ with sync_playwright() as p:
         page.wait_for_selector("td.av")          # the availability grid itself, not the board still on screen
         heads = page.locator("table.board thead th").all_inner_texts()
         i = next(i for i, t in enumerate(heads) if date_part.lower() in t.lower())
-        cls = page.locator("tr:has-text('Demo Umpire 1')").first.locator("td").nth(i).get_attribute("class")
+        cls = page.locator("tr:has-text('G Serrao')").first.locator("td").nth(i).get_attribute("class")
         return cls
     check("ok" in avail_cell("Senior", "senior"), "umpire 1 is available for the Senior game that day")
     check(page.locator("text=Haven't replied (2)").count() == 1, "still two umpires with no reply")
@@ -416,7 +419,7 @@ with sync_playwright() as p:
     page.screenshot(path="/tmp/past.png")
     page.locator(".past-row", has_text="Senior").click()
     page.wait_for_selector(".report-table")
-    check(page.locator(".report-table tbody tr").count() == 4 and "DEMO UMPIRE" in page.locator(".report-table").inner_text().upper(), "opening it shows the final allocation report with the umpires' names")
+    check(page.locator(".report-table tbody tr").count() == 4 and any(n in page.locator(".report-table").inner_text().upper() for n in ["SERRAO", "EVERTON", "BAKON", "CHELLAPA", "DRYBURGH", "JAYASHRI", "HENRY", "KRISH"]), "opening it shows the final allocation report with the umpires' names")
     page.goto(BASE + "#/admin")
     page.wait_for_selector(".tile-round")
 
@@ -429,7 +432,7 @@ with sync_playwright() as p:
     check(n_dates == 12 and page.locator(".season-grid th.past").count() == 0, "Senior: one column per upcoming date, nothing greyed out to scroll past")
     check(page.locator(".season-grid thead", has_text="Round").count() == 0, "no round columns: every competition is laid out by date")
     check(page.locator(".season-grid tr.counts td").count() == n_dates + 1, "a count of available umpires sits under each date")
-    row9 = page.locator(".season-grid tbody tr:has-text('Demo Umpire 9')")
+    row9 = page.locator(".season-grid tbody tr:has-text('H Murali')")
     check("0 of" not in row9.inner_text() and "0/12" in row9.inner_text(), "each umpire shows how many upcoming dates they are free (0/12 for one who has not answered)")
     before = int(page.locator(".season-grid tr.counts td").nth(1).inner_text())
     c0 = row9.locator("td.av").first
@@ -442,13 +445,13 @@ with sync_playwright() as p:
     check("no" in c0.get_attribute("class"), "a second click makes it not available")
     page.reload()
     page.wait_for_selector(".season-grid table")
-    check("no" in page.locator(".season-grid tbody tr:has-text('Demo Umpire 9') td.av").first.get_attribute("class"), "the override is saved")
+    check("no" in page.locator(".season-grid tbody tr:has-text('H Murali') td.av").first.get_attribute("class"), "the override is saved")
     page.locator(".season-grid .datebtn").first.click()
     shown = page.locator(".season-grid tbody tr").count()
     check(0 < shown < 10 and page.locator(".season-grid tbody td.av.ok").count() >= shown, "clicking a date lists only the umpires available that day")
     page.locator("button.chip:has-text('Available')").click()
-    page.fill(".grid-search", "umpire 1")
-    check(page.locator(".season-grid tbody tr").count() == 2, "search narrows the list (Demo Umpire 1 and 10)")
+    page.fill(".grid-search", "murali")
+    check(page.locator(".season-grid tbody tr").count() == 1, "search narrows the list (H Murali)")
     page.fill(".grid-search", "")
     page.click(".tabs button.tab:has-text('Junior')")
     check(page.locator(".season-grid .datebtn").count() > 3 and page.locator(".season-grid thead", has_text="Round").count() == 0, "Junior uses the same date layout")
@@ -556,7 +559,7 @@ with sync_playwright() as p:
         ds = [date.fromisoformat(x) for x in entry["dates"]]
         return f"{entry.get('label', '')} - " + " & ".join(f"{d.day}th" for d in ds) + " " + ds[0].strftime("%b")
     sheet = ("Name\tEmail\t" + "\t".join(heading(e) for e in cal)
-             + "\nDemo Umpire 10\tumpire10@demo.test\tDay 1, Day 2\tNot Available"
+             + "\nV Palaniappan\tumpire10@demo.test\tDay 1, Day 2\tNot Available"
              + "\nSam Casual\tsam.casual@demo.test\tYes\tYes"
              + "\nNo Address\t\tYes\tYes")
     page.fill(".import-card textarea", sheet)

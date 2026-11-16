@@ -55,7 +55,12 @@ export const demoGames = ([D1, D2]) => { const two = [D1, D2]; return [
 ]; };
 
 
-const NAMES = Array.from({ length: 10 }, (_, i) => `Demo Umpire ${i + 1}`);
+// Sample umpires, named as they appear on a PDCA allocation sheet (initial and surname).
+// Emails stay umpire1@demo.test ... umpire10@demo.test, so anyone can sign in as one in the demo.
+const NAMES = [
+  ['G', 'Serrao'], ['D', 'Everton'], ['K', 'Bakon'], ['B', 'Chellapa'], ['R', 'Dryburgh'],
+  ['W', 'Jayashri'], ['D', 'Henry'], ['M', 'Krish'], ['H', 'Murali'], ['V', 'Palaniappan'],
+];
 
 const todayIso = () => { const d = new Date(); return iso(d); };
 
@@ -86,10 +91,10 @@ export function demoAnswer(i, comp, k) {
 }
 
 export async function seedDemo(store, { live = true, fetchFn } = {}) {
-  for (const [i, name] of NAMES.entries()) {
+  for (const [i, [firstName, lastName]] of NAMES.entries()) {
     const email = `umpire${i + 1}@demo.test`;
     const had = await store.getUmpire(email);
-    await store.saveUmpire({ pid: had ? had.pid : newPid(), email, name, firstName: 'Demo', lastName: `Umpire ${i + 1}`, phone: '', dob: '', address: '', accreditation: `L${(i % 3) + 1}-${2200 + i}`, active: true });
+    await store.saveUmpire({ pid: had ? had.pid : newPid(), email, name: `${firstName} ${lastName}`, firstName, lastName, phone: '', dob: '', address: '', accreditation: `L${(i % 3) + 1}-${2200 + i}`, active: true });
   }
 
   const real = live ? await loadLiveSeason({ fetchFn, playCricketId: store.org && store.org.playCricketId }) : null;

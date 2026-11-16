@@ -264,12 +264,13 @@ export async function viewBoard(ctx, rid) {
           h('button', { class: 'link', type: 'button', onclick: guard(async () => { await writeGame(g, { changeNote: '' }); draw(); }) }, 'dismiss'))),
       h('td', {}, mapsLink(g) ? h('a', { href: mapsLink(g), target: '_blank', rel: 'noopener' }, g.ground || '—') : (g.ground || '—'),
         g.days[0].time && h('div', { class: 'muted' }, g.days[0].time)),
-      h('td', {}, g.removed ? h('span', { class: 'chip warn' }, 'removed') : h('select', { class: 'n-slots', 'aria-label': 'Umpires needed', value: String(n),
-        onchange: guard(async e => { await writeGame(g, { slots: Number(e.target.value) }); draw(); }) },
-      SLOT_CHOICES.map(([v, l]) => h('option', { value: String(v) }, l)))),
       h('td', {}, n ? g.days.map(d => h('div', { class: 'day-block' },
         g.days.length > 1 && h('div', { class: 'day-label' }, `Day ${d.day} · ${fmtDay(d.date)}`),
-        Array.from({ length: n }, (_, i) => slotSelect(g, d.date, i, busyMap, loads)))) : h('span', { class: 'muted' }, 'No umpire needed')));
+        Array.from({ length: n }, (_, i) => slotSelect(g, d.date, i, busyMap, loads)))) : h('span', { class: 'muted' }, 'No umpire needed')),
+      // How many umpires the game needs: set once, so it sits after the names.
+      h('td', {}, g.removed ? h('span', { class: 'chip warn' }, 'removed') : h('select', { class: 'n-slots', 'aria-label': 'Umpires needed', value: String(n),
+        onchange: guard(async e => { await writeGame(g, { slots: Number(e.target.value) }); draw(); }) },
+      SLOT_CHOICES.map(([v, l]) => h('option', { value: String(v) }, l)))));
   }
 
   async function doUpdateFixtures() {
@@ -359,7 +360,7 @@ export async function viewBoard(ctx, rid) {
       sections.map(s => h('section', { class: 'card' },
         h('h2', {}, `${s.label} – ${fmtRange(s.dates)}`),
         h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
-          h('thead', {}, h('tr', {}, ['Grade', 'Fixture', 'Ground', 'Umpires', 'Allocation'].map(c => h('th', {}, c)))),
+          h('thead', {}, h('tr', {}, ['Grade', 'Fixture', 'Ground', 'Allocation', 'Umpires'].map(c => h('th', {}, c)))),
           h('tbody', {}, s.games.map(g => gameRow(g, busyMap, loads))))))),
       !sections.length && h('p', { class: 'muted' }, 'No grades selected yet. Press Select grades to choose the grades that need umpires.'),
       h('p', { class: 'muted' }, 'Numbers next to a name are that umpire\'s appointments so far this season; "busy" means they are already on another game that day.'),
