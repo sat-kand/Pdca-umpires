@@ -85,6 +85,10 @@ export async function viewMy(ctx) {
   // How this member umpires: give their availability for the officer to allocate, choose games
   // themselves (player umpire), or both. Their chosen games are saved with their availability.
   const modes = { regular: true, player: !!(existing && (existing.picks || []).length), ...((existing && existing.modes) || {}) };
+  // Player umpiring is switched on, and described, by the appointments officer in Settings.
+  const pu = (store.org && store.org.playerUmpire) || {};
+  const puOn = !!pu.enabled;
+  if (!puOn) modes.regular = true;              // the only way left to give availability
   // Which competitions they give availability for. Before they have said, the ones they have
   // answered in, or all of them for someone new.
   const ALL_COMPS = ['senior', 'junior', 't20'];
@@ -163,8 +167,9 @@ export async function viewMy(ctx) {
   }
 
   // ---- how this member umpires
-  const modeCard = h('section', { class: 'card' });
-  const playerCard = h('section', { class: 'card player-card' });
+  const modeCard = h('section', { class: 'card' });                 // Give my availability, with the date form inside it
+  const playerCard = h('section', { class: 'card player-card' });    // Choose my own games
+  const playerBody = h('div');
   let drawStatus = () => {};
 
   const modeBox = (key, title, hint) => {
@@ -177,7 +182,7 @@ export async function viewMy(ctx) {
       drawModes();
       drawStatus();
     };
-    return h('label', { class: 'mode' }, cb, h('span', {}, h('strong', {}, title), h('span', { class: 'muted' }, hint)));
+    return h('label', { class: 'mode' }, cb, h('span', {}, h('strong', {}, title), hint && h('span', { class: 'muted' }, hint)));
   };
 
   // Player umpire: the games this member has chosen, and a way to choose more.
@@ -206,9 +211,11 @@ export async function viewMy(ctx) {
   }
 
   async function drawPlayer() {
-    if (!modes.player) { setChildren(playerCard); return; }
+    if (!puOn) return;
+    setChildren(playerCard, modeBox('player', 'Choose my own games (player umpire)', (pu.description || '').trim()), playerBody);
+    if (!modes.player) { setChildren(playerBody); return; }
     if (!lists) {
-      setChildren(playerCard, h('h2', {}, 'Games I want to umpire'), h('p', { class: 'muted' }, 'Loading the fixtures\u2026'));
+      setChildren(playerBody, h('p', { class: 'muted' }, 'Loading the fixtures\u2026'));
       try { lists = (await store.listFixtureLists()).filter(l => PLAYER_UMPIRE_COMPS.includes(l.comp) && (l.end || '') >= today && (l.games || []).length).sort((a, b) => (a.start || '').localeCompare(b.start || '')); }
       catch (e) { console.error(e); lists = []; }
     }
@@ -248,8 +255,8 @@ export async function viewMy(ctx) {
         h('div', { class: 'opts' }, choices, mine && h('button', { class: 'link', type: 'button', onclick: () => release(mine) }, 'Remove')));
     };
 
-    setChildren(playerCard,
-      h('h2', {}, 'Games I want to umpire'),
+    setChildren(playerBody,
+      h('h3', {}, 'Games I want to umpire'),
       picks.length
         ? h('ul', { class: 'plain my-picks' }, picks.map(p => h('li', { class: 'row-between' },
           h('span', {}, h('strong', {}, p.dates.map(fmtDay).join(' + ')), ' ', h('span', { class: 'chip' }, compLabel(p.comp)), ' ', h('span', { class: 'chip grade' }, gradeShort(p.grade)), ` ${p.label}`),
@@ -268,8 +275,6 @@ export async function viewMy(ctx) {
   const compBox = key => {
     const cb = h('input', { type: 'checkbox', checked: modes.comps.includes(key), 'aria-label': compLabel(key) });
     cb.onchange = () => {
-      const had = Object.keys(days).filter(k => k.startsWith(key + ':')).length;
-      if (!cb.checked && had && !confirm(`Your ${compLabel(key)} answers will be cleared when you save. Carry on?`)) { cb.checked = true; return; }
       modes.comps = ALL_COMPS.filter(k => (k === key ? cb.checked : modes.comps.includes(k)));
       dirty = true;
       drawModes();
@@ -280,12 +285,12 @@ export async function viewMy(ctx) {
 
   function drawModes() {
     setChildren(modeCard,
-      h('div', { class: 'row-between' }, h('h2', {}, 'How I will umpire'), statusChip),
-      modeBox('regular', 'Give my availability', 'The appointments officer gives me games on the days I am free.'),
-      modes.regular && h('div', { class: 'comp-picks' }, h('span', { class: 'muted' }, 'For'), ALL_COMPS.filter(k => compsOffered.includes(k)).map(compBox)),
+      h('div', { class: 'row-between' },
+        puOn ? modeBox('regular', 'Give my availability') : h('h2', {}, 'Give my availability'),
+        statusChip),
+      modes.regular && h('div', { class: 'comp-picks' + (puOn ? '' : ' flush') }, h('span', { class: 'muted' }, 'For'), ALL_COMPS.filter(k => compsOffered.includes(k)).map(compBox)),
       modes.regular && !modes.comps.some(k => compsOffered.includes(k)) && h('p', { class: 'notice warn' }, 'Tick at least one competition.'),
-      modeBox('player', 'Choose my own games (player umpire)', 'Pick any Senior round, grade or fixture you want to umpire.'),
-      !modes.regular && !modes.player && h('p', { class: 'notice warn' }, 'Tick one or both to give your availability.'));
+      card);
     card.hidden = !modes.regular || !modes.comps.some(k => compsOffered.includes(k));
     for (const [k, el] of Object.entries(sectionEl)) el.hidden = !modes.comps.includes(k);
     const n = modes.comps.filter(k => compsOffered.includes(k)).length;
@@ -298,11 +303,10 @@ export async function viewMy(ctx) {
   const compsOffered = comps.map(c => c.comp);
   const sectionEl = {};
   const availIntro = h('p', { class: 'muted' });
-  const card = h('section', { class: 'card' });
+  const card = h('div', { class: 'avail-body' });
   const statusChip = h('span', { class: 'chip' });
   if (!season) {
-    card.append(h('h2', {}, 'Availability'), h('p', { class: 'muted' }, 'The season dates have not been set up yet. Please check back soon.'));
-    root.append(card);
+    root.append(h('section', { class: 'card' }, h('h2', {}, 'Availability'), h('p', { class: 'muted' }, 'The season dates have not been set up yet. Please check back soon.')));
     return root;
   }
   const chip = statusChip;
@@ -313,7 +317,7 @@ export async function viewMy(ctx) {
     const left = comps.filter(c => modes.comps.includes(c.comp)).flatMap(keysOf).filter(d => !days[d]).length;
     const parts = [];
     if (modes.regular) parts.push(left ? `${left} date${left > 1 ? 's' : ''} not answered yet` : 'All dates answered');
-    if (modes.player) parts.push(`${picks.length} game${picks.length === 1 ? '' : 's'} chosen`);
+    if (puOn && modes.player) parts.push(`${picks.length} game${picks.length === 1 ? '' : 's'} chosen`);
     hint.textContent = parts.join(' \u00b7 ');
   };
 
@@ -360,15 +364,14 @@ export async function viewMy(ctx) {
     const w = await recordWithdrawal(store, { umpire: u, before, after: days });
     if (mine.length) drawAppointments();
     if (w) toast(`Saved. You were down for ${w.games.length} game${w.games.length === 1 ? '' : 's'} on those dates \u2014 the appointments officer has been told.`, 'warn');
-    else toast(modes.player && picks.length ? 'Saved. The appointments officer will see the games you chose.' : 'Availability saved');
+    else toast(puOn && modes.player && picks.length ? 'Saved. The appointments officer will see the games you chose.' : 'Availability saved');
   });
 
   setChildren(card,
-    h('h2', {}, 'Availability'),
     availIntro,
     sections.length ? sections : h('p', { class: 'muted' }, 'No upcoming dates.'));
   drawModes();
   drawStatus();
-  root.append(modeCard, playerCard, card, h('div', { class: 'savebar' }, hint, saveBtn));
+  root.append(modeCard, puOn && playerCard, h('div', { class: 'savebar' }, hint, saveBtn));
   return root;
 }

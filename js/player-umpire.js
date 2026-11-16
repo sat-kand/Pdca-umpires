@@ -23,7 +23,8 @@ export function wantedKeys(avail, today) {
 }
 
 // Officer side: bring the board in line with every member's choices. Returns what changed.
-export async function applyPlayerUmpires(store, { today }) {
+export async function applyPlayerUmpires(store, { today, enabled = true }) {
+  if (!enabled) return { added: [], removed: [], blocked: [] };          // switched off in Settings: leave the boards as they are
   const season = await store.getSeason();
   if (!season) return { added: [], removed: [], blocked: [] };
   const [availList, umpires, settings] = await Promise.all([store.listAvailability(season.id), store.listUmpires(), store.getSettings()]);

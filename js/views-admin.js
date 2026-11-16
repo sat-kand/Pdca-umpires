@@ -9,6 +9,7 @@ import {
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
 import { applyPlayerUmpires } from './player-umpire.js';
+const puEnabled = store => !!(store.org && store.org.playerUmpire && store.org.playerUmpire.enabled);
 import { membershipTypes, feeFor, money, renewalText } from './views-org.js';
 import { planImport, applyImport } from './import-availability.js';
 import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, TILE_ORDER } from './rounds.js';
@@ -91,7 +92,7 @@ export async function viewAdminHome(ctx) {
 
   async function load() {
     state.dropouts = await applyWithdrawals(store);         // umpires who pulled out of a published round, until the officer says 'Got it'
-    try { state.pu = await applyPlayerUmpires(store, { today }); } catch (e) { console.error('player umpires', e); }
+    try { state.pu = await applyPlayerUmpires(store, { today, enabled: puEnabled(store) }); } catch (e) { console.error('player umpires', e); }
     [state.rounds, state.season] = await Promise.all([store.listRounds(), store.getSeason()]);
   }
 
@@ -164,7 +165,7 @@ export async function viewAdminHome(ctx) {
 
 export async function viewBoard(ctx, rid) {
   const { store } = ctx;
-  try { await applyPlayerUmpires(store, { today: todayLocal() }); } catch (e) { console.error('player umpires', e); }   // games members chose themselves
+  try { await applyPlayerUmpires(store, { today: todayLocal(), enabled: puEnabled(store) }); } catch (e) { console.error('player umpires', e); }   // games members chose themselves
   const round = await store.getRound(rid);
   if (!round) return h('p', { class: 'notice warn' }, 'Round not found.');
   const [games, umpires, availList, rounds, settings] = await Promise.all([

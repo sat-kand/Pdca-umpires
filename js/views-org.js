@@ -111,6 +111,27 @@ export async function viewOrgSettings(ctx) {
     saveBtn);
   }
 
+  // Player umpires: whether members may choose their own (Senior) games, and the line they see about it.
+  function playerUmpireCard() {
+    const org = store.org;
+    const p = org.playerUmpire || {};
+    const on = h('input', { type: 'checkbox', checked: !!p.enabled });
+    const text = h('textarea', { rows: 2, placeholder: 'e.g. Pick any Senior round, grade or fixture you want to umpire.' }, p.description || '');
+    const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
+    return h('form', { class: 'card', onsubmit: busy(saveBtn, async e => {
+      e.preventDefault();
+      await store.saveOrg({ playerUmpire: { enabled: on.checked, description: text.value.trim() }, updatedAt: new Date().toISOString() });
+      await ctx.refreshUser();
+      toast('Saved', 'ok');
+      await draw();
+    }) },
+    h('h2', {}, 'Player umpires'),
+    h('label', { class: 'inline' }, on, ' Let members choose their own Senior games to umpire'),
+    h('p', { class: 'muted small' }, 'When this is off, members only see "Give my availability". Games already chosen stay where they are.'),
+    h('label', {}, 'What members are told (leave empty to show nothing)', text),
+    saveBtn);
+  }
+
   async function build() {
     const org = store.org;
     const admins = (await store.listAdmins()).sort();
@@ -141,6 +162,7 @@ export async function viewOrgSettings(ctx) {
       save),
 
       membershipCard(),
+      playerUmpireCard(),
 
       h('div', { class: 'card' }, h('h2', {}, 'Link for umpires'),
         h('p', { class: 'muted' }, 'Send this link to your umpires. They sign in, add their details, and wait for you to approve them on the Members page.'),
