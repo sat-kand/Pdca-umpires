@@ -37,7 +37,9 @@ async function openGradesModal({ store, round, onDone }) {
   const grades = [...new Set(live.map(g => g.grade))].sort(compareGrades);
   const count = gr => live.filter(g => g.grade === gr).length;
   const perGame = g => ((g.slots || 0) || 1);                                          // umpires per game: what the board has, else 1
-  const want = Object.fromEntries(grades.map(gr => [gr, live.some(g => g.grade === gr && isPicked(g))]));
+  // A game turned on only because a player umpire chose it does not count as selecting its grade.
+  const want = Object.fromEntries(grades.map(gr => [gr, live.some(g => g.grade === gr && isPicked(g) && !g.puOnly)]));
+  const puGames = gr => live.filter(g => g.grade === gr && g.puOnly && isPicked(g)).length;
   const typeOf = gr => formatSummary(live.filter(g => g.grade === gr));              // Play Cricket's match type: One Day / Two Day / T20
 
   const dlg = h('dialog', { class: 'modal', 'aria-label': 'Select grades' });
@@ -46,7 +48,8 @@ async function openGradesModal({ store, round, onDone }) {
     const cb = h('input', { type: 'checkbox', checked: want[gr], id: 'g-' + gr.replace(/\W+/g, '_') });
     cb.onchange = () => { want[gr] = cb.checked; showTotal(); };
     return { gr, cb, row: h('label', { class: 'grade-row' }, cb, h('span', { class: 'chip grade' }, gradeShort(gr)), h('span', { class: 'muted' }, `${count(gr)} game${count(gr) === 1 ? '' : 's'}`),
-      h('span', { class: 'muted' }, typeOf(gr))) };
+      h('span', { class: 'muted' }, typeOf(gr)),
+      puGames(gr) > 0 && h('span', { class: 'chip pu' }, `${puGames(gr)} player umpire game${puGames(gr) === 1 ? '' : 's'}`)) };
   });
   function showTotal() {
     const picked = grades.filter(gr => want[gr]);
@@ -58,8 +61,14 @@ async function openGradesModal({ store, round, onDone }) {
   done.onclick = busy(done, async () => {
     const changed = [];
     for (const g of games) {
-      const n = g.removed || !(g.grade in want) || compKeyOf(g) !== (round.comp || 'senior') ? (g.slots || 0) : (want[g.grade] ? perGame(g) : 0);
-      if (n !== (g.slots || 0)) { g.slots = n; changed.push({ ...g, slots: n }); }
+      const mine = !g.removed && (g.grade in want) && compKeyOf(g) === (round.comp || 'senior');
+      if (!mine) continue;
+      if (want[g.grade]) {                                   // the grade is selected: every game, and none is "player umpire only" any more
+        const n = perGame(g);
+        if (n !== (g.slots || 0) || g.puOnly) { g.slots = n; g.puOnly = false; changed.push({ ...g }); }
+      } else if (g.puOnly && isPicked(g)) {
+        continue;                                            // a player umpire's game stays on by itself
+      } else if (g.slots) { g.slots = 0; changed.push({ ...g }); }
     }
     if (changed.length) await store.saveGames(round.id, changed);
     const patch = { ...summarise(games), changedAt: new Date().toISOString() };
@@ -165,6 +174,7 @@ export async function viewAdminHome(ctx) {
 
 export async function viewBoard(ctx, rid) {
   const { store } = ctx;
+  try { await applyWithdrawals(store); } catch (e) { console.error('dropouts', e); }               // anyone who pulled out, first
   try { await applyPlayerUmpires(store, { today: todayLocal(), enabled: puEnabled(store) }); } catch (e) { console.error('player umpires', e); }   // games members chose themselves
   const round = await store.getRound(rid);
   if (!round) return h('p', { class: 'notice warn' }, 'Round not found.');
@@ -231,7 +241,7 @@ export async function viewBoard(ctx, rid) {
     const GROUPS = multi
       ? [['chosen', 'Player umpire (chose this game)'], ['both', 'Available both days'], ['ok', 'Available this day only'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']]
       : [['chosen', 'Player umpire (chose this game)'], ['ok', 'Available'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']];
-    const label = o => `${o.umpire.name}${o.load ? ` · ${o.load}` : ''}${o.elsewhere ? ' · player umpire elsewhere' : o.busy ? ' · busy' : ''}`;
+    const label = o => `${o.umpire.name}${o.load ? ` · ${o.load} game${o.load === 1 ? '' : 's'} so far` : ''}${o.elsewhere ? ' · player umpire elsewhere' : o.busy ? ' · busy' : ''}`;
     const sel = h('select', { class: 'slot' + (cur ? '' : ' empty'), 'aria-label': `Umpire ${i + 1}, ${gradeShort(g.grade)} ${g.home.name}, ${fmtDay(date)}`,
       onchange: guard(async () => {
         const u = B.umpires.find(x => x.pid === sel.value);
@@ -364,8 +374,8 @@ export async function viewBoard(ctx, rid) {
       h('div', { class: 'row-between' }, h('h1', {}, roundHeading(B.round)), h('span', { class: 'muted' }, fmtRange(B.round.dates))),
       tabs(rid, ''),
       h('div', { class: 'card toolbar' },
-        h('div', { class: 'publish' }, publishBtn, B.round.published && unpublishBtn),
-        h('div', { class: 'actions' }, gradesBtn, autoBtn, updBtn, clearBtn)),
+        h('div', { class: 'actions' }, gradesBtn, autoBtn, updBtn, clearBtn),
+        h('div', { class: 'publish' }, publishBtn, B.round.published && unpublishBtn)),
       h('div', { class: 'summary' },
         h('span', { class: 'chip ' + (st.needed && st.filled === st.needed ? 'ok' : 'warn') }, `${st.filled} of ${st.needed} slots filled`),
         h('span', { class: 'chip ' + (warnings.length ? 'warn' : 'ok') }, warnings.length ? `${warnings.length} warning${warnings.length > 1 ? 's' : ''}` : 'No warnings'),
@@ -378,7 +388,7 @@ export async function viewBoard(ctx, rid) {
           h('thead', {}, h('tr', {}, ['Grade', 'Fixture', 'Ground', 'Allocation', 'Umpires'].map(c => h('th', {}, c)))),
           h('tbody', {}, s.games.map(g => gameRow(g, busyMap, loads))))))),
       !sections.length && h('p', { class: 'muted' }, 'No grades selected yet. Press Select grades to choose the grades that need umpires.'),
-      h('p', { class: 'muted' }, 'Numbers next to a name are that umpire\'s appointments so far this season; "busy" means they are already on another game that day.'),
+      h('p', { class: 'muted' }, '"3 games so far" next to a name is how many games that umpire has been given this season, so the work can be shared fairly; "busy" means they are already on another game that day.'),
     ];
   }
 

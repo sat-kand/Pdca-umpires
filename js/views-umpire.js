@@ -132,11 +132,19 @@ export async function viewMy(ctx) {
     btn.disabled = true;
     const before = savedDays;
     const next = { ...savedDays, [key]: 'no' };
+    // A game they chose as a player umpire is given back for that day too, so it leaves their
+    // choices and the officer's board as well.
+    const nextPicks = savedPicks.map(p => (p.gameId === g.id ? { ...p, dates: p.dates.filter(x => x !== d.date) } : p)).filter(p => p.dates.length);
     try {
-      await put(next, savedPicks);
+      await put(next, nextPicks);
       savedDays = next;
       days[key] = 'no';
-      await recordWithdrawal(store, { umpire: u, before, after: next });
+      if (nextPicks.length !== savedPicks.length || nextPicks.some((p, i) => p.dates.length !== savedPicks[i].dates.length)) {
+        savedPicks = nextPicks;
+        picks = picks.map(p => (p.gameId === g.id ? { ...p, dates: p.dates.filter(x => x !== d.date) } : p)).filter(p => p.dates.length);
+        drawPlayer();
+      }
+      await recordWithdrawal(store, { umpire: u, before, after: next, also: [{ comp: compKeyOf(g), date: d.date }] });
       toast('The appointments officer has been told, and you are marked Not available for that day.', 'warn');
     } catch (e) {
       console.error(e);

@@ -42,9 +42,11 @@ export async function affectedGames(store, { umpire, dropped, today = todayLocal
 
 // Called when an umpire saves their availability. Returns the withdrawal, or null when nothing published
 // is affected (the usual case). Never throws: a failure here must not lose the umpire's own save.
-export async function recordWithdrawal(store, { umpire, before, after, today = todayLocal() }) {
+// `also` adds days they turned down that were not a 'yes' before, such as a game they chose as a player umpire.
+export async function recordWithdrawal(store, { umpire, before, after, also = [], today = todayLocal() }) {
   try {
-    const dropped = turnedDown(before, after).filter(d => d.date >= today);
+    const seen = new Set();
+    const dropped = [...turnedDown(before, after), ...also].filter(d => d.date >= today && !seen.has(d.comp + d.date) && seen.add(d.comp + d.date));
     if (!dropped.length) return null;
     const games = await affectedGames(store, { umpire, dropped, today });
     if (!games.length) return null;

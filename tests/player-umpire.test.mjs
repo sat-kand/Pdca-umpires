@@ -116,3 +116,12 @@ test('a player umpire comes first: offered for the game they chose, kept out of 
   // Switched off: nothing is claimed.
   assert.equal(claimsFrom(avail, umpires, false).claimOf('p1', '2026-11-21'), null);
 });
+
+test('a chosen game in an unselected grade is turned on by itself; in a selected grade it is just filled', async () => {
+  const s = fakeStore({ picks: [pick('g1', ['2026-11-21']), pick('g2', ['2026-11-28'])], games: [G('g1', 'Senior B09', ['2026-11-21']), G('g2', 'Senior A', ['2026-11-28'], { slots: 1 })] });
+  await applyPlayerUmpires(s, { today: TODAY });
+  const [g1, g2] = s.db.games.r1;
+  assert.equal(g1.slots, 1);
+  assert.equal(g1.puOnly, true, 'its grade stays unselected');
+  assert.ok(!g2.puOnly, 'a grade the officer selected stays selected as normal');
+});

@@ -79,7 +79,10 @@ export async function applyPlayerUmpires(store, { today, enabled = true }) {
         continue;
       }
       slots[i] = { p: pid, n: it.u.name, pu: true };
-      g.slots = n;                                                                     // turns the game, and so its grade, on
+      // Turns this one game on. If its grade was not selected, only this game shows (`puOnly`), and the
+      // grade itself stays unselected until the officer ticks it in Select grades.
+      if (!(g.slots || 0)) g.puOnly = true;
+      g.slots = n;
       g.alloc = { ...(g.alloc || {}), [date]: slots };
       touched.add(g.id);
       added.push({ name: it.u.name, roundId, label, date });
