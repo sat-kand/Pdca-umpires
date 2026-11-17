@@ -123,5 +123,7 @@ export function claimsFrom(availList, umpires, enabled = true) {
   }
   // Only within the competition they chose in: in any other competition they are a full umpire as usual.
   const pickOf = (pid, date, comp) => byDay.get(`${pid}|${comp}|${date}`) || null;
-  return { pickOf, claimOf: (pid, date, comp) => { const p = pickOf(pid, date, comp); return p ? p.gameId : null; } };
+  // Every game someone has chosen right now: what decides whether a game is a player umpire game.
+  const chosenGames = new Set([...byDay.values()].map(p => p.gameId));
+  return { pickOf, chosenGames, claimOf: (pid, date, comp) => { const p = pickOf(pid, date, comp); return p ? p.gameId : null; } };
 }

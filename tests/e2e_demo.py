@@ -960,6 +960,20 @@ with sync_playwright() as p:
     page.click("a.tab:has-text('Availability')")
     page.wait_for_selector("table.board")
     check(page.locator("tr:has(td:text-is('B Chellapa')) td.av.pu").count() == 0, "the Availability tab no longer shows them as a player umpire")
+    # Data left over from before this was fixed: a game still marked as a player umpire game, nobody chose it.
+    rid = page.evaluate("() => { const g = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.games; return location.hash.split(/[/?]/).find(x => x in g); }")
+    page.evaluate("""(rid) => { const k = 'pdca-umpires-demo-v2'; const db = JSON.parse(localStorage.getItem(k));
+        const g = Object.values(db.orgs.pdca.games[rid])[0]; g.puOnly = true; g.puGame = true; g.slots = 1; g.alloc = {};
+        localStorage.setItem(k, JSON.stringify(db)); }""", rid)
+    page.reload()
+    page.wait_for_selector("a.tab:has-text('Assign')")
+    page.click("a.tab:has-text('Assign')")
+    page.wait_for_selector("table.board")
+    page.click("button:has-text('Select grades')")
+    page.wait_for_selector("dialog .grade-row")
+    check(page.locator("dialog .chip.pu").count() == 0, "Select grades only marks games someone has chosen now (a stale mark is ignored)")
+    page.click("dialog button:has-text('Done')")
+    page.wait_for_timeout(300)
     page.goto(BASE + "#/admin")
     page.wait_for_selector(".dropouts")
     page.click(".dropouts button:has-text('Got it')")

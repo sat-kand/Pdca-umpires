@@ -31,7 +31,7 @@ function tabs(rid, active) {
 
 // "Select grades" popup: tick the grades the committee wants umpires for. Only ticked grades are
 // listed on the board, and the slot totals follow. `onDone` runs after saving.
-async function openGradesModal({ store, round, onDone }) {
+async function openGradesModal({ store, round, chosenGames = new Set(), onDone }) {
   const [games, settings] = await Promise.all([store.listGames(round.id), store.getSettings()]);
   const live = games.filter(g => !g.removed && compKeyOf(g) === (round.comp || 'senior'));
   const grades = [...new Set(live.map(g => g.grade))].sort(compareGrades);
@@ -40,7 +40,8 @@ async function openGradesModal({ store, round, onDone }) {
   // A game turned on only because a player umpire chose it does not count as selecting its grade.
   const want = Object.fromEntries(grades.map(gr => [gr, live.some(g => g.grade === gr && isPicked(g) && !g.puOnly)]));
   const hasPu = g => Object.values(g.alloc || {}).some(arr => (arr || []).some(a => a && a.pu));
-  const puGames = gr => live.filter(g => g.grade === gr && g.puOnly && isPicked(g)).length;
+  const isPuGame = g => chosenGames.has(g.id) || hasPu(g);         // chosen right now, or in it as a player umpire
+  const puGames = gr => live.filter(g => g.grade === gr && isPicked(g) && isPuGame(g)).length;
   const typeOf = gr => formatSummary(live.filter(g => g.grade === gr));              // Play Cricket's match type: One Day / Two Day / T20
 
   const dlg = h('dialog', { class: 'modal', 'aria-label': 'Select grades' });
@@ -67,7 +68,7 @@ async function openGradesModal({ store, round, onDone }) {
       if (want[g.grade]) {                                   // the grade is selected: every game, and none is "player umpire only" any more
         const n = perGame(g);
         if (n !== (g.slots || 0) || g.puOnly) { g.slots = n; g.puOnly = false; changed.push({ ...g }); }
-      } else if (g.puGame || hasPu(g) || (g.puOnly && isPicked(g))) {
+      } else if (isPuGame(g)) {
         // A game a player umpire chose stays on by itself when its grade is unticked.
         if (!g.puOnly || !g.slots) { g.slots = g.slots || 1; g.puOnly = true; changed.push({ ...g }); }
       } else if (g.slots) { g.slots = 0; changed.push({ ...g }); }
@@ -184,7 +185,17 @@ export async function viewBoard(ctx, rid) {
     store.listGames(rid), store.listUmpires(), store.listAvailability((round.season && round.season.id) || 'manual'), store.listRounds(), store.getSettings(),
   ]);
   const B = { ui: { grades: false, warns: false }, round, games, umpires, settings, availByEmail: Object.fromEntries(availList.map(a => [a.email, a])) };
-  const { claimOf } = claimsFrom(availList, umpires, puEnabled(store));   // games player umpires chose: they come first
+  const { claimOf, chosenGames } = claimsFrom(availList, umpires, puEnabled(store));   // games player umpires chose: they come first
+  // A game is a player umpire game only while someone has chosen it or is in it as one. Tidy up any
+  // left marked from a choice that has since been given back.
+  const puIn = g => Object.values(g.alloc || {}).some(arr => (arr || []).some(a => a && a.pu));
+  for (const g of games) {
+    if (!(g.puOnly || g.puGame) || chosenGames.has(g.id) || puIn(g)) continue;
+    const anyone = Object.values(g.alloc || {}).some(arr => (arr || []).some(Boolean));
+    if (g.puOnly && !anyone) { g.slots = 0; g.puOnly = false; }
+    g.puGame = false;
+    await store.saveGame(rid, g);
+  }
   const otherStats = rounds.filter(r => r.id !== rid && r.season && round.season && r.season.id === round.season.id).map(r => r.stats);
   const wrap = h('div');
 
@@ -357,7 +368,7 @@ export async function viewBoard(ctx, rid) {
       return h('label', { class: 'toggle' }, cb, h('span', {}, h('strong', {}, label), h('small', { class: 'muted' }, hint)));
     };
 
-    const gradesBtn = h('button', { class: 'btn', type: 'button', onclick: () => openGradesModal({ store, round: B.round, onDone: async () => { B.games = await store.listGames(rid); B.settings = await store.getSettings(); B.round = await store.getRound(rid); draw(); } }) }, 'Select grades');
+    const gradesBtn = h('button', { class: 'btn', type: 'button', onclick: () => openGradesModal({ store, round: B.round, chosenGames, onDone: async () => { B.games = await store.listGames(rid); B.settings = await store.getSettings(); B.round = await store.getRound(rid); draw(); } }) }, 'Select grades');
 
     const autoBtn = h('button', { class: 'btn', type: 'button' }, '✨ Suggest allocations');
     autoBtn.onclick = busy(autoBtn, guard(async () => {
