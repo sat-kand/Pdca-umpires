@@ -123,6 +123,9 @@ service cloud.firestore {
             && request.resource.data.keys().hasOnly(['pid', 'email', 'name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'accreditation', 'active', 'updatedAt'])
           ));
 
+        // Officers may turn down someone who has just registered.
+        allow delete: if isOrgAdmin(orgId) && orgOpen(orgId);
+
         // Umpires may edit their own details but never `active`, `pid` or `email`.
         allow update: if signedIn() && orgOpen(orgId) && (
           isOrgAdmin(orgId) || (

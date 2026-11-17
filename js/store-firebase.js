@@ -94,6 +94,7 @@ export async function createFirebaseStore(cfg) {
     // ----- umpires -----
     getUmpire: email => getOne(...P('umpires', email)),
     saveUmpire: u => fs.setDoc(fs.doc(db, ...P('umpires', u.email)), clean(u), { merge: true }),
+    deleteUmpire: email => fs.deleteDoc(fs.doc(db, ...P('umpires', email))),
     async listUmpires() {
       const s = await fs.getDocs(fs.collection(db, ...P('umpires')));
       return s.docs.map(d => d.data());

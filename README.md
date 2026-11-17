@@ -116,6 +116,8 @@ python3 tests/e2e_demo.py  # browser test of the whole flow in demo mode (needs 
 
 ## Member profiles
 
-Officers click any member's name (Members page, the season Availability sheet, or a round's Availability tab) to open their profile: membership details (type, fee, status, **Member since**, which is set when a member is added or approved and can be changed there), this season's availability, upcoming and past appointments in this association, games umpired here, pull-outs and fulfilment rate (the share of their published games they kept).
+**Past allocations:** a finished round stays changeable on its Assign board for 4 days after its last game (for an umpire replaced on the morning, say), marked *Can change until …* in Past allocations. After that it is a record: Availability and Report only.
+
+Officers click any member's name (Members page, the season Availability sheet, or a round's Availability tab) to open their profile: membership details (type, fee, status, **Member since**, which is set when a member is added or approved and can be changed there), this season's availability (click a date to change it, as on the Availability sheet), status (approve or reject a new registration; make a member active or inactive), upcoming and past appointments in this association, games umpired here, pull-outs and fulfilment rate (the share of their published games they kept).
 
 The profile also lists the member's memberships with **other associations** — association, type, active or past, since when — and nothing else from them. Each association writes its own line to `memberships/{email}/orgs/{orgId}` when an officer saves or opens a member; an officer can read a member's lines only after registering as a viewer, which the rules allow only for an officer of an association that member belongs to. Publish the updated `firestore.rules` for this to work on the live site.

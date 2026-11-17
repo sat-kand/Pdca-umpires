@@ -64,6 +64,7 @@ export function createDemoStore() {
 
     async getUmpire(email) { return clone(o().umpires[email]) || null; },
     async saveUmpire(u) { o().umpires[u.email] = { ...(o().umpires[u.email] || {}), ...clone(u) }; index(u.email, cur); save(); },
+    async deleteUmpire(email) { delete o().umpires[email]; save(); },
     async listUmpires() { return Object.values(clone(o().umpires)); },
 
     async listRounds() { return Object.values(clone(o().rounds)).sort((a, b) => (b.start || '').localeCompare(a.start || '')); },

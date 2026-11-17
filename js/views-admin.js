@@ -14,14 +14,20 @@ import { membershipTypes, feeFor, money, renewalText } from './views-org.js';
 import { membershipLink } from './views-member.js';
 const profileLink = u => h('a', { class: 'member-link', href: `#/admin/member/${encodeURIComponent(u.pid)}`, title: 'Open profile' }, u.name);
 import { planImport, applyImport } from './import-availability.js';
-import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, TILE_ORDER } from './rounds.js';
+import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, TILE_ORDER, addDays } from './rounds.js';
+
+// A finished round can still be changed for this many days after its last game (an umpire replaced on
+// the morning, say). After that it is a record: Availability and Report only, no Assign board.
+const EDIT_DAYS_AFTER = 4;
+const editableUntil = r => addDays(r.end || r.start || '', EDIT_DAYS_AFTER);
+const isLocked = (r, today = todayLocal()) => !!(r && (r.end || r.start)) && editableUntil(r) < today;
 
 const SLOT_CHOICES = [[1, '1 umpire'], [2, '2 umpires']];
 
 const roundHeading = r => `${r.comp ? compLabel(r.comp) + ' · ' : ''}${r.title}`;
 
-function tabs(rid, active) {
-  const t = [['', 'Assign'], ['/availability', 'Availability'], ['/report', 'Report & email']];
+function tabs(rid, active, locked = false) {
+  const t = [...(locked ? [] : [['', 'Assign']]), ['/availability', 'Availability'], ['/report', 'Report & email']];
   return h('nav', { class: 'tabs noprint' }, t.map(([p, label]) =>
     h('a', { class: 'tab' + (active === p ? ' active' : ''), href: `#/admin/round/${rid}${p}` }, label)),
   h('a', { class: 'tab right', href: '#/admin' }, '← Back to Allocate'));
@@ -153,9 +159,11 @@ export async function viewAdminHome(ctx) {
         h('summary', {}, `Past allocations (${past.length})`),
         !past.length && h('p', { class: 'muted' }, 'Nothing here yet. A round moves here once its last day has passed, if it was published or had umpires allocated.'),
         h('ul', { class: 'plain' }, past.map(r => { const st = r.stats || { needed: 0, filled: 0 };
-          return h('li', {}, h('a', { class: 'past-row', href: `#/admin/round/${r.id}/report` },
+          const open = !isLocked(r, today);       // still within the days after the game when changes are allowed
+          return h('li', {}, h('a', { class: 'past-row', href: open ? `#/admin/round/${r.id}` : `#/admin/round/${r.id}/report` },
             h('strong', {}, fmtRange(r.dates || [r.start, r.end])), h('span', {}, r.comp ? compLabel(r.comp) : (r.title || '')), h('span', { class: 'muted' }, r.formats || ''),
-            h('span', { class: 'chip' }, `${st.filled}/${st.needed} slots filled`), h('span', { class: 'chip ' + (r.published ? 'ok' : 'warn') }, r.published ? 'Published' : 'Not published'))); }))));
+            h('span', { class: 'chip' }, `${st.filled}/${st.needed} slots filled`), h('span', { class: 'chip ' + (r.published ? 'ok' : 'warn') }, r.published ? 'Published' : 'Not published'),
+            open && h('span', { class: 'chip pu' }, `Can change until ${fmtDay(editableUntil(r))}`))); }))));
   }
 
   async function sync(force) {
@@ -183,6 +191,7 @@ export async function viewBoard(ctx, rid) {
   try { await applyPlayerUmpires(store, { today: todayLocal(), enabled: puEnabled(store) }); } catch (e) { console.error('player umpires', e); }   // games members chose themselves
   const round = await store.getRound(rid);
   if (!round) return h('p', { class: 'notice warn' }, 'Round not found.');
+  if (isLocked(round)) { location.replace(`#/admin/round/${rid}/report`); return h('div'); }   // a finished round is a record now
   const [games, umpires, availList, rounds, settings] = await Promise.all([
     store.listGames(rid), store.listUmpires(), store.listAvailability((round.season && round.season.id) || 'manual'), store.listRounds(), store.getSettings(),
   ]);
@@ -455,7 +464,7 @@ export async function viewAvailabilityOverview(ctx, rid) {
 
   return h('div', {},
     h('div', { class: 'row-between' }, h('h1', {}, roundHeading(round)), h('span', { class: 'muted' }, fmtRange(round.dates))),
-    tabs(rid, '/availability'),
+    tabs(rid, '/availability', isLocked(round)),
     h('div', { class: 'card' },
       h('div', { class: 'summary' }, cols.map(c => { const n = counts(c); return h('span', { class: 'chip' }, `${colName(c)}: ${n.yes} available · ${n.no} not available · ${n.none} no reply${n.pu ? ` · ${n.pu} player umpire${n.pu === 1 ? '' : 's'}` : ''}`); })),
       h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
@@ -689,7 +698,8 @@ export async function viewReport(ctx, rid) {
 
   return h('div', {},
     h('div', { class: 'row-between noprint' }, h('h1', {}, roundHeading(round)), h('span', { class: 'muted' }, fmtRange(round.dates))),
-    tabs(rid, '/report'),
+    tabs(rid, '/report', isLocked(round)),
+    isLocked(round) && h('p', { class: 'notice' }, `This round finished on ${fmtDay(round.end || round.start)}, so it can no longer be changed (allocations stay open for ${EDIT_DAYS_AFTER} days after the last game).`),
     h('div', { class: 'card noprint' },
       st.filled < st.needed && h('p', { class: 'notice warn' }, `${st.needed - st.filled} slot(s) are still unallocated and show as "—" on the report.`),
       !round.published && h('p', { class: 'notice' }, 'This round is not published yet, so umpires cannot see it in the app. Publish it from the Assign tab.'),
@@ -762,15 +772,15 @@ export async function viewUmpires(ctx) {
       const fee = feeFor(store.org, u.membership);
       return h('div', { class: 'member-type' }, sel, fee ? h('span', { class: 'muted fee' }, money(fee)) : null);
     };
-    const pending = members.filter(u => !u.active);
+    const pending = members.filter(u => !u.active && !u.deactivated);      // registered, not yet approved
     const COLS = ['Active', 'Profile', 'First name', 'Last name', 'D.O.B', 'Address', 'Email', 'Mobile', 'Accreditation no.', 'Membership'];
     setChildren(wrap,
       h('div', { class: 'row-between' }, h('h1', {}, 'Members'), h('a', { class: 'btn', href: '#/admin' }, '\u2190 Allocate')),
       pending.length > 0 && h('p', { class: 'notice warn' }, `${pending.length} member(s) are waiting for approval. Tick "Active" to approve them.`),
       h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'board members' },
         h('thead', {}, h('tr', {}, COLS.map(c => h('th', {}, c)))),
-        h('tbody', {}, members.map(u => { const n = nameParts(u); return h('tr', { class: u.active ? '' : 'needs' },
-          h('td', {}, h('input', { type: 'checkbox', checked: !!u.active, 'aria-label': 'Active', onchange: e => save(u, { active: e.target.checked }, true) })),
+        h('tbody', {}, members.map(u => { const n = nameParts(u); return h('tr', { class: u.active ? '' : u.deactivated ? 'inactive' : 'needs' },
+          h('td', {}, h('input', { type: 'checkbox', checked: !!u.active, 'aria-label': 'Active', onchange: e => save(u, { active: e.target.checked, deactivated: !e.target.checked }, true) })),
           h('td', {}, profileLink(u)),
           h('td', {}, field(u, 'firstName', { cls: 'in-sm', value: n.firstName })),
           h('td', {}, field(u, 'lastName', { cls: 'in-sm', value: n.lastName })),

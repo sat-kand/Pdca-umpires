@@ -281,3 +281,8 @@ a.member-link:hover { text-decoration-color: currentColor; }
 .member-profile .appt-list > li:last-child { border-bottom: 0; }
 @media (max-width: 560px) { .member-profile .kv { grid-template-columns: 1fr; gap: .1rem; } }
 .member-profile input[type=date] { max-width: 11rem; }
+.member-profile .date-btn { cursor: pointer; border: 1px solid transparent; font: inherit; font-size: .8rem; }
+.member-profile .date-btn:hover { border-color: currentColor; }
+.member-profile .date-btn:disabled { opacity: .6; cursor: progress; }
+.member-profile .status-box { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.board tr.inactive td { opacity: .6; }

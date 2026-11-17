@@ -73,7 +73,9 @@ export async function viewMy(ctx) {
   }
   const [season, rounds] = await Promise.all([store.getSeason(), store.listRounds()]);
   const root = h('div', { class: 'narrow-page' });
-  if (!u.active) root.append(h('p', { class: 'notice warn' }, 'Your account is waiting for approval by the appointments officer. You can already give your availability.'));
+  if (!u.active) root.append(h('p', { class: 'notice warn' }, u.deactivated
+    ? 'Your membership is not active at the moment. Contact the appointments officer if that is not right.'
+    : 'Your account is waiting for approval by the appointments officer. You can already give your availability.'));
 
   // ---- what the umpire has already answered (needed by the appointments below as well)
   const existing = season ? await store.getAvailability(season.id, u.email) : null;

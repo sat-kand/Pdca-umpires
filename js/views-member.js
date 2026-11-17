@@ -5,7 +5,7 @@
 // (association, type, active or not, since when), never another association's availability or games.
 
 import { h, toast, setChildren, busy, todayLocal } from './ui.js';
-import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS } from './logic.js';
+import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey } from './logic.js';
 import { feeFor, money } from './views-org.js';
 
 // What other associations may see of this membership. Written whenever an officer saves or opens a member.
@@ -71,16 +71,18 @@ export async function viewMember(ctx, pid) {
     others = store.listMemberships ? (await store.listMemberships(u.email)).filter(m => m.orgId !== store.org.id) : [];
   } catch (e) { console.error('memberships', e); }
 
-  // ---- availability this season, upcoming dates by competition
-  const days = (avail && avail.days) || {};
+  // ---- availability this season: every upcoming playing date by competition, from the season calendar
+  let rec = avail || (season ? { seasonId: season.id || 'manual', email: u.email, name: u.name, days: {} } : null);
   const byComp = new Map();
-  for (const [k, v] of Object.entries(days)) {
-    const [comp, date] = k.split(':');
-    if (date < today) continue;
-    if (!byComp.has(comp)) byComp.set(comp, []);
-    byComp.get(comp).push({ date, v });
+  for (const e of (season && season.calendar) || []) {
+    const comp = e.comp || 'senior';
+    for (const date of e.dates || []) {
+      if (date < today) continue;
+      if (!byComp.has(comp)) byComp.set(comp, new Set());
+      byComp.get(comp).add(date);
+    }
   }
-  for (const l of byComp.values()) l.sort((a, b) => a.date.localeCompare(b.date));
+  for (const [k, set] of byComp) byComp.set(k, [...set].sort());
   const picks = ((avail && avail.picks) || []).filter(p => (p.dates || []).some(d => d >= today));
 
   // ---- layout
@@ -94,6 +96,67 @@ export async function viewMember(ctx, pid) {
     if (store.saveMembershipLink) await store.saveMembershipLink(u.email, membershipLink(store.org, u));
     toast('Saved', 'ok');
   });
+
+  // Clicking a date steps it on, exactly like the officer's Availability sheet, and is marked as theirs.
+  const NEXT = { none: 'yes', yes: 'no', no: 'none' };
+  const LABEL = { yes: 'Available', no: 'Not available', none: 'No answer' };
+  function availLine(c) {
+    const dates = byComp.get(c.key);
+    const line = h('div', { class: 'avail-line' });
+    const draw = () => {
+      const v = d => (rec.days || {})[availKey(c.key, d)] || 'none';
+      const yes = dates.filter(d => v(d) === 'yes').length, no = dates.filter(d => v(d) === 'no').length;
+      setChildren(line,
+        h('div', {}, h('strong', {}, c.label), h('span', { class: 'muted' }, ` · ${yes} available · ${no} not available · ${dates.length - yes - no} no answer`)),
+        h('div', { class: 'date-chips' }, dates.map(d => {
+          const st = v(d);
+          const b = h('button', { type: 'button', class: 'chip date-btn ' + ({ yes: 'ok', no: 'no', none: 'muted-chip' })[st], 'data-date': d,
+            title: `${fmtDay(d)}: ${LABEL[st]}${(rec.edited || {})[availKey(c.key, d)] ? ' (set by the officer)' : ''}. Click to change.` },
+            `${fmtDay(d)} ${({ yes: '✓', no: '✗', none: '–' })[st]}`);
+          b.onclick = async () => {
+            b.disabled = true;
+            const key = availKey(c.key, d), to = NEXT[st];
+            const days = { ...(rec.days || {}) }, edited = { ...(rec.edited || {}), [key]: true };
+            if (to === 'none') delete days[key]; else days[key] = to;
+            const next = { ...rec, days, edited, updatedAt: new Date().toISOString() };
+            try { await store.saveAvailability(next); rec = next; draw(); }
+            catch (e) { console.error(e); toast(e.message || String(e), 'err'); b.disabled = false; }
+          };
+          return b;
+        })));
+    };
+    draw();
+    return line;
+  }
+
+  // Membership status: approve or turn down someone who has just registered; otherwise active or inactive.
+  const statusBox = h('span', { class: 'status-box' });
+  const saveStatus = async (patch, msg) => {
+    Object.assign(u, patch);
+    if (u.active && !u.memberSince) { u.memberSince = today; sinceInput.value = today; }
+    await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
+    if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error(e));
+    drawStatus();
+    toast(msg, 'ok');
+  };
+  function drawStatus() {
+    const btn = (label, cls, fn) => { const b = h('button', { type: 'button', class: `btn small ${cls}` }, label); b.onclick = busy(b, fn); return b; };
+    const pending = !u.active && !u.deactivated;
+    setChildren(statusBox,
+      h('span', { class: 'chip ' + (u.active ? 'ok' : pending ? 'warn' : 'muted-chip') }, u.active ? 'Active' : pending ? 'Waiting for approval' : 'Inactive'), ' ',
+      pending
+        ? [btn('Approve', 'primary', () => saveStatus({ active: true, deactivated: false }, 'Approved')), ' ',
+           btn('Reject', 'danger', async () => {
+             if (!confirm(`Turn down ${u.name}? Their registration is removed.`)) return;
+             await store.deleteUmpire(u.email);
+             toast('Registration turned down', 'ok');
+             location.hash = '#/admin/members';
+           })]
+        : u.active
+          ? btn('Make inactive', '', () => saveStatus({ active: false, deactivated: true }, 'Now inactive'))
+          : btn('Make active', 'primary', () => saveStatus({ active: true, deactivated: false }, 'Now active')));
+  }
+  drawStatus();
 
   const apptRow = a => h('li', { class: 'row-between' },
     h('span', {}, h('strong', {}, fmtDay(a.d.date)), ' ', h('span', { class: 'chip' }, compLabel(compKeyOf(a.g))), ' ',
@@ -109,7 +172,6 @@ export async function viewMember(ctx, pid) {
     h('div', { class: 'row-between' },
       h('h1', {}, u.name || `${n.firstName} ${n.lastName}`),
       h('a', { class: 'btn', href: '#/admin/members' }, '← Members')),
-    !u.active && h('p', { class: 'notice warn' }, 'Not active: waiting for approval in Members.'),
 
     h('div', { class: 'stats' },
       stat(String(gamesUmpired), gamesUmpired === 1 ? 'game umpired here' : 'games umpired here'),
@@ -121,22 +183,17 @@ export async function viewMember(ctx, pid) {
       row('First name', n.firstName), row('Last name', n.lastName), row('Email', u.email), row('Mobile', u.phone),
       row('Date of birth', fmtLong(u.dob)), row('Address', u.address), row('Accreditation no.', u.accreditation),
       row('Membership type', u.membership ? `${u.membership}${fee ? ` · ${money(fee)}` : ''}` : ''),
-      row('Status', u.active ? 'Active' : 'Waiting for approval'),
+      h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Status'), statusBox),
       h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Member since'),
         h('span', {}, sinceInput, !u.memberSince && since ? h('span', { class: 'muted small' }, ` first game here ${fmtLong(since)}`) : null)),
       h('p', { class: 'muted small' }, 'Details are edited in ', h('a', { href: '#/admin/members' }, 'Members'), '.')),
 
     h('section', { class: 'card' }, h('h2', {}, 'Availability'),
       !season ? h('p', { class: 'muted' }, 'No season set up yet.')
-        : !byComp.size && !picks.length ? h('p', { class: 'muted' }, 'Nothing given for the rest of this season yet.')
+        : !byComp.size && !picks.length ? h('p', { class: 'muted' }, 'No playing dates left this season.')
         : h('div', {},
-          ORDER.map(k => COMPS.find(c => c.key === k)).filter(c => c && byComp.has(c.key)).map(c => {
-            const l = byComp.get(c.key);
-            const yes = l.filter(x => x.v === 'yes').length, no = l.filter(x => x.v === 'no').length;
-            return h('div', { class: 'avail-line' },
-              h('div', {}, h('strong', {}, c.label), h('span', { class: 'muted' }, ` · ${yes} available · ${no} not available`)),
-              h('div', { class: 'date-chips' }, l.map(x => h('span', { class: 'chip ' + (x.v === 'yes' ? 'ok' : 'no') }, `${fmtDay(x.date)} ${x.v === 'yes' ? '✓' : '✗'}`))));
-          }),
+          h('p', { class: 'muted small' }, 'Click a date to change it: Available → Not available → no answer. Changes you make are marked as set by the officer.'),
+          ORDER.map(k => COMPS.find(c => c.key === k)).filter(c => c && byComp.has(c.key)).map(c => availLine(c)),
           picks.length > 0 && h('div', { class: 'avail-line' },
             h('div', {}, h('strong', {}, (store.org.playerUmpire && store.org.playerUmpire.title) || 'Player umpire'), h('span', { class: 'muted' }, ` · ${picks.length} game${picks.length === 1 ? '' : 's'} chosen`)),
             h('ul', { class: 'plain muted small' }, picks.map(p => h('li', {}, `${p.dates.map(fmtDay).join(' & ')} · ${gradeShort(p.grade)} · ${p.label}`)))))),

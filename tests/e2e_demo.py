@@ -442,8 +442,32 @@ with sync_playwright() as p:
     check(any("7/14 NOV" in r.upper() and "Senior" in r and "8/8 slots filled" in r and "Published" in r for r in rows), "Senior 7/14 Nov: 8/8 slots filled, Published")
     page.screenshot(path="/tmp/past.png")
     page.locator(".past-row", has_text="Senior").click()
+    page.wait_for_selector("a.tab:has-text('Report')")
+    page.click("a.tab:has-text('Report')")
     page.wait_for_selector(".report-table")
     check(page.locator(".report-table tbody tr").count() == 4 and any(n in page.locator(".report-table").inner_text().upper() for n in ["SERRAO", "EVERTON", "BAKON", "CHELLAPA", "DRYBURGH", "JAYASHRI", "HENRY", "KRISH"]), "opening it shows the final allocation report with the umpires' names")
+    # Finished more than 4 days ago: a record only, no Assign board.
+    page.goto(BASE + "#/admin")
+    page.wait_for_selector(".tile-round")
+    check("Can change until" in rows[0] and any("Senior" in r and "Can change until" in r for r in rows) and any("Junior" in r and "Can change until" not in r for r in rows[1:]),
+          "rounds finished in the last 4 days can still be changed (marked on the list); older ones cannot")
+    page.click(".past-rounds summary")
+    page.locator(".past-row", has_text="Junior").first.click()
+    page.wait_for_selector("table.board")
+    check(page.locator("a.tab:has-text('Assign')").count() == 1, "and open on the Assign board")
+    old = page.evaluate("""() => { const k = 'pdca-umpires-demo-v2'; const db = JSON.parse(localStorage.getItem(k));
+        const r = Object.values(db.orgs.pdca.rounds).filter(r => r.comp === 'junior' && r.end < new Date().toISOString().slice(0, 10)).sort((a, b) => b.end.localeCompare(a.end))[0];
+        const d = new Date(); d.setDate(d.getDate() - 5); r.end = d.toISOString().slice(0, 10); r.dates = [r.end];
+        localStorage.setItem(k, JSON.stringify(db)); return r.id; }""")
+    page.goto(BASE + "#/admin")
+    page.wait_for_selector(".tile-round")
+    page.click(".past-rounds summary")
+    jr = page.locator(".past-row", has_text="Junior").first
+    check("Can change until" not in jr.inner_text() and "/report" in (jr.get_attribute("href") or ""), "finished more than 4 days ago: no longer marked as changeable, opens the report")
+    page.goto(BASE + f"#/admin/round/{old}")
+    page.wait_for_selector(".report-table")
+    check("/report" in page.url and page.locator("a.tab:has-text('Assign')").count() == 0 and "can no longer be changed" in page.inner_text("main"),
+          "going to its board lands on the report: no Assign tab, and it says why")
     page.goto(BASE + "#/admin")
     page.wait_for_selector(".tile-round")
 
@@ -1320,6 +1344,37 @@ with sync_playwright() as p:
     check("Nepean Cricket Association" in other and "Past" in other and "Hills District Cricket Association" in other and "Active" in other
           and "appointment" not in other.lower().replace("availability and appointments elsewhere are not shared", ""),
           "other associations: membership only, active and past")
+    # Change their availability by clicking a date, as on the Availability sheet.
+    btn = page.locator(".member-profile .date-btn").first
+    d0 = btn.get_attribute("data-date")
+    before = btn.inner_text()
+    btn.click()
+    page.wait_for_timeout(300)
+    after = page.locator(f".member-profile .date-btn[data-date='{d0}']").first.inner_text()
+    av2 = page.evaluate("() => Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.availability).find(a => a.email === 'umpire2@demo.test')")
+    check(before != after and any(k.endswith(d0) for k in (av2.get("edited") or {})), f"clicking a date changes their availability and marks it as the officer's ({before} -> {after})")
+    # Active / inactive
+    page.click(".status-box button:has-text('Make inactive')")
+    page.wait_for_selector(".status-box .chip:has-text('Inactive')")
+    check(page.locator(".status-box button:has-text('Make active')").count() == 1, "an active member can be made inactive, and back")
+    page.click(".status-box button:has-text('Make active')")
+    page.wait_for_selector(".status-box .chip:has-text('Active')")
+    # Someone who has just registered: approve or reject
+    page.evaluate("""() => { const k = 'pdca-umpires-demo-v2'; const db = JSON.parse(localStorage.getItem(k)); const o = db.orgs.pdca;
+        o.umpires['newbie@demo.test'] = { pid: 'pnew1', email: 'newbie@demo.test', name: 'N Newbie', firstName: 'N', lastName: 'Newbie', active: false };
+        o.umpires['nope@demo.test'] = { pid: 'pnew2', email: 'nope@demo.test', name: 'X Nope', firstName: 'X', lastName: 'Nope', active: false };
+        localStorage.setItem(k, JSON.stringify(db)); }""")
+    page.goto(BASE + "#/admin/member/pnew1")
+    page.wait_for_selector(".status-box .chip:has-text('Waiting for approval')")
+    page.click(".status-box button:has-text('Approve')")
+    page.wait_for_selector(".status-box .chip:has-text('Active')")
+    check(page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['newbie@demo.test'].active") is True, "a new registration can be approved from the profile")
+    page.goto(BASE + "#/admin/member/pnew2")
+    page.wait_for_selector(".status-box button:has-text('Reject')")
+    page.click(".status-box button:has-text('Reject')")                     # the page's dialogs are accepted by the test
+    page.wait_for_selector("table.members")
+    check(page.locator("td:has-text('nope@demo.test')").count() == 0, "or rejected, which removes the registration")
+
     page.goto(BASE + "#/admin/availability")
     page.wait_for_selector("a.member-link")
     page.locator("a.member-link").first.click()
