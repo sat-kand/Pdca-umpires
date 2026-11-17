@@ -468,6 +468,12 @@ with sync_playwright() as p:
     page.wait_for_selector(".report-table")
     check("/report" in page.url and page.locator("a.tab:has-text('Assign')").count() == 0 and "can no longer be changed" in page.inner_text("main"),
           "going to its board lands on the report: no Assign tab, and it says why")
+    check(page.locator("a.tab:has-text('Availability')").count() == 0 and page.locator("button:has-text('Copy umpire emails')").count() == 0
+          and page.locator("button:has-text('Open email draft')").count() == 0 and page.locator("button:has-text('Download PDF')").count() == 1,
+          "a finished round shows only its report and Download PDF: no Availability, no emails")
+    page.goto(BASE + f"#/admin/round/{old}/availability")
+    page.wait_for_selector(".report-table")
+    check("/report" in page.url, "and its Availability page goes to the report too")
     page.goto(BASE + "#/admin")
     page.wait_for_selector(".tile-round")
 

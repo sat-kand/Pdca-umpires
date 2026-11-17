@@ -27,7 +27,8 @@ const SLOT_CHOICES = [[1, '1 umpire'], [2, '2 umpires']];
 const roundHeading = r => `${r.comp ? compLabel(r.comp) + ' · ' : ''}${r.title}`;
 
 function tabs(rid, active, locked = false) {
-  const t = [...(locked ? [] : [['', 'Assign']]), ['/availability', 'Availability'], ['/report', 'Report & email']];
+  // A finished, locked round is a record: just its report.
+  const t = locked ? [['/report', 'Report']] : [['', 'Assign'], ['/availability', 'Availability'], ['/report', 'Report & email']];
   return h('nav', { class: 'tabs noprint' }, t.map(([p, label]) =>
     h('a', { class: 'tab' + (active === p ? ' active' : ''), href: `#/admin/round/${rid}${p}` }, label)),
   h('a', { class: 'tab right', href: '#/admin' }, '← Back to Allocate'));
@@ -447,6 +448,7 @@ export async function viewAvailabilityOverview(ctx, rid) {
   const { store } = ctx;
   const round = await store.getRound(rid);
   if (!round) return h('p', { class: 'notice warn' }, 'Round not found.');
+  if (isLocked(round)) { location.replace(`#/admin/round/${rid}/report`); return h('div'); }
   const [umpires, availList, allGames] = await Promise.all([store.listUmpires(), store.listAvailability((round.season && round.season.id) || 'manual'), store.listGames(rid)]);
   const games = allGames.filter(isPicked);
   const by = Object.fromEntries(availList.map(a => [a.email, a]));
@@ -702,9 +704,9 @@ export async function viewReport(ctx, rid) {
     isLocked(round) && h('p', { class: 'notice' }, `This round finished on ${fmtDay(round.end || round.start)}, so it can no longer be changed (allocations stay open for ${EDIT_DAYS_AFTER} days after the last game).`),
     h('div', { class: 'card noprint' },
       st.filled < st.needed && h('p', { class: 'notice warn' }, `${st.needed - st.filled} slot(s) are still unallocated and show as "—" on the report.`),
-      !round.published && h('p', { class: 'notice' }, 'This round is not published yet, so umpires cannot see it in the app. Publish it from the Assign tab.'),
-      h('p', {}, save, ' ', copyEmails, ' ', draft),
-      h('p', { class: 'muted' }, 'Download the PDF, then attach it to the email draft.')),
+      !round.published && !isLocked(round) && h('p', { class: 'notice' }, 'This round is not published yet, so umpires cannot see it in the app. Publish it from the Assign tab.'),
+      isLocked(round) ? h('p', {}, save) : [h('p', {}, save, ' ', copyEmails, ' ', draft),
+        h('p', { class: 'muted' }, 'Download the PDF, then attach it to the email draft.')]),
     h('div', { class: 'report' }, sections.map(s => h('section', { class: 'report-section' },
       h('h2', {}, `${s.label} – ${fmtRange(s.dates)}`),
       h('table', { class: 'report-table' },

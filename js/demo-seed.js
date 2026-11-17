@@ -137,18 +137,22 @@ export async function seedDemo(store, { live = true, fetchFn } = {}) {
   const P1 = addDays(N1, -14), P2 = addDays(N1, -7);
   const ump = [];
   for (let i = 1; i <= 8; i++) { const u = await store.getUmpire(`umpire${i}@demo.test`); ump.push({ p: u.pid, n: u.name }); }
+  // Grade names come from this season's real fixtures, so the made-up results use the association's
+  // own grades (the made-up fallback names are only used when Play Cricket could not be reached).
+  const realGrades = key => grades(key).length ? grades(key) : null;
+  const gr = (key, i, fallback) => { const l = realGrades(key); return l ? l[i % l.length] : fallback; };
   const past = [
     { key: 'senior', published: true, games: [
-      fx('p1', 'Senior A Grade', 'GLCC Senior Maroon', 'Kings Langley', 'McCredie Park', [P1, P2], 'Round 1'),
-      fx('p2', 'Senior A Grade', 'Wenty Leagues Black', 'Baulkham Hills', 'Monty Bennett', [P1, P2], 'Round 1'),
-      fx('p3', 'Senior A Reserve', 'Parramatta CCC', 'KSS Team 1 Senior', 'Arthur Philip Reserve', [P1, P2], 'Round 1'),
-      fx('p4', 'Senior B01', 'Wenty Leagues', 'Vone Sports Club', 'Darling Street', [P1, P2], 'Round 1')] },
+      fx('p1', gr('senior', 0, 'Senior A Grade'), 'GLCC Senior Maroon', 'Kings Langley', 'McCredie Park', [P1, P2], 'Round 1'),
+      fx('p2', gr('senior', 0, 'Senior A Grade'), 'Wenty Leagues Black', 'Baulkham Hills', 'Monty Bennett', [P1, P2], 'Round 1'),
+      fx('p3', gr('senior', 1, 'Senior A Reserve'), 'Parramatta CCC', 'KSS Team 1 Senior', 'Arthur Philip Reserve', [P1, P2], 'Round 1'),
+      fx('p4', gr('senior', 2, 'Senior B01'), 'Wenty Leagues', 'Vone Sports Club', 'Darling Street', [P1, P2], 'Round 1')] },
     { key: 'junior', published: true, games: [
-      fx('p5', 'U14 Blue', 'Winston Hills', 'Baulkham Hills', 'Bella Vista Oval', [P1], 'Round 1', 'One Day', JUN),
-      fx('p6', 'U12 Gold', 'Parramatta', 'GLCC', 'Darling Street', [P1], 'Round 1', 'One Day', JUN)] },
+      fx('p5', gr('junior', 0, 'U14 Blue'), 'Winston Hills', 'Baulkham Hills', 'Bella Vista Oval', [P1], 'Round 1', 'One Day', JUN),
+      fx('p6', gr('junior', 1, 'U12 Gold'), 'Parramatta', 'GLCC', 'Darling Street', [P1], 'Round 1', 'One Day', JUN)] },
     { key: 'junior', published: false, games: [
-      fx('p7', 'U14 Blue', 'Baulkham Hills', 'Kings Langley', 'Pearce Reserve', [P2], 'Round 2', 'One Day', JUN),
-      fx('p8', 'U12 Gold', 'GLCC', 'Wenty Leagues', 'Roberta Street Park', [P2], 'Round 2', 'One Day', JUN)] },
+      fx('p7', gr('junior', 0, 'U14 Blue'), 'Baulkham Hills', 'Kings Langley', 'Pearce Reserve', [P2], 'Round 2', 'One Day', JUN),
+      fx('p8', gr('junior', 1, 'U12 Gold'), 'GLCC', 'Wenty Leagues', 'Roberta Street Park', [P2], 'Round 2', 'One Day', JUN)] },
   ];
   let n = 0;
   for (const r of past) {
