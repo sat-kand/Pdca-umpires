@@ -134,11 +134,13 @@ service cloud.firestore {
           ));
 
         // Officers may turn down someone who has just registered.
-        allow delete: if isOrgAdmin(orgId) && orgOpen(orgId);
+        allow delete: if isOrgAdmin(orgId) && orgOpen(orgId) && resource.data.active == false && resource.data.get('deactivated', false) != true;
 
+        // Officers set only what the association decides: active, membership type, member since.
+        // A member's own details (name, date of birth, address, mobile, accreditation) are theirs alone.
         // Umpires may edit their own details but never `active`, `pid` or `email`.
         allow update: if signedIn() && orgOpen(orgId) && (
-          isOrgAdmin(orgId) || (
+          (isOrgAdmin(orgId) && onlyChanges(['active', 'deactivated', 'membership', 'memberSince', 'updatedAt'])) || (
             id == me()
             && request.resource.data.email == me()
             && onlyChanges(['name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'accreditation', 'updatedAt'])

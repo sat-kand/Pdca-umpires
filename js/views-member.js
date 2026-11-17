@@ -6,7 +6,7 @@
 
 import { h, toast, setChildren, busy, todayLocal } from './ui.js';
 import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey } from './logic.js';
-import { feeFor, money } from './views-org.js';
+import { feeFor, money, membershipTypes } from './views-org.js';
 
 // What other associations may see of this membership. Written whenever an officer saves or opens a member.
 export function membershipLink(org, u) {
@@ -129,6 +129,23 @@ export async function viewMember(ctx, pid) {
     return line;
   }
 
+  // Membership type, from the list set in Settings; the fee follows the type.
+  const types = membershipTypes(store.org);
+  const typeBox = h('span', { class: 'status-box' });
+  const drawType = () => {
+    const f = feeFor(store.org, u.membership);
+    const sel = h('select', { class: 'in-sm', 'aria-label': 'Membership type' }, h('option', { value: '' }, '\u2014'),
+      types.map(t => h('option', { value: t.name, selected: u.membership === t.name }, t.name)));
+    sel.onchange = busy(sel, async () => {
+      u.membership = sel.value;
+      await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
+      if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error(e));
+      drawType(); toast('Saved', 'ok');
+    });
+    setChildren(typeBox, types.length ? sel : h('a', { class: 'muted', href: '#/admin/settings' }, 'Set up types in Settings'), f ? h('span', { class: 'muted' }, money(f)) : null);
+  };
+  drawType();
+
   // Membership status: approve or turn down someone who has just registered; otherwise active or inactive.
   const statusBox = h('span', { class: 'status-box' });
   const saveStatus = async (patch, msg) => {
@@ -182,11 +199,11 @@ export async function viewMember(ctx, pid) {
     h('section', { class: 'card' }, h('h2', {}, 'Membership'),
       row('First name', n.firstName), row('Last name', n.lastName), row('Email', u.email), row('Mobile', u.phone),
       row('Date of birth', fmtLong(u.dob)), row('Address', u.address), row('Accreditation no.', u.accreditation),
-      row('Membership type', u.membership ? `${u.membership}${fee ? ` · ${money(fee)}` : ''}` : ''),
+      h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Membership type'), typeBox),
       h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Status'), statusBox),
       h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Member since'),
         h('span', {}, sinceInput, !u.memberSince && since ? h('span', { class: 'muted small' }, ` first game here ${fmtLong(since)}`) : null)),
-      h('p', { class: 'muted small' }, 'Details are edited in ', h('a', { href: '#/admin/members' }, 'Members'), '.')),
+      h('p', { class: 'muted small' }, 'Members keep their own details up to date. You set their status, membership type and member since.')),
 
     h('section', { class: 'card' }, h('h2', {}, 'Availability'),
       !season ? h('p', { class: 'muted' }, 'No season set up yet.')

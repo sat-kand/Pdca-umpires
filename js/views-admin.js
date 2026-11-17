@@ -725,20 +725,16 @@ export async function viewUmpires(ctx) {
 
   const draw = () => {
     members.sort((a, b) => Number(a.active) - Number(b.active) || compareMembers(a, b));
-    // Changing either name part also updates `name`, which is what the board and reports show.
-    // Editing a field saves quietly; only approving redraws, so a row never jumps while it is being edited.
+    // A member's own details (name, date of birth, address, mobile, accreditation) are theirs to keep up
+    // to date; the officer only sets what the association decides: active, membership type, member since.
     const save = (u, patch, redraw = false) => guard(async () => {
       Object.assign(u, patch);
       if (u.active && !u.memberSince) u.memberSince = todayLocal();     // approved (or added) today
-      const { firstName, lastName } = nameParts(u);
-      Object.assign(u, { firstName, lastName, name: fullName(firstName, lastName) || u.name });
       await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
       if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error('membership link', e));
       if (redraw) draw();
     })();
-    const field = (u, key, { type = 'text', cls = '', ph = '', value } = {}) =>
-      h('input', { type, class: cls, value: value !== undefined ? value : (u[key] || ''), placeholder: ph, 'aria-label': key,
-        onchange: e => save(u, { [key]: e.target.value.trim() }) });
+    const text = v => (v ? v : h('span', { class: 'muted' }, '\u2014'));
 
     const add = h('textarea', { rows: 5, placeholder: 'One member per line:\nFirst name, Last name, email, mobile, accreditation no. (both optional)\nJane, Smith, j.smith@example.com, 0400 000 000, L1-2284' });
     const addBtn = h('button', { class: 'btn primary', type: 'button' }, 'Add members');
@@ -782,17 +778,17 @@ export async function viewUmpires(ctx) {
         h('tbody', {}, members.map(u => { const n = nameParts(u); return h('tr', { class: u.active ? '' : u.deactivated ? 'inactive' : 'needs' },
           h('td', {}, h('input', { type: 'checkbox', checked: !!u.active, 'aria-label': 'Active', onchange: e => save(u, { active: e.target.checked, deactivated: !e.target.checked }, true) })),
           h('td', {}, profileLink(u)),
-          h('td', {}, field(u, 'firstName', { cls: 'in-sm', value: n.firstName })),
-          h('td', {}, field(u, 'lastName', { cls: 'in-sm', value: n.lastName })),
-          h('td', {}, field(u, 'dob', { type: 'date', cls: 'in-dob' })),
-          h('td', {}, field(u, 'address', { cls: 'in-addr', ph: 'Street, suburb' })),
+          h('td', {}, text(n.firstName)),
+          h('td', {}, text(n.lastName)),
+          h('td', {}, text(u.dob && new Date(`${u.dob}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }))),
+          h('td', {}, text(u.address)),
           h('td', { class: 'muted' }, u.email),
-          h('td', {}, field(u, 'phone', { cls: 'in-sm' })),
-          h('td', {}, field(u, 'accreditation', { cls: 'in-sm', ph: 'Umpire accreditation' })),
+          h('td', {}, text(u.phone)),
+          h('td', {}, text(u.accreditation)),
           h('td', {}, membershipCell(u))); })))),
       !members.length && h('p', { class: 'muted' }, 'No members yet. Add some below, or send them the link from Settings so they can sign in and fill in their own details.')),
       renewalText(store.org) && h('p', { class: 'muted' }, `Membership renews ${renewalText(store.org)}. Types and fees are set in Settings.`),
-      h('div', { class: 'card' }, h('h2', {}, 'Add members'), h('p', { class: 'muted' }, 'Paste your existing list (for example from the Google Form responses). Added members are active straight away and can sign in with that email address. They can fill in their own date of birth and address.'), add, addBtn));
+      h('div', { class: 'card' }, h('h2', {}, 'Add members'), h('p', { class: 'muted' }, 'Paste your existing list (for example from the Google Form responses). Added members are active straight away and can sign in with that email address. After that, members keep their own details (name, date of birth, address, mobile, accreditation) up to date themselves; you set Active, membership type and, on their profile, Member since.'), add, addBtn));
   };
   draw();
   return wrap;

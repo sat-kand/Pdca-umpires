@@ -126,6 +126,7 @@ The profile also lists the member's memberships with **other associations** — 
 
 - An association's rounds, fixtures, season calendar and published games can be read only by its officers and people with a member record there, not by anyone who happens to be signed in.
 - A pull-out ("I can't do this" / Not available after publishing) can only be recorded for yourself: both the email and the umpire id must match your own member record.
+- Officers can change only what the association decides about a member: Active, membership type and Member since (and the member's availability). A member's own details (name, date of birth, address, mobile, accreditation) are changed only by the member. Officers can delete a record only to turn down a registration that is still waiting for approval.
 - Alert emails can only be queued by an association's officers and members, and only to the address set in its Settings.
 
 After changing `firestore.rules`, publish it in the Firebase console (Firestore Database → Rules → Publish).
