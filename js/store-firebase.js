@@ -149,7 +149,7 @@ export async function createFirebaseStore(cfg) {
     saveMembershipLink: (email, info) => fs.setDoc(fs.doc(db, 'memberships', email, 'orgs', info.orgId), clean(info), { merge: true }),
     async listMemberships(email) {
       const me = (auth.currentUser && auth.currentUser.email || '').toLowerCase();
-      await fs.setDoc(fs.doc(db, 'memberships', email, 'viewers', me), { orgId: org.id, at: new Date().toISOString() });
+      if (email !== me) await fs.setDoc(fs.doc(db, 'memberships', email, 'viewers', me), { orgId: org.id, at: new Date().toISOString() });
       const snap = await fs.getDocs(fs.collection(db, 'memberships', email, 'orgs'));
       return snap.docs.map(d => d.data());
     },

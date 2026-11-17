@@ -116,6 +116,10 @@ python3 tests/e2e_demo.py  # browser test of the whole flow in demo mode (needs 
 
 ## Member profiles
 
+The **Members** list shows only name, status, member since and membership type, with buttons to draft an email (addresses in BCC) to all active or all inactive members. Personal details — email, mobile, date of birth, address, accreditation number and **accreditation provider** (filled in by the member) — are on each profile.
+
+Members open **their own profile** by tapping their name at the top: their details, membership, availability, appointments, pull-outs and other associations, read-only, with **Edit my details**.
+
 **Past allocations:** a finished round stays changeable on its Assign board for 4 days after its last game (for an umpire replaced on the morning, say), marked *Can change until …* in Past allocations. After that it is a record: Availability and Report only.
 
 Officers click any member's name (Members page, the season Availability sheet, or a round's Availability tab) to open their profile: membership details (type, fee, status, **Member since**, which is set when a member is added or approved and can be changed there), this season's availability (click a date to change it, as on the Availability sheet), status (approve or reject a new registration; make a member active or inactive), upcoming and past appointments in this association, games umpired here, pull-outs and fulfilment rate (the share of their published games they kept).

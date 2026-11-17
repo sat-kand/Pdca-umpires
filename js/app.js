@@ -50,7 +50,8 @@ const ctx = { get store() { return S.store; }, S, go, refreshUser: () => loadUse
 const ROUTES = [
   [/^\/$/, () => viewMy(ctx)],
   [/^\/my$/, () => viewMy(ctx)],
-  [/^\/profile$/, () => viewProfile(ctx)],
+  [/^\/profile$/, () => (S.umpire ? viewMember(ctx, S.umpire.pid, { self: true }) : viewProfile(ctx))],
+  [/^\/profile\/edit$/, () => viewProfile(ctx)],
   [/^\/admin$/, () => viewAdminHome(ctx), true],
   [/^\/admin\/availability$/, () => viewSeasonAvailability(ctx), true],
   [/^\/admin\/(?:members|umpires)$/, () => viewUmpires(ctx), true],   // the old /umpires link still works
@@ -80,7 +81,7 @@ function drawHeader() {
           h('div', { class: 'menu-items' }, link('#/admin/members', 'Members'), link('#/admin/settings', 'Settings'), link('#/associations', 'Your associations'))),
         link('#/my', 'My availability')),
       S.user && h('div', { class: 'who' },
-        h('a', { class: 'who-name', href: '#/profile', title: 'Edit my details' }, (S.umpire && S.umpire.name) || S.user.email),
+        h('a', { class: 'who-name', href: '#/profile', title: 'My profile' }, (S.umpire && S.umpire.name) || S.user.email),
         h('button', { class: 'btn small', type: 'button', onclick: async () => { await S.store.signOut(); location.hash = '#/'; } }, 'Sign out'))),
     S.org && S.org.plan === 'suspended' && h('div', { class: 'demo-banner' }, 'This association has been set to read-only, so changes cannot be saved.'));
 }

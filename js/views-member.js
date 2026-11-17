@@ -22,28 +22,32 @@ const fmtLong = d => (d ? new Date(`${d}T00:00:00`).toLocaleDateString('en-AU', 
 const ORDER = ['senior', 'junior', 't20'];
 const ymd = iso => (iso || '').slice(0, 10);
 
-export async function viewMember(ctx, pid) {
+// The same page serves a member looking at their own profile (`self`): read-only, only what was
+// published to them, with a link to edit their own details.
+export async function viewMember(ctx, pid, { self = false } = {}) {
   const { store } = ctx;
   const today = todayLocal();
-  const umpires = await store.listUmpires();
-  const u = umpires.find(x => x.pid === pid);
+  const u = self ? ctx.S.umpire : (await store.listUmpires()).find(x => x.pid === pid);
   if (!u) return h('p', { class: 'notice warn' }, 'Member not found. ', h('a', { href: '#/admin/members' }, 'Back to Members'));
 
   const season = await store.getSeason();
   const [avail, rounds, withdrawals] = await Promise.all([
     season ? store.getAvailability(season.id, u.email) : null,
     store.listRounds(),
-    store.listWithdrawals ? store.listWithdrawals() : [],
+    !self && store.listWithdrawals ? store.listWithdrawals() : [],
   ]);
 
   // ---- appointments in this association: every round, every game day they are in
   const appts = [];
+  const gameById = new Map();
   for (const r of rounds) {
+    if (self && !r.published) continue;                 // members only ever see published rounds
     const games = await store.listGames(r.id);
+    for (const g of games) gameById.set(g.id, g);
     for (const g of games) {
       if (g.removed) continue;
       for (const d of g.days) {
-        const onBoard = allocFor(g, d.date).find(a => a && a.p === u.pid);
+        const onBoard = !self && allocFor(g, d.date).find(a => a && a.p === u.pid);
         const given = r.published && publishedAllocFor(r, g, d.date).find(a => a && a.p === u.pid);
         if (!onBoard && !given) continue;
         appts.push({ r, g, d, published: !!given, pu: !!((given || onBoard) || {}).pu });
@@ -57,7 +61,11 @@ export async function viewMember(ctx, pid) {
 
   // ---- pull-outs and how reliably they keep published games
   const mine = withdrawals.filter(w => w.pid === u.pid || w.email === u.email);
-  const pulls = mine.flatMap(w => (w.games || []).map(ref => ({ ...ref, at: w.createdAt, restored: !!ref.restored })))
+  const label = g => (g ? `${gradeShort(g.grade)}: ${g.home.name} v ${g.away.name}` : '');
+  const pulls = (self
+    // A member sees the games they said they couldn't do, from their own record.
+    ? ((avail && avail.declined) || []).map(x => ({ gameId: x.gameId, date: x.date, at: x.at, label: label(gameById.get(x.gameId)) }))
+    : mine.flatMap(w => (w.games || []).map(ref => ({ ...ref, at: w.createdAt, restored: !!ref.restored }))))
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   const dropped = pulls.filter(p => !p.restored).length;
   const kept = appts.filter(a => a.published).length;
@@ -67,7 +75,7 @@ export async function viewMember(ctx, pid) {
   const since = u.memberSince || (past[0] && past[0].d.date) || '';
   let others = [];
   try {
-    if (store.saveMembershipLink) await store.saveMembershipLink(u.email, membershipLink(store.org, u));
+    if (!self && store.saveMembershipLink) await store.saveMembershipLink(u.email, membershipLink(store.org, u));
     others = store.listMemberships ? (await store.listMemberships(u.email)).filter(m => m.orgId !== store.org.id) : [];
   } catch (e) { console.error('memberships', e); }
 
@@ -113,6 +121,7 @@ export async function viewMember(ctx, pid) {
           const b = h('button', { type: 'button', class: 'chip date-btn ' + ({ yes: 'ok', no: 'no', none: 'muted-chip' })[st], 'data-date': d,
             title: `${fmtDay(d)}: ${LABEL[st]}${(rec.edited || {})[availKey(c.key, d)] ? ' (set by the officer)' : ''}. Click to change.` },
             `${fmtDay(d)} ${({ yes: '✓', no: '✗', none: '–' })[st]}`);
+          if (self) { b.disabled = true; b.classList.add('readonly'); return b; }     // shown, changed on My availability
           b.onclick = async () => {
             b.disabled = true;
             const key = availKey(c.key, d), to = NEXT[st];
@@ -181,14 +190,15 @@ export async function viewMember(ctx, pid) {
       a.g.days.length > 1 ? h('span', { class: 'muted' }, ` · Day ${a.d.day}`) : null),
     h('span', {}, a.pu && h('span', { class: 'chip pu' }, 'Player umpire'), ' ',
       a.d.date >= today && !a.published && h('span', { class: 'chip muted-chip' }, 'Not published yet'),
-      h('a', { class: 'muted small', href: `#/admin/round/${a.r.id}` }, ' Open')));
+      !self && h('a', { class: 'muted small', href: `#/admin/round/${a.r.id}` }, ' Open')));
 
   const stat = (big, label) => h('div', { class: 'stat' }, h('strong', {}, big), h('span', { class: 'muted' }, label));
 
   return h('div', { class: 'member-profile' },
     h('div', { class: 'row-between' },
       h('h1', {}, u.name || `${n.firstName} ${n.lastName}`),
-      h('a', { class: 'btn', href: '#/admin/members' }, '← Members')),
+      self ? h('span', { class: 'row-gap' }, h('a', { class: 'btn primary', href: '#/profile/edit' }, 'Edit my details'), ' ', h('a', { class: 'btn', href: '#/' }, '← My availability'))
+        : h('a', { class: 'btn', href: '#/admin/members' }, '← Members')),
 
     h('div', { class: 'stats' },
       stat(String(gamesUmpired), gamesUmpired === 1 ? 'game umpired here' : 'games umpired here'),
@@ -198,18 +208,25 @@ export async function viewMember(ctx, pid) {
 
     h('section', { class: 'card' }, h('h2', {}, 'Membership'),
       row('First name', n.firstName), row('Last name', n.lastName), row('Email', u.email), row('Mobile', u.phone),
-      row('Date of birth', fmtLong(u.dob)), row('Address', u.address), row('Accreditation no.', u.accreditation),
-      h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Membership type'), typeBox),
-      h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Status'), statusBox),
-      h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Member since'),
-        h('span', {}, sinceInput, !u.memberSince && since ? h('span', { class: 'muted small' }, ` first game here ${fmtLong(since)}`) : null)),
-      h('p', { class: 'muted small' }, 'Members keep their own details up to date. You set their status, membership type and member since.')),
+      row('Date of birth', fmtLong(u.dob)), row('Address', u.address),
+      row('Accreditation no.', u.accreditation), row('Accreditation provider', u.accreditationProvider),
+      self
+        ? [row('Membership type', u.membership ? `${u.membership}${feeFor(store.org, u.membership) ? ` · ${money(feeFor(store.org, u.membership))}` : ''}` : ''),
+           h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Status'), h('span', {}, h('span', { class: 'chip ' + (u.active ? 'ok' : u.deactivated ? 'muted-chip' : 'warn') }, u.active ? 'Active' : u.deactivated ? 'Inactive' : 'Waiting for approval'))),
+           row('Member since', fmtLong(u.memberSince)),
+           h('p', { class: 'muted small' }, 'Your appointments officer sets your status, membership type and member since. Your date of birth, address and mobile are only visible to them.')]
+        : [h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Membership type'), typeBox),
+           h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Status'), statusBox),
+           h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Member since'),
+             h('span', {}, sinceInput, !u.memberSince && since ? h('span', { class: 'muted small' }, ` first game here ${fmtLong(since)}`) : null)),
+           h('p', { class: 'muted small' }, 'Members keep their own details up to date. You set their status, membership type and member since.')]),
 
     h('section', { class: 'card' }, h('h2', {}, 'Availability'),
       !season ? h('p', { class: 'muted' }, 'No season set up yet.')
         : !byComp.size && !picks.length ? h('p', { class: 'muted' }, 'No playing dates left this season.')
         : h('div', {},
-          h('p', { class: 'muted small' }, 'Click a date to change it: Available → Not available → no answer. Changes you make are marked as set by the officer.'),
+          self ? h('p', { class: 'muted small' }, 'To change it, go to ', h('a', { href: '#/' }, 'My availability'), '.')
+            : h('p', { class: 'muted small' }, 'Click a date to change it: Available → Not available → no answer. Changes you make are marked as set by the officer.'),
           ORDER.map(k => COMPS.find(c => c.key === k)).filter(c => c && byComp.has(c.key)).map(c => availLine(c)),
           picks.length > 0 && h('div', { class: 'avail-line' },
             h('div', {}, h('strong', {}, (store.org.playerUmpire && store.org.playerUmpire.title) || 'Player umpire'), h('span', { class: 'muted' }, ` · ${picks.length} game${picks.length === 1 ? '' : 's'} chosen`)),
@@ -222,14 +239,14 @@ export async function viewMember(ctx, pid) {
       past.length ? h('ul', { class: 'plain appt-list' }, [...past].reverse().map(apptRow)) : h('p', { class: 'muted' }, 'None yet.')),
 
     h('section', { class: 'card' }, h('h2', {}, `Pull-outs (${pulls.length})`),
-      h('p', { class: 'muted small' }, 'Published games they later said they could not do. Fulfilment rate is the share of their published games they kept.'),
+      h('p', { class: 'muted small' }, self ? 'Published games you said you could not do. Fulfilment rate is the share of your published games you kept.' : 'Published games they later said they could not do. Fulfilment rate is the share of their published games they kept.'),
       pulls.length ? h('ul', { class: 'plain appt-list' }, pulls.map(p => h('li', { class: 'row-between' },
         h('span', {}, h('strong', {}, fmtDay(p.date)), ` ${p.label || ''}`),
         h('span', { class: 'muted small' }, p.restored ? 'Taken back' : p.at ? `Pulled out ${fmtLong(ymd(p.at))}` : 'Pulled out'))))
         : h('p', { class: 'muted' }, 'None.')),
 
     h('section', { class: 'card' }, h('h2', {}, 'Other associations'),
-      h('p', { class: 'muted small' }, 'Membership only. Their availability and appointments elsewhere are not shared.'),
+      h('p', { class: 'muted small' }, self ? 'Your memberships with other associations using Third Umpire. Only the membership is shared between them.' : 'Membership only. Their availability and appointments elsewhere are not shared.'),
       others.length ? h('ul', { class: 'plain appt-list' }, others.map(m => h('li', { class: 'row-between' },
         h('span', {}, h('strong', {}, m.orgName || m.orgId), m.membership ? h('span', { class: 'muted' }, ` · ${m.membership}`) : null,
           m.since ? h('span', { class: 'muted' }, ` · since ${fmtLong(m.since)}`) : null),

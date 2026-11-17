@@ -286,3 +286,6 @@ a.member-link:hover { text-decoration-color: currentColor; }
 .member-profile .date-btn:disabled { opacity: .6; cursor: progress; }
 .member-profile .status-box { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
 .board tr.inactive td { opacity: .6; }
+.member-profile .date-btn.readonly { cursor: default; opacity: 1; }
+.member-profile .date-btn.readonly:hover { border-color: transparent; }
+.member-mail { display: flex; flex-wrap: wrap; gap: .5rem; }

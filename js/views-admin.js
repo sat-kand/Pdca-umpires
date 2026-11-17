@@ -781,20 +781,33 @@ export async function viewUmpires(ctx) {
       return h('div', { class: 'member-type' }, sel, fee ? h('span', { class: 'muted fee' }, money(fee)) : null);
     };
     const pending = members.filter(u => !u.active && !u.deactivated);      // registered, not yet approved
-    const COLS = ['Active', 'Name', 'D.O.B', 'Address', 'Email', 'Mobile', 'Accreditation no.', 'Membership'];
+    // Personal details (date of birth, address, email, mobile, accreditation) stay on each profile.
+    const COLS = ['Active', 'Name', 'Status', 'Member since', 'Membership'];
+    const statusOf = u => (u.active ? ['Active', 'ok'] : u.deactivated ? ['Inactive', 'muted-chip'] : ['Waiting for approval', 'warn']);
+    const sinceText = u => (u.memberSince ? new Date(`${u.memberSince}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+    // An email draft to a group: their addresses in BCC, so no one sees anyone else's.
+    const emailBtn = (label, list) => h('button', { class: 'btn', type: 'button', disabled: !list.length, onclick: async () => {
+      const emails = list.map(u => u.email);
+      const subject = `${store.org.name || 'Umpires'}: `;
+      const url = `mailto:?bcc=${encodeURIComponent(emails.join(','))}&subject=${encodeURIComponent(subject)}`;
+      if (url.length > 1900) {
+        await copyText(emails.join(', '));
+        toast('Too many addresses for a draft, so they were copied. Paste them into BCC.');
+        location.href = `mailto:?subject=${encodeURIComponent(subject)}`;
+      } else location.href = url;
+    } }, `${label} (${list.length})`);
+    const activeList = members.filter(u => u.active), inactiveList = members.filter(u => !u.active && u.deactivated);
     setChildren(wrap,
       h('div', { class: 'row-between' }, h('h1', {}, 'Members'), h('a', { class: 'btn', href: '#/admin' }, '\u2190 Allocate')),
+      h('p', { class: 'member-mail' }, emailBtn('Email active members', activeList), ' ', emailBtn('Email inactive members', inactiveList)),
       pending.length > 0 && h('p', { class: 'notice warn' }, `${pending.length} member(s) are waiting for approval. Tick "Active" to approve them.`),
       h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'board members' },
         h('thead', {}, h('tr', {}, COLS.map(c => h('th', {}, c)))),
-        h('tbody', {}, members.map(u => { const n = nameParts(u); return h('tr', { class: u.active ? '' : u.deactivated ? 'inactive' : 'needs' },
+        h('tbody', {}, members.map(u => { const n = nameParts(u); return h('tr', { class: u.active ? '' : u.deactivated ? 'inactive' : 'needs', 'data-pid': u.pid },
           h('td', {}, h('input', { type: 'checkbox', checked: !!u.active, 'aria-label': 'Active', onchange: e => save(u, { active: e.target.checked, deactivated: !e.target.checked }, true) })),
           h('td', {}, profileLink(u)),
-          h('td', {}, text(u.dob && new Date(`${u.dob}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }))),
-          h('td', {}, text(u.address)),
-          h('td', { class: 'muted' }, u.email),
-          h('td', {}, text(u.phone)),
-          h('td', {}, text(u.accreditation)),
+          h('td', {}, h('span', { class: 'chip ' + statusOf(u)[1] }, statusOf(u)[0])),
+          h('td', {}, text(sinceText(u))),
           h('td', {}, membershipCell(u))); })))),
       !members.length && h('p', { class: 'muted' }, 'No members yet. Add some below, or send them the link from Settings so they can sign in and fill in their own details.')),
       renewalText(store.org) && h('p', { class: 'muted' }, `Membership renews ${renewalText(store.org)}. Types and fees are set in Settings.`),

@@ -109,6 +109,13 @@ def sign_in(page, email, open_form=True):
         unfold(page)
 
 
+def row_of(page, email):
+    """A Members row, found by the member's email (the table no longer shows emails)."""
+    pid = page.evaluate("""(e) => { const db = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2'));
+        for (const o of Object.values(db.orgs)) { const u = (o.umpires || {})[e]; if (u) return u.pid; } return null; }""", email)
+    return page.locator(f"tr[data-pid='{pid}']")
+
+
 def unfold(page):
     """An umpire who has submitted sees a summary; most checks need the form, so open it."""
     page.wait_for_timeout(300)
@@ -545,11 +552,13 @@ with sync_playwright() as p:
     page.click(".menu-items .nav-link:has-text('Members')")
     page.wait_for_selector("table.board")
     check(page.locator("h1").first.inner_text() == "Members", "the Umpires page is now called Members")
-    check(page.locator("table.members thead th").all_inner_texts() == ["ACTIVE", "NAME", "D.O.B", "ADDRESS", "EMAIL", "MOBILE", "ACCREDITATION NO.", "MEMBERSHIP"],
-          "members have a first and last name, date of birth, address, accreditation number and membership type")
-    u1 = page.locator("tr:has-text('umpire1@demo.test')")
-    check(u1.locator("input:not([type=checkbox])").count() == 0 and u1.locator("select").count() == 1 and "L1-2200" in u1.inner_text(),
-          "officers see members' own details but cannot edit them: only Active and membership type can be changed here")
+    check(page.locator("table.members thead th").all_inner_texts() == ["ACTIVE", "NAME", "STATUS", "MEMBER SINCE", "MEMBERSHIP"],
+          "the Members list shows name, status, member since and membership type")
+    u1 = row_of(page, "umpire1@demo.test")
+    check(u1.locator("input:not([type=checkbox])").count() == 0 and u1.locator("select").count() == 1 and "L1-2200" not in u1.inner_text() and "@" not in page.inner_text("table.members"),
+          "personal details (email, mobile, date of birth, address, accreditation) are not on the list, only on profiles")
+    check(page.locator("button:has-text('Email active members')").count() == 1 and page.locator("button:has-text('Email inactive members')").count() == 1,
+          "buttons to draft an email to active or inactive members")
     check(page.locator("text=1 member(s) are waiting for approval").count() == 1, "officer sees the pending member")
     row = page.locator("tr.needs")
     cells = row.locator("td").all_inner_texts()
@@ -559,9 +568,10 @@ with sync_playwright() as p:
     check(True, "approving moves the member to active")
     page.fill("textarea", "Pat, Example, pat@example.com, 0400 000 000, L3-7782\nbad line")
     page.click("button:has-text('Add members')")
-    page.wait_for_selector("td:has-text('pat@example.com')")
-    pat = page.locator("tr:has-text('pat@example.com') td").all_inner_texts()
-    check(pat[1] == "Pat Example" and pat[5] == "0400 000 000" and pat[6] == "L3-7782", "bulk add reads First name, Last name, email, mobile and accreditation number")
+    page.wait_for_selector("a.member-link:has-text('Pat Example')")
+    patu = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['pat@example.com']")
+    check(patu["firstName"] == "Pat" and patu["lastName"] == "Example" and patu["phone"] == "0400 000 000" and patu["accreditation"] == "L3-7782",
+          "bulk add reads First name, Last name, email, mobile and accreditation number")
     page.goto(BASE + "#/admin/members")
     page.wait_for_selector("table.members")
     check(page.locator("h1").first.inner_text() == "Members", "the old /admin/umpires link still opens it")
@@ -597,13 +607,13 @@ with sync_playwright() as p:
     page.click(".menu-items .nav-link:has-text('Members')")
     page.wait_for_selector("table.members")
     check("Membership renews 1 September each year" in page.inner_text("body"), "the Members page shows when membership falls due")
-    sel = page.locator("tr:has-text('umpire1@demo.test') select")
+    sel = row_of(page, "umpire1@demo.test").locator("select")
     check(sel.locator("option").all_inner_texts() == ["\u2014", "Ordinary member", "Junior member", "Life member"], "the dropdown offers the types set up in Settings")
     sel.select_option("Junior member")
     page.wait_for_timeout(300)
     reload(page)
     page.wait_for_selector("table.members")
-    row1 = page.locator("tr:has-text('umpire1@demo.test')")
+    row1 = row_of(page, "umpire1@demo.test")
     check(row1.locator("select").input_value() == "Junior member" and "$25" in row1.inner_text(), "the choice is saved and the type's fee is shown")
 
     print("Availability: import a season from a spreadsheet")
@@ -1299,7 +1309,7 @@ with sync_playwright() as p:
     page.click(".menu > summary")
     page.click(".menu-items .nav-link:has-text('Members')")
     page.wait_for_selector("textarea")
-    check(page.locator("td:has-text('@demo.test')").count() == 0, "its member list is empty: PDCA's members are not visible")
+    check(page.locator("table.members tbody tr").count() == 0, "its member list is empty: PDCA's members are not visible")
     page.click(".menu > summary")
     page.click(".menu-items .nav-link:has-text('Settings')")
     page.wait_for_selector(".officers")
@@ -1319,14 +1329,14 @@ with sync_playwright() as p:
     sign_in(page, "founder@demo.test")
     page.goto(BASE + "#/admin/members")
     page.wait_for_selector("tr.needs")
-    check(page.locator("tr.needs:has-text('hillsump@demo.test')").count() == 1 and page.locator("table.board tbody tr").count() == 1, "the Hills officer sees the new umpire waiting for approval")
+    check(page.locator("tr.needs:has-text('Hills Umpire')").count() == 1 and page.locator("table.board tbody tr").count() == 1, "the Hills officer sees the new umpire waiting for approval")
     sign_out(page)
     sign_in(page, "admin@demo.test")
     page.wait_for_selector(".tile-round")
     check(page.locator(".comp-tile").count() > 0 and page.locator("td:has-text('umpire1@demo.test')").count() == 0, "the PDCA officer lands back in PDCA, not the association last used on this computer")
     page.goto(BASE + "#/admin/members")
     page.wait_for_selector("table.board")
-    check(page.locator("td:has-text('hillsump@demo.test')").count() == 0 and page.locator("td:has-text('umpire1@demo.test')").count() == 1, "PDCA sees its own umpires and not the Hills umpire")
+    check(page.locator("a.member-link:has-text('Hills Umpire')").count() == 0 and row_of(page, "umpire1@demo.test").count() == 1, "PDCA sees its own umpires and not the Hills umpire")
     page.goto(BASE + "#/join/" + hills)
     page.wait_for_selector("form input")
     check(page.locator(".nav").count() == 0, "a PDCA officer who opens the Hills link is just a new umpire there, with no officer pages")
@@ -1338,10 +1348,37 @@ with sync_playwright() as p:
     page.click(".menu > summary")
     page.click(".menu-items .nav-link:has-text('Members')")
     page.wait_for_selector("table.members")
-    check(page.locator("td:has-text('umpire1@demo.test')").count() == 1, "switching back works")
+    check(row_of(page, "umpire1@demo.test").count() == 1, "switching back works")
+
+    print("Umpire: their own profile")
+    sign_out(page)
+    sign_in(page, "umpire2@demo.test", open_form=False)
+    page.click(".who-name")
+    page.wait_for_selector(".member-profile")
+    me = page.inner_text(".member-profile")
+    check("D Everton" in page.inner_text(".member-profile h1") and "Member since" in me and "Accreditation provider" in me and "Other associations" in me
+          and page.locator(".member-profile .status-box button, .member-profile select").count() == 0,
+          "clicking their name opens their own profile: details, membership and other associations, read-only")
+    check(page.locator(".member-profile .date-btn:not([disabled])").count() == 0 and page.locator(".member-profile a[href='#/']").count() >= 1,
+          "their availability is shown, changed from My availability")
+    page.click("a:has-text('Edit my details')")
+    page.wait_for_selector("form input")
+    page.locator("label:has-text('Accreditation provider') input").fill("Cricket NSW")
+    page.click("form button:has-text('Save')")
+    page.wait_for_selector(".member-profile")
+    check("Cricket NSW" in page.inner_text(".member-profile"), "they fill in their accreditation provider themselves; it shows on their profile")
+    sign_out(page)
+    sign_in(page, "admin@demo.test")
+    page.goto(BASE + "#/admin/members")
+    page.wait_for_selector("table.members")
+    row_of(page, "umpire2@demo.test").locator("a.member-link").click()
+    page.wait_for_selector(".member-profile")
+    check("Cricket NSW" in page.inner_text(".member-profile"), "and the officer sees it on the member's profile")
 
     print("Member profile")
-    page.locator("tr:has-text('umpire2@demo.test') a.member-link").click()
+    page.goto(BASE + "#/admin/members")
+    page.wait_for_selector("table.members")
+    row_of(page, "umpire2@demo.test").locator("a.member-link").click()
     page.wait_for_selector(".member-profile")
     prof = page.inner_text(".member-profile")
     check("D Everton" in page.inner_text(".member-profile h1") and "umpire2@demo.test" in prof and "Member since" in prof,
@@ -1389,7 +1426,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".status-box button:has-text('Reject')")
     page.click(".status-box button:has-text('Reject')")                     # the page's dialogs are accepted by the test
     page.wait_for_selector("table.members")
-    check(page.locator("td:has-text('nope@demo.test')").count() == 0, "or rejected, which removes the registration")
+    check(page.locator("a.member-link:has-text('X Nope')").count() == 0, "or rejected, which removes the registration")
 
     page.goto(BASE + "#/admin/availability")
     page.wait_for_selector("a.member-link")

@@ -130,7 +130,7 @@ service cloud.firestore {
             id == me()
             && request.resource.data.email == me()
             && request.resource.data.active == false
-            && request.resource.data.keys().hasOnly(['pid', 'email', 'name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'accreditation', 'active', 'updatedAt'])
+            && request.resource.data.keys().hasOnly(['pid', 'email', 'name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider', 'active', 'updatedAt'])
           ));
 
         // Officers may turn down someone who has just registered.
@@ -143,7 +143,7 @@ service cloud.firestore {
           (isOrgAdmin(orgId) && onlyChanges(['active', 'deactivated', 'membership', 'memberSince', 'updatedAt'])) || (
             id == me()
             && request.resource.data.email == me()
-            && onlyChanges(['name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'accreditation', 'updatedAt'])
+            && onlyChanges(['name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider', 'updatedAt'])
           ));
       }
 
