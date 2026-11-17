@@ -1,3 +1,4 @@
+import { viewMember } from './views-member.js';
 import { CONFIG, DEMO_ORG } from './config.js';
 import { h, setChildren, spinner, toast } from './ui.js';
 import { createDemoStore } from './store-demo.js';
@@ -54,6 +55,7 @@ const ROUTES = [
   [/^\/admin\/availability$/, () => viewSeasonAvailability(ctx), true],
   [/^\/admin\/(?:members|umpires)$/, () => viewUmpires(ctx), true],   // the old /umpires link still works
   [/^\/admin\/settings$/, () => viewOrgSettings(ctx), true],
+  [/^\/admin\/member\/([^/]+)$/, pid => viewMember(ctx, pid), true],
   [/^\/admin\/round\/([^/]+)$/, rid => viewBoard(ctx, rid), true],
   [/^\/admin\/round\/([^/]+)\/availability$/, rid => viewAvailabilityOverview(ctx, rid), true],
   [/^\/admin\/round\/([^/]+)\/report$/, rid => viewReport(ctx, rid), true],

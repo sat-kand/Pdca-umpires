@@ -497,7 +497,7 @@ with sync_playwright() as p:
     page.click(".menu-items .nav-link:has-text('Members')")
     page.wait_for_selector("table.board")
     check(page.locator("h1").first.inner_text() == "Members", "the Umpires page is now called Members")
-    check(page.locator("table.members thead th").all_inner_texts() == ["ACTIVE", "FIRST NAME", "LAST NAME", "D.O.B", "ADDRESS", "EMAIL", "MOBILE", "ACCREDITATION NO.", "MEMBERSHIP"],
+    check(page.locator("table.members thead th").all_inner_texts() == ["ACTIVE", "PROFILE", "FIRST NAME", "LAST NAME", "D.O.B", "ADDRESS", "EMAIL", "MOBILE", "ACCREDITATION NO.", "MEMBERSHIP"],
           "members have a first and last name, date of birth, address, accreditation number and membership type")
     acc = page.locator("tr:has-text('umpire1@demo.test') input").nth(6)
     acc.fill("L2-9001"); acc.blur(); page.wait_for_timeout(250)
@@ -933,7 +933,7 @@ with sync_playwright() as p:
           "putting them back brings the Player umpire tag back")
     page.click("a.tab:has-text('Availability')")
     page.wait_for_selector("table.board")
-    bc = page.locator("tr:has(td:text-is('B Chellapa'))")
+    bc = page.locator("tr:has(td:has-text('B Chellapa'))")
     page.wait_for_selector("td.av.pu")
     check(bc.locator("td.av.pu .chip.pu").count() >= 1 and "player umpire" in page.inner_text(".summary"),
           "the round's Availability tab shows their choice, tagged Player umpire")
@@ -967,7 +967,7 @@ with sync_playwright() as p:
     check(page.locator(".chip.pu").count() == 0, "and their name comes off the board")
     page.click("a.tab:has-text('Availability')")
     page.wait_for_selector("table.board")
-    check(page.locator("tr:has(td:text-is('B Chellapa')) td.av.pu").count() == 0, "the Availability tab no longer shows them as a player umpire")
+    check(page.locator("tr:has(td:has-text('B Chellapa')) td.av.pu").count() == 0, "the Availability tab no longer shows them as a player umpire")
     gave_round = page.evaluate("() => { const g = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.games; return location.hash.split(/[/?]/).find(x => x in g); }")
     # They choose a different game instead: it goes on the board (umpires see it once published).
     sign_out(page)
@@ -1304,6 +1304,27 @@ with sync_playwright() as p:
     page.click(".menu-items .nav-link:has-text('Members')")
     page.wait_for_selector("table.members")
     check(page.locator("td:has-text('umpire1@demo.test')").count() == 1, "switching back works")
+
+    print("Member profile")
+    page.locator("tr:has-text('umpire2@demo.test') a.member-link").click()
+    page.wait_for_selector(".member-profile")
+    prof = page.inner_text(".member-profile")
+    check("D Everton" in page.inner_text(".member-profile h1") and "umpire2@demo.test" in prof and "Member since" in prof,
+          "clicking a name in Members opens their profile with their membership details")
+    stats = page.locator(".member-profile .stat").all_inner_texts()
+    check(any("games umpired here" in t or "game umpired here" in t for t in stats) and any("fulfilment rate" in t for t in stats) and any("pull-out" in t for t in stats),
+          f"it shows games umpired, pull-outs and fulfilment rate here ({' | '.join(t.replace(chr(10), ' ') for t in stats)})")
+    check(page.locator(".member-profile h2:has-text('Upcoming appointments')").count() == 1 and page.locator(".member-profile h2:has-text('Past appointments')").count() == 1
+          and page.locator(".member-profile h2:has-text('Availability')").count() == 1, "and their availability, upcoming and past appointments here")
+    other = page.locator(".member-profile section:has(h2:has-text('Other associations'))").inner_text()
+    check("Nepean Cricket Association" in other and "Past" in other and "Hills District Cricket Association" in other and "Active" in other
+          and "appointment" not in other.lower().replace("availability and appointments elsewhere are not shared", ""),
+          "other associations: membership only, active and past")
+    page.goto(BASE + "#/admin/availability")
+    page.wait_for_selector("a.member-link")
+    page.locator("a.member-link").first.click()
+    page.wait_for_selector(".member-profile")
+    check(page.locator(".member-profile h1").count() == 1, "names in the Availability sheet open the profile too")
 
     browser.close()
 

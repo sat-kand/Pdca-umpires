@@ -87,6 +87,20 @@ export function createDemoStore() {
 
     // A plain list of each round's games, which every member can read (the games themselves carry allocations).
     async saveFixtureList(rid, list) { (o().fixtures ||= {})[rid] = clone(list); save(); },
+    // Memberships across associations: worked out from every association in this browser, plus
+    // made-up ones the sample data adds for associations that are not here.
+    async saveMembershipLink() {},
+    async listMemberships(email) {
+      fresh();
+      const out = [];
+      for (const [id, x] of Object.entries(db.orgs)) {
+        const u = x.umpires && x.umpires[email];
+        if (u) out.push({ orgId: id, orgName: x.org.name || id, membership: u.membership || '', active: !!u.active, since: u.memberSince || '' });
+      }
+      return [...out, ...clone((db.otherMemberships || {})[email] || [])];
+    },
+    async seedOtherMemberships(map) { fresh(); db.otherMemberships = clone(map); save(); },
+
     async listFixtureLists() { return Object.values(clone(o().fixtures || {})); },
 
     async getSettings() { return clone(o().settings); },

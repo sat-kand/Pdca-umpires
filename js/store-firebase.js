@@ -141,6 +141,18 @@ export async function createFirebaseStore(cfg) {
     queueMail: m => fs.addDoc(fs.collection(db, 'mail'), clean(m)),
 
     saveFixtureList: (rid, list) => putOne(list, ...P('fixtures', rid)),
+    // ----- memberships across associations (membership only: association, type, active, since) -----
+    // Each association writes its own line; an officer may read a member's lines once they have
+    // registered as a viewer, which the rules allow only for an officer of an association the person
+    // belongs to.
+    saveMembershipLink: (email, info) => fs.setDoc(fs.doc(db, 'memberships', email, 'orgs', info.orgId), clean(info), { merge: true }),
+    async listMemberships(email) {
+      const me = (auth.currentUser && auth.currentUser.email || '').toLowerCase();
+      await fs.setDoc(fs.doc(db, 'memberships', email, 'viewers', me), { orgId: org.id, at: new Date().toISOString() });
+      const snap = await fs.getDocs(fs.collection(db, 'memberships', email, 'orgs'));
+      return snap.docs.map(d => d.data());
+    },
+
     async listFixtureLists() {
       const snap = await fs.getDocs(fs.collection(db, ...P('fixtures')));
       return snap.docs.map(d => d.data());

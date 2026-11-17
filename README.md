@@ -113,3 +113,9 @@ python3 tests/e2e_demo.py  # browser test of the whole flow in demo mode (needs 
 ```
 
 `js/logic.js` holds all the allocation rules, `js/fixtures.js` the import, `js/store-*.js` the two back-ends (Firebase and demo), `js/views-*.js` the screens.
+
+## Member profiles
+
+Officers click any member's name (Members page, the season Availability sheet, or a round's Availability tab) to open their profile: membership details (type, fee, status, **Member since**, which is set when a member is added or approved and can be changed there), this season's availability, upcoming and past appointments in this association, games umpired here, pull-outs and fulfilment rate (the share of their published games they kept).
+
+The profile also lists the member's memberships with **other associations** — association, type, active or past, since when — and nothing else from them. Each association writes its own line to `memberships/{email}/orgs/{orgId}` when an officer saves or opens a member; an officer can read a member's lines only after registering as a viewer, which the rules allow only for an officer of an association that member belongs to. Publish the updated `firestore.rules` for this to work on the live site.

@@ -66,6 +66,27 @@ service cloud.firestore {
       allow read, write: if signedIn() && id == me();
     }
 
+    // A person's memberships across associations: membership only (association, type, active, since),
+    // never another association's availability or appointments. Each association's officers write
+    // their own line. An officer may read a member's lines after registering as a viewer, which is
+    // only allowed for an officer of an association that person belongs to. The person can read their own.
+    match /memberships/{email} {
+      match /orgs/{orgId} {
+        allow write: if isOrgAdmin(orgId)
+          && request.resource.data.keys().hasOnly(['orgId', 'orgName', 'membership', 'active', 'since', 'updatedAt'])
+          && request.resource.data.orgId == orgId;
+        allow read: if signedIn() && (email == me() || exists(/databases/$(database)/documents/memberships/$(email)/viewers/$(me())));
+      }
+      match /viewers/{viewer} {
+        allow create, update: if signedIn() && viewer == me()
+          && request.resource.data.keys().hasOnly(['orgId', 'at'])
+          && isOrgAdmin(request.resource.data.orgId)
+          && exists(/databases/$(database)/documents/orgs/$(request.resource.data.orgId)/umpires/$(email));
+        allow read: if signedIn() && viewer == me();
+        allow delete: if false;
+      }
+    }
+
     match /orgs/{orgId} {
       // Anyone signed in can open an association by its id (the link); only the product owner can list them all.
       allow get: if signedIn();

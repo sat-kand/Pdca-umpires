@@ -11,6 +11,8 @@ import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
 import { applyPlayerUmpires, claimsFrom } from './player-umpire.js';
 const puEnabled = store => !!(store.org && store.org.playerUmpire && store.org.playerUmpire.enabled);
 import { membershipTypes, feeFor, money, renewalText } from './views-org.js';
+import { membershipLink } from './views-member.js';
+const profileLink = u => h('a', { class: 'member-link', href: `#/admin/member/${encodeURIComponent(u.pid)}`, title: 'Open profile' }, u.name);
 import { planImport, applyImport } from './import-availability.js';
 import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, TILE_ORDER } from './rounds.js';
 
@@ -458,7 +460,7 @@ export async function viewAvailabilityOverview(ctx, rid) {
       h('div', { class: 'summary' }, cols.map(c => { const n = counts(c); return h('span', { class: 'chip' }, `${colName(c)}: ${n.yes} available · ${n.no} not available · ${n.none} no reply${n.pu ? ` · ${n.pu} player umpire${n.pu === 1 ? '' : 's'}` : ''}`); })),
       h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Umpire'), cols.map(c => h('th', {}, colName(c))), h('th', {}, ''))),
-        h('tbody', {}, active.map(u => h('tr', {}, h('td', {}, u.name),
+        h('tbody', {}, active.map(u => h('tr', {}, h('td', {}, profileLink(u)),
           cols.map(c => {
             const p = pickOf(u.pid, c.date, c.comp);
             if (p) return h('td', { class: 'av pu', title: `Chose ${gradeShort(p.grade)}: ${p.label}` },
@@ -645,7 +647,7 @@ export async function viewSeasonAvailability(ctx) {
                 return h('th', { class: (d < today ? 'past ' : '') + (ui.on === d ? 'on' : '') }, h('button', { type: 'button', class: 'datebtn', title: 'Show only umpires available on ' + fmtDay(d), onclick: () => { ui.on = ui.on === d ? null : d; draw(); } }, h('span', { class: 'sub' }, w), h('span', {}, n))); })),
               h('tr', { class: 'counts' }, h('td', { class: 'stick' }, 'Available'), dates.map(d => (countCells[d] = h('td', { class: d < today ? 'past' : '' }, String(count(d))))))),
             h('tbody', {}, rows.map(u => h('tr', { class: u.active === false ? 'nonmember' : '' },
-              h('td', { class: 'stick' }, u.name, ' ', (tallyCells[u.pid] = h('span', { class: 'muted tally' }, tally(u))),
+              h('td', { class: 'stick' }, profileLink(u), ' ', (tallyCells[u.pid] = h('span', { class: 'muted tally' }, tally(u))),
                 u.active === false && h('span', { class: 'chip warn tag' }, 'Non-member')),
               dates.map(d => cell(u, d)))),
               !rows.length && h('tr', {}, h('td', { class: 'stick muted' }, 'Nobody matches'), dates.map(() => h('td', {})))))),
@@ -717,9 +719,11 @@ export async function viewUmpires(ctx) {
     // Editing a field saves quietly; only approving redraws, so a row never jumps while it is being edited.
     const save = (u, patch, redraw = false) => guard(async () => {
       Object.assign(u, patch);
+      if (u.active && !u.memberSince) u.memberSince = todayLocal();     // approved (or added) today
       const { firstName, lastName } = nameParts(u);
       Object.assign(u, { firstName, lastName, name: fullName(firstName, lastName) || u.name });
       await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
+      if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error('membership link', e));
       if (redraw) draw();
     })();
     const field = (u, key, { type = 'text', cls = '', ph = '', value } = {}) =>
@@ -740,7 +744,7 @@ export async function viewUmpires(ctx) {
         if (!key || !firstName) { bad.push(line); continue; }
         if (members.some(u => u.email === key)) continue;
         const u = { pid: newPid(), email: key, firstName, lastName, name: fullName(firstName, lastName),
-          phone: parts[at + 1] || '', accreditation: parts[at + 2] || '', dob: '', address: '', active: true, updatedAt: new Date().toISOString() };
+          phone: parts[at + 1] || '', accreditation: parts[at + 2] || '', dob: '', address: '', active: true, memberSince: todayLocal(), updatedAt: new Date().toISOString() };
         await store.saveUmpire(u); members.push(u); added++;
       }
       toast(`${added} member(s) added${bad.length ? `; couldn't read ${bad.length} line(s)` : ''}`, bad.length ? 'err' : 'ok');
@@ -759,7 +763,7 @@ export async function viewUmpires(ctx) {
       return h('div', { class: 'member-type' }, sel, fee ? h('span', { class: 'muted fee' }, money(fee)) : null);
     };
     const pending = members.filter(u => !u.active);
-    const COLS = ['Active', 'First name', 'Last name', 'D.O.B', 'Address', 'Email', 'Mobile', 'Accreditation no.', 'Membership'];
+    const COLS = ['Active', 'Profile', 'First name', 'Last name', 'D.O.B', 'Address', 'Email', 'Mobile', 'Accreditation no.', 'Membership'];
     setChildren(wrap,
       h('div', { class: 'row-between' }, h('h1', {}, 'Members'), h('a', { class: 'btn', href: '#/admin' }, '\u2190 Allocate')),
       pending.length > 0 && h('p', { class: 'notice warn' }, `${pending.length} member(s) are waiting for approval. Tick "Active" to approve them.`),
@@ -767,6 +771,7 @@ export async function viewUmpires(ctx) {
         h('thead', {}, h('tr', {}, COLS.map(c => h('th', {}, c)))),
         h('tbody', {}, members.map(u => { const n = nameParts(u); return h('tr', { class: u.active ? '' : 'needs' },
           h('td', {}, h('input', { type: 'checkbox', checked: !!u.active, 'aria-label': 'Active', onchange: e => save(u, { active: e.target.checked }, true) })),
+          h('td', {}, profileLink(u)),
           h('td', {}, field(u, 'firstName', { cls: 'in-sm', value: n.firstName })),
           h('td', {}, field(u, 'lastName', { cls: 'in-sm', value: n.lastName })),
           h('td', {}, field(u, 'dob', { type: 'date', cls: 'in-dob' })),

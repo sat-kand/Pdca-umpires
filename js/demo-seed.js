@@ -94,8 +94,15 @@ export async function seedDemo(store, { live = true, fetchFn } = {}) {
   for (const [i, [firstName, lastName]] of NAMES.entries()) {
     const email = `umpire${i + 1}@demo.test`;
     const had = await store.getUmpire(email);
-    await store.saveUmpire({ pid: had ? had.pid : newPid(), email, name: `${firstName} ${lastName}`, firstName, lastName, phone: '', dob: '', address: '', accreditation: `L${(i % 3) + 1}-${2200 + i}`, active: true });
+    await store.saveUmpire({ pid: had ? had.pid : newPid(), email, name: `${firstName} ${lastName}`, firstName, lastName, phone: '', dob: '', address: '', accreditation: `L${(i % 3) + 1}-${2200 + i}`, active: true,
+      memberSince: `${2016 + (i % 8)}-0${1 + (i % 9)}-15` });
   }
+  // A few of them are (or were) members of other associations too, so the profile page has something to show.
+  if (store.seedOtherMemberships) await store.seedOtherMemberships({
+    'umpire1@demo.test': [{ orgId: 'hdca', orgName: 'Hills District Cricket Association', membership: 'Ordinary member', active: true, since: '2019-09-01' }],
+    'umpire2@demo.test': [{ orgId: 'nsca', orgName: 'Nepean Cricket Association', membership: 'Ordinary member', active: false, since: '2014-10-01' },
+      { orgId: 'hdca', orgName: 'Hills District Cricket Association', membership: 'Life member', active: true, since: '2022-08-20' }],
+  });
 
   const real = live ? await loadLiveSeason({ fetchFn, playCricketId: store.org && store.org.playCricketId }) : null;
   let seasonInfo, all, comps = [];
