@@ -84,9 +84,11 @@ async function queueEmail(store, w) {
 // has not dismissed, so the banner survives a reload until they have seen it.
 //
 // An umpire can change their mind (or have tapped by mistake): if, after pulling out, they say
-// Available again for that day, or choose that game again as a player umpire, the pull-out is undone.
-// Not yet acted on: the slot is simply not freed. Already freed: they are put back in an empty place,
-// the game's note goes, and the game drops out of the banner.
+// Available again for that day, or choose that same game again as a player umpire, the pull-out is
+// undone. Only the published game they were given is ever restored (a withdrawal only lists those),
+// and only while its round is still published. Not yet acted on: the place is simply not freed.
+// Already freed: they go back in if the place is still empty, the note goes, and so does the banner.
+// Someone who has chosen a different game that day as a player umpire is not put back.
 export async function applyWithdrawals(store) {
   const all = await store.listWithdrawals();
   // Older records only kept a count of what was freed: treat each of their games as freed.
@@ -97,10 +99,14 @@ export async function applyWithdrawals(store) {
   const avail = season && store.listAvailability ? await store.listAvailability(season.id) : [];
   const availOf = email => avail.find(a => a.email === email);
   // Back for this game: said Available for the day since pulling out, or chose the game again.
+  const rounds = store.listRounds ? await store.listRounds() : null;
+  const live = id => !rounds || rounds.some(r => r.id === id && r.published);
   const isBack = (w, ref) => {
     const a = availOf(w.email);
-    if (!a) return false;
-    if ((a.picks || []).some(p => p.gameId === ref.gameId && (p.dates || []).includes(ref.date))) return 'pu';
+    if (!a || !live(ref.roundId)) return false;
+    const that = (a.picks || []).filter(p => (p.dates || []).includes(ref.date));
+    if (that.some(p => p.gameId === ref.gameId)) return 'pu';
+    if (that.length) return false;                                   // chose another game that day instead
     return (a.days || {})[`${ref.comp}:${ref.date}`] === 'yes' && (a.updatedAt || '') > (w.createdAt || '') ? 'yes' : false;
   };
 

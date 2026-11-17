@@ -110,9 +110,9 @@ test('a player umpire comes first: offered for the game they chose, kept out of 
   assert.ok(other.elsewhere);
   assert.deepEqual(assignmentWarnings({ game: g1, date: '2026-11-21', slotIndex: 0, umpire: umpires[0], availByEmail, busy: {}, claimOf }), []);
   assert.match(assignmentWarnings({ game: g2, date: '2026-11-21', slotIndex: 0, umpire: umpires[0], availByEmail, busy: {}, claimOf }).join(), /player umpire/);
-  // Auto-fill puts them only in the game they chose, never anywhere else that day.
+  // Auto-fill never places them: their places go to the full umpire only.
   const changes = autoAllocate({ games: [g1, g2], umpires, availByEmail, claimOf });
-  assert.ok(changes.filter(c => c.entry.p === 'p1').every(c => c.gameId === 'g1' && c.entry.pu));
+  assert.ok(changes.every(c => c.entry.p === 'p2'));
   // Switched off: nothing is claimed.
   assert.equal(claimsFrom(avail, umpires, false).claimOf('p1', '2026-11-21'), null);
 });
@@ -126,11 +126,11 @@ test('a chosen game in an unselected grade is turned on by itself; in a selected
   assert.ok(!g2.puOnly, 'a grade the officer selected stays selected as normal');
 });
 
-test('Suggest allocations puts the player umpire back in their own empty game first', () => {
+test('Suggest allocations fills a player umpire game with full umpires, never the player umpire', () => {
   const umpires = [{ pid: 'p1', email: 'sk@x.test', name: 'S Kandhaswami', active: true }, { pid: 'p2', email: 'gs@x.test', name: 'G Serrao', active: true }];
-  const avail = [{ email: 'sk@x.test', days: {}, picks: [pick('g1', ['2026-11-21'])] }, { email: 'gs@x.test', days: { 'senior:2026-11-21': 'yes' } }];
+  const avail = [{ email: 'sk@x.test', days: { 'senior:2026-11-21': 'yes' }, picks: [pick('g1', ['2026-11-21'])] }, { email: 'gs@x.test', days: { 'senior:2026-11-21': 'yes' } }];
   const { claimOf } = claimsFrom(avail, umpires);
-  const g1 = G('g1', 'Senior B09', ['2026-11-21'], { slots: 2 });
+  const g1 = G('g1', 'Senior B09', ['2026-11-21'], { slots: 2, puOnly: true });     // the officer took the player umpire out
   const changes = autoAllocate({ games: [g1], umpires, availByEmail: Object.fromEntries(avail.map(a => [a.email, a])), claimOf });
-  assert.deepEqual(changes.map(c => [c.entry.p, !!c.entry.pu]), [['p1', true], ['p2', false]]);
+  assert.deepEqual(changes.map(c => c.entry.p), ['p2']);
 });

@@ -19,6 +19,7 @@ function store({ days = {}, picks = [], updatedAt = '2099-01-02T00:00:00Z', allo
     listGames: async rid => structuredClone(db.games[rid]),
     saveGame: async (rid, g) => { db.games[rid] = db.games[rid].map(x => (x.id === g.id ? structuredClone(g) : x)); },
     saveRound: async () => {},
+    listRounds: async () => [{ id: 'r1', published: db.published !== false }],
   };
 }
 
@@ -77,4 +78,24 @@ test('dismissing keeps the record whole', async () => {
   assert.equal(s.db.w.w1.dismissed, true);
   assert.equal(s.db.w.w1.games.length, 1);
   assert.ok(!('shown' in s.db.w.w1));
+});
+
+test('choosing a different game that day as a player umpire does not put them back', async () => {
+  const s = store({ days: { [`senior:${DATE}`]: 'no' } });
+  await applyWithdrawals(s);
+  s.db.avail[0].days[`senior:${DATE}`] = 'yes';
+  s.db.avail[0].updatedAt = '2099-01-03T00:00:00Z';
+  s.db.avail[0].picks = [{ gameId: 'g9', comp: 'senior', dates: [DATE] }];
+  await applyWithdrawals(s);
+  assert.equal(s.db.games.r1[0].alloc[DATE][0], null);
+});
+
+test('nothing is put back once the round is no longer published', async () => {
+  const s = store({ days: { [`senior:${DATE}`]: 'no' } });
+  await applyWithdrawals(s);
+  s.db.published = false;
+  s.db.avail[0].days[`senior:${DATE}`] = 'yes';
+  s.db.avail[0].updatedAt = '2099-01-03T00:00:00Z';
+  await applyWithdrawals(s);
+  assert.equal(s.db.games.r1[0].alloc[DATE][0], null);
 });
