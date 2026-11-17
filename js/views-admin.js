@@ -324,11 +324,12 @@ export async function viewBoard(ctx, rid) {
       pub.key === 'stale' ? 'Re-publish' : pub.key === 'live' ? pub.label : 'Publish');
     publishBtn.disabled = pub.key === 'live';
     publishBtn.onclick = guard(async () => {
-      if (st.filled < st.needed && !confirm(`${st.needed - st.filled} slot(s) are still empty. ${pub.key === 'stale' ? 'Re-publish' : 'Publish'} anyway?`)) return;
       const patch = { published: true, publishedAt: new Date().toISOString() };
       Object.assign(B.round, patch);
       await store.saveRound({ id: rid, ...patch });
-      toast(pub.key === 'stale' ? 'Re-published: umpires can see the changes' : 'Published: umpires can see their allocations', 'ok');
+      const left = st.needed - st.filled;
+      toast((pub.key === 'stale' ? 'Re-published: umpires can see the changes' : 'Published: umpires can see their allocations')
+        + (left > 0 ? ` (${left} place${left === 1 ? '' : 's'} still empty)` : ''), 'ok');
       draw();
     });
     const unpublishBtn = h('button', { class: 'link', type: 'button' }, 'Unpublish');
@@ -355,7 +356,6 @@ export async function viewBoard(ctx, rid) {
     autoBtn.onclick = busy(autoBtn, guard(async () => {
       const changes = autoAllocate({ games: B.games, umpires: B.umpires, availByEmail: B.availByEmail, baseLoads: seasonLoads(otherStats), claimOf });
       if (!changes.length) { toast('No empty slots could be filled with umpires who said "Available".'); return; }
-      if (!confirm(`Fill ${changes.length} empty slot(s) using only umpires who said "Available"? Existing allocations are not touched.`)) return;
       const ids = new Set(changes.map(c => c.gameId));
       const updated = [];
       for (const g of B.games) if (ids.has(g.id)) { g.alloc = applyChanges(g, changes); updated.push(g); }
@@ -367,7 +367,6 @@ export async function viewBoard(ctx, rid) {
     updBtn.onclick = busy(updBtn, guard(doUpdateFixtures));
     const clearBtn = h('button', { class: 'btn danger', type: 'button' }, 'Clear all');
     clearBtn.onclick = guard(async () => {
-      if (!confirm('Remove every umpire allocation in this round?')) return;
       const all = B.games.map(g => ({ ...g, alloc: {} }));
       await store.saveGames(rid, all); all.forEach((x, i) => { B.games[i].alloc = {}; });
       await persistStats(); draw();
