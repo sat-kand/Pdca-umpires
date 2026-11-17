@@ -400,7 +400,7 @@ export async function viewBoard(ctx, rid) {
           h('thead', {}, h('tr', {}, ['Grade', 'Fixture', 'Ground', 'Allocation', 'Umpires'].map(c => h('th', {}, c)))),
           h('tbody', {}, s.games.map(g => gameRow(g, busyMap, loads))))))),
       !sections.length && h('p', { class: 'muted' }, 'No grades selected yet. Press Select grades to choose the grades that need umpires.'),
-      h('p', { class: 'muted' }, '"busy" next to a name means they are already on another game that day. Umpires with fewer games this season are listed first.'),
+      h('p', { class: 'muted' }, '"busy" next to a name means they are already on another game that day. Names are in last-name order.'),
     ];
   }
 

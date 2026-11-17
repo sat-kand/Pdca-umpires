@@ -235,7 +235,7 @@ export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy
       : st === 'yes' ? (days.length > 1 ? (bothDays ? 'both' : 'ok') : 'ok') : 'none';
     rows.push({ umpire: u, status: st, busy: others.length > 0, dup, chosen, elsewhere, group, bothDays, okDays, member, load: (loads && loads[u.pid]) || 0 });
   }
-  rows.sort((a, b) => a.load - b.load || a.umpire.name.localeCompare(b.umpire.name));
+  rows.sort((a, b) => compareMembers(a.umpire, b.umpire));        // by last name, then first name
   return rows;
 }
 

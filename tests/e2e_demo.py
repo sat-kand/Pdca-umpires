@@ -740,6 +740,8 @@ with sync_playwright() as p:
     page.locator(".dropouts a").first.click()
     page.wait_for_selector("table.board")
     check(page.locator(".change:has-text('no longer available')").count() >= 1, "the board flags the game")
+    lasts = page.locator("select.slot").first.evaluate("s => [...s.querySelectorAll('optgroup')].map(g => [...g.children].map(o => o.text.split(' \u00b7 ')[0].split(' ').slice(-1)[0].toLowerCase()))")
+    check(all(g == sorted(g) for g in lasts) and sum(len(g) for g in lasts) > 3, "names in the umpire lists are in last-name order")
     page.click("a.tab:has-text('All rounds')")
     page.wait_for_selector(".comp-tile")
     check(page.locator(".dropouts").count() == 1, "the banner is still there until the officer dismisses it")
