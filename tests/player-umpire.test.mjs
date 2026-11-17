@@ -88,3 +88,31 @@ test('a full game gets a second place, and when that is taken too the officer is
   assert.equal(res.blocked.length, 1);
   assert.match(full.db.games.r1[0].changeNote, /S Kandhaswami asked to umpire this .* both places are taken/);
 });
+
+import { claimsFrom } from '../js/player-umpire.js';
+import { slotOptions, assignmentWarnings, autoAllocate } from '../js/logic.js';
+
+test('a player umpire comes first: offered for the game they chose, kept out of every other game that day', () => {
+  const umpires = [{ pid: 'p1', email: 'sk@x.test', name: 'S Kandhaswami', active: true }, { pid: 'p2', email: 'gs@x.test', name: 'G Serrao', active: true }];
+  const days = { 'senior:2026-11-21': 'yes', 'junior:2026-11-21': 'yes' };
+  const avail = [{ email: 'sk@x.test', days, picks: [pick('g1', ['2026-11-21'])] }, { email: 'gs@x.test', days }];
+  const availByEmail = Object.fromEntries(avail.map(a => [a.email, a]));
+  const { claimOf, pickOf } = claimsFrom(avail, umpires);
+  assert.equal(claimOf('p1', '2026-11-21'), 'g1');
+  assert.equal(pickOf('p1', '2026-11-21').grade, 'Senior B09');
+  assert.equal(claimOf('p2', '2026-11-21'), null);
+  const g1 = G('g1', 'Senior B09', ['2026-11-21'], { slots: 2 });
+  const g2 = G('g2', 'Senior C10', ['2026-11-21'], { slots: 1 });
+  const own = slotOptions({ game: g1, date: '2026-11-21', slotIndex: 0, umpires, availByEmail, busy: {}, claimOf }).find(o => o.umpire.pid === 'p1');
+  assert.equal(own.group, 'chosen');
+  const other = slotOptions({ game: g2, date: '2026-11-21', slotIndex: 0, umpires, availByEmail, busy: {}, claimOf }).find(o => o.umpire.pid === 'p1');
+  assert.equal(other.group, 'avoid');
+  assert.ok(other.elsewhere);
+  assert.deepEqual(assignmentWarnings({ game: g1, date: '2026-11-21', slotIndex: 0, umpire: umpires[0], availByEmail, busy: {}, claimOf }), []);
+  assert.match(assignmentWarnings({ game: g2, date: '2026-11-21', slotIndex: 0, umpire: umpires[0], availByEmail, busy: {}, claimOf }).join(), /player umpire/);
+  // Auto-fill never puts them anywhere: g1's empty place and g2 go to the full umpire only.
+  const changes = autoAllocate({ games: [g1, g2], umpires, availByEmail, claimOf });
+  assert.ok(changes.every(c => c.entry.p === 'p2'));
+  // Switched off: nothing is claimed.
+  assert.equal(claimsFrom(avail, umpires, false).claimOf('p1', '2026-11-21'), null);
+});

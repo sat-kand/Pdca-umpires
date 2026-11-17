@@ -8,7 +8,7 @@ import {
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
-import { applyPlayerUmpires } from './player-umpire.js';
+import { applyPlayerUmpires, claimsFrom } from './player-umpire.js';
 const puEnabled = store => !!(store.org && store.org.playerUmpire && store.org.playerUmpire.enabled);
 import { membershipTypes, feeFor, money, renewalText } from './views-org.js';
 import { planImport, applyImport } from './import-availability.js';
@@ -172,6 +172,7 @@ export async function viewBoard(ctx, rid) {
     store.listGames(rid), store.listUmpires(), store.listAvailability((round.season && round.season.id) || 'manual'), store.listRounds(), store.getSettings(),
   ]);
   const B = { ui: { grades: false, warns: false }, round, games, umpires, settings, availByEmail: Object.fromEntries(availList.map(a => [a.email, a])) };
+  const { claimOf } = claimsFrom(availList, umpires, puEnabled(store));   // games player umpires chose: they come first
   const otherStats = rounds.filter(r => r.id !== rid && r.season && round.season && r.season.id === round.season.id).map(r => r.stats);
   const wrap = h('div');
 
@@ -214,7 +215,7 @@ export async function viewBoard(ctx, rid) {
           if (!a) return;
           const u = B.umpires.find(x => x.pid === a.p);
           if (!u) { out.push({ g, d, text: `${a.n}: umpire not found in the umpire list` }); return; }
-          const w = assignmentWarnings({ game: g, date: d.date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy, chosen: !!a.pu });
+          const w = assignmentWarnings({ game: g, date: d.date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy, claimOf });
           if (w.length) out.push({ g, d, text: `${u.name}: ${w.join('; ')}` });
         });
       }
@@ -224,13 +225,13 @@ export async function viewBoard(ctx, rid) {
 
   function slotSelect(g, date, i, busyMap, loads) {
     const cur = allocFor(g, date)[i];
-    const opts = slotOptions({ game: g, date, slotIndex: i, umpires: B.umpires, availByEmail: B.availByEmail, busy: busyMap, loads });
+    const opts = slotOptions({ game: g, date, slotIndex: i, umpires: B.umpires, availByEmail: B.availByEmail, busy: busyMap, loads, claimOf });
     const multi = g.days.length > 1;
     // Two-day games: umpires free on every day come first, so one pick can cover both days.
     const GROUPS = multi
-      ? [['both', 'Available both days'], ['ok', 'Available this day only'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']]
-      : [['ok', 'Available'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']];
-    const label = o => `${o.umpire.name}${o.load ? ` · ${o.load}` : ''}${o.busy ? ' · busy' : ''}`;
+      ? [['chosen', 'Player umpire (chose this game)'], ['both', 'Available both days'], ['ok', 'Available this day only'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']]
+      : [['chosen', 'Player umpire (chose this game)'], ['ok', 'Available'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']];
+    const label = o => `${o.umpire.name}${o.load ? ` · ${o.load}` : ''}${o.elsewhere ? ' · player umpire elsewhere' : o.busy ? ' · busy' : ''}`;
     const sel = h('select', { class: 'slot' + (cur ? '' : ' empty'), 'aria-label': `Umpire ${i + 1}, ${gradeShort(g.grade)} ${g.home.name}, ${fmtDay(date)}`,
       onchange: guard(async () => {
         const u = B.umpires.find(x => x.pid === sel.value);
@@ -238,14 +239,15 @@ export async function viewBoard(ctx, rid) {
         // Picking someone for Day 1 of a two-day game also fills the empty later days when that
         // umpire is free and clean there. Day 2 can still be changed on its own.
         const alloc = structuredClone(g.alloc || {});
-        const put = (dt) => { const arr = (alloc[dt] ||= []); while (arr.length <= i) arr.push(null); arr[i] = { p: u.pid, n: u.name }; };
+        // Putting a player umpire back in the game they chose marks them as the player umpire again.
+        const put = (dt) => { const arr = (alloc[dt] ||= []); while (arr.length <= i) arr.push(null); arr[i] = claimOf(u.pid, dt) === g.id ? { p: u.pid, n: u.name, pu: true } : { p: u.pid, n: u.name }; };
         put(date);
         let extra = 0;
-        const cleanPick = !assignmentWarnings({ game: g, date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy: busyMap }).length;
+        const cleanPick = !assignmentWarnings({ game: g, date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy: busyMap, claimOf }).length;
         if (cleanPick && g.days.length > 1 && date === g.days[0].date) {
           for (const d of g.days.slice(1)) {
             if (allocFor(g, d.date)[i]) continue;
-            if (!assignmentWarnings({ game: g, date: d.date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy: busyMap }).length) { put(d.date); extra++; }
+            if (!assignmentWarnings({ game: g, date: d.date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy: busyMap, claimOf }).length) { put(d.date); extra++; }
           }
         }
         await writeGame(g, { alloc });
@@ -260,10 +262,11 @@ export async function viewBoard(ctx, rid) {
     if (cur && !opts.some(o => o.umpire.pid === cur.p)) sel.append(h('option', { value: cur.p, selected: true }, `${cur.n} (inactive)`));
     const warn = cur ? (() => {
       const u = B.umpires.find(x => x.pid === cur.p);
-      return u ? assignmentWarnings({ game: g, date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy: busyMap, chosen: !!cur.pu }) : ['Umpire not in list'];
+      return u ? assignmentWarnings({ game: g, date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy: busyMap, claimOf }) : ['Umpire not in list'];
     })() : [];
     return h('div', { class: 'slot-wrap' }, sel,
-      cur && cur.pu && h('span', { class: 'chip pu', title: 'Chose this game themselves' }, 'Player umpire'),
+      // The tag follows the person, not the entry: it shows whenever the one who chose this game is in it.
+      cur && (cur.pu || claimOf(cur.p, date) === g.id) && h('span', { class: 'chip pu', title: 'Chose this game themselves' }, 'Player umpire'),
       warn.length > 0 && h('span', { class: 'warn-icon', title: warn.join('\n'), tabindex: 0 }, '⚠'));
   }
 
@@ -338,7 +341,7 @@ export async function viewBoard(ctx, rid) {
 
     const autoBtn = h('button', { class: 'btn', type: 'button' }, '✨ Suggest allocations');
     autoBtn.onclick = busy(autoBtn, guard(async () => {
-      const changes = autoAllocate({ games: B.games, umpires: B.umpires, availByEmail: B.availByEmail, baseLoads: seasonLoads(otherStats) });
+      const changes = autoAllocate({ games: B.games, umpires: B.umpires, availByEmail: B.availByEmail, baseLoads: seasonLoads(otherStats), claimOf });
       if (!changes.length) { toast('No empty slots could be filled with umpires who said "Available".'); return; }
       if (!confirm(`Fill ${changes.length} empty slot(s) using only umpires who said "Available"? Existing allocations are not touched.`)) return;
       const ids = new Set(changes.map(c => c.gameId));
@@ -396,22 +399,29 @@ export async function viewAvailabilityOverview(ctx, rid) {
   const by = Object.fromEntries(availList.map(a => [a.email, a]));
   const active = umpires.filter(u => u.active).sort((a, b) => a.name.localeCompare(b.name));
   const cols = roundColumns(games);
+  // Player umpires: the game they chose shows in its own column; their other columns that day show
+  // the tag too, because their choice comes first and they are not given anything else.
+  const { pickOf } = claimsFrom(availList, umpires, puEnabled(store));
   const multi = new Set(cols.map(c => c.comp)).size > 1;
   const colName = c => (multi ? `${compLabel(c.comp)} · ` : '') + fmtDay(c.date);
-  const missing = active.filter(u => cols.every(c => availStatus(by, u, c.comp, c.date) === 'none'));
+  const missing = active.filter(u => cols.every(c => availStatus(by, u, c.comp, c.date) === 'none' && !pickOf(u.pid, c.date)));
   const ICON = { yes: ['✓', 'ok'], no: ['✗', 'no'], none: ['–', 'none'] };
-  const counts = c => { const n = { yes: 0, no: 0, none: 0 }; active.forEach(u => { n[availStatus(by, u, c.comp, c.date)]++; }); return n; };
+  const counts = c => { const n = { yes: 0, no: 0, none: 0, pu: 0 }; active.forEach(u => { n[pickOf(u.pid, c.date) ? 'pu' : availStatus(by, u, c.comp, c.date)]++; }); return n; };
   const emails = missing.map(u => u.email);
 
   return h('div', {},
     h('div', { class: 'row-between' }, h('h1', {}, roundHeading(round)), h('span', { class: 'muted' }, fmtRange(round.dates))),
     tabs(rid, '/availability'),
     h('div', { class: 'card' },
-      h('div', { class: 'summary' }, cols.map(c => { const n = counts(c); return h('span', { class: 'chip' }, `${colName(c)}: ${n.yes} available · ${n.no} not available · ${n.none} no reply`); })),
+      h('div', { class: 'summary' }, cols.map(c => { const n = counts(c); return h('span', { class: 'chip' }, `${colName(c)}: ${n.yes} available · ${n.no} not available · ${n.none} no reply${n.pu ? ` · ${n.pu} player umpire${n.pu === 1 ? '' : 's'}` : ''}`); })),
       h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Umpire'), cols.map(c => h('th', {}, colName(c))), h('th', {}, ''))),
         h('tbody', {}, active.map(u => h('tr', {}, h('td', {}, u.name),
-          cols.map(c => { const [t, k] = ICON[availStatus(by, u, c.comp, c.date)]; return h('td', { class: 'av ' + k }, t); }),
+          cols.map(c => {
+            const p = pickOf(u.pid, c.date);
+            if (p) return h('td', { class: 'av pu', title: `Chose ${gradeShort(p.grade)}: ${p.label}` },
+              h('span', { class: 'chip pu' }, 'Player umpire'), p.comp === c.comp && h('div', { class: 'muted small' }, `${gradeShort(p.grade)} \u00b7 ${p.label}`));
+            const [t, k] = ICON[availStatus(by, u, c.comp, c.date)]; return h('td', { class: 'av ' + k }, t); }),
           h('td', {}))))))),
     h('div', { class: 'card' }, h('h2', {}, `Haven't replied (${missing.length})`),
       missing.length ? [h('p', {}, missing.map(u => u.name).join(', ')),

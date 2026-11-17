@@ -829,6 +829,26 @@ with sync_playwright() as p:
     sel_text = pu_row.locator("select.slot").first.evaluate("s => s.options[s.selectedIndex].text")
     check(sel_text.startswith("B Chellapa"), f"with their name already filled in ({sel_text})")
     check(pu_row.locator("select.slot").nth(1).input_value() == "", "only on the day they chose")
+    first = pu_row.locator("select.slot").first
+    grp = lambda sel, name: sel.evaluate("(s, n) => { const o = [...s.options].find(o => o.text.startsWith(n)); return o && o.parentElement.label ? o.parentElement.label + ' | ' + o.text : ''; }", name)
+    check(grp(first, "B Chellapa").startswith("Player umpire (chose this game)"), "in the game they chose they are listed first, as the player umpire")
+    swap = first.evaluate("s => [...s.options].find(o => o.text.startsWith('G Serrao')).value")
+    first.select_option(swap)
+    page.wait_for_timeout(300)
+    check(page.locator(".chip.pu").count() == 0, "the officer can swap them for a full umpire; the tag goes with them")
+    first = page.locator("select.slot").filter(has_text="G Serrao").first
+    back = first.evaluate("s => [...s.options].find(o => o.text.startsWith('B Chellapa')).value")
+    first.select_option(back)
+    page.wait_for_timeout(300)
+    check(page.locator("tr:has(.chip.pu)").count() == 1 and page.locator("tr:has(.chip.pu) select.slot").first.evaluate("s => s.options[s.selectedIndex].text").startswith("B Chellapa"),
+          "putting them back brings the Player umpire tag back")
+    page.click("a.tab:has-text('Availability')")
+    page.wait_for_selector("table.board")
+    bc = page.locator("tr:has(td:text-is('B Chellapa'))")
+    check(bc.locator("td.av.pu .chip.pu").count() >= 1 and "player umpire" in page.inner_text(".summary"),
+          "the round's Availability tab shows their choice, tagged Player umpire")
+    page.click("a.tab:has-text('Assign')")
+    page.wait_for_selector("table.board")
     page.click("a.tab:has-text('Report')")
     page.wait_for_selector(".report-table")
     check("B CHELLAPA (PLAYER UMPIRE)" in page.inner_text(".report-table"), "the report names them as a player umpire")

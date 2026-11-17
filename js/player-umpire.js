@@ -92,3 +92,23 @@ export async function applyPlayerUmpires(store, { today, enabled = true }) {
   await store.saveSettings({ puApplied: nextApplied });
   return { added, removed, blocked };
 }
+
+// Who chose which game, day by day, for the Assign board. `claimOf(pid, date)` gives the game id a player
+// umpire chose for that day; `pickOf` gives the whole choice. A choice comes before their date answers: on
+// that day they are only put in the game they chose. Nothing is claimed while player umpiring is off.
+export function claimsFrom(availList, umpires, enabled = true) {
+  const byDay = new Map();
+  if (enabled) {
+    const pidOf = new Map(umpires.map(u => [u.email, u.pid]));
+    for (const a of availList || []) {
+      const pid = pidOf.get(a.email);
+      if (!pid) continue;
+      for (const p of a.picks || []) {
+        if (!PLAYER_UMPIRE_COMPS.includes(p.comp)) continue;
+        for (const d of p.dates || []) byDay.set(`${pid}|${d}`, p);
+      }
+    }
+  }
+  const pickOf = (pid, date) => byDay.get(`${pid}|${date}`) || null;
+  return { pickOf, claimOf: (pid, date) => { const p = pickOf(pid, date); return p ? p.gameId : null; } };
+}
