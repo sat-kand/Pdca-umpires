@@ -662,9 +662,9 @@ with sync_playwright() as p:
     sec = page.locator(f".comp-section:has(h2:has-text('Senior')) .drow:has-text('{appt_date}')").first
     check(sec.locator("button.opt.no.on").count() == 1, "their availability for that day is now 'Not available'")
     reload(page)
-    page.wait_for_selector(".appt")
-    check(page.locator(".appt.declined").count() >= 1 and page.locator(f".comp-section:has(h2:has-text('Senior')) .drow:has-text('{appt_date}') button.opt.no.on").count() == 1,
-          "it is still saved after a reload")
+    page.wait_for_selector(".comp-section")
+    check(page.locator(f".appt[data-date='{appt['date']}']").count() == 0 and page.locator(f".comp-section:has(h2:has-text('Senior')) .drow:has-text('{appt_date}') button.opt.no.on").count() == 1,
+          "after a reload the game they gave back is no longer listed, and the day stays Not available")
     sign_out(page)
     sign_in(page, "admin@demo.test")
     page.wait_for_selector(".dropouts")
@@ -968,6 +968,28 @@ with sync_playwright() as p:
     page.click("a.tab:has-text('Availability')")
     page.wait_for_selector("table.board")
     check(page.locator("tr:has(td:text-is('B Chellapa')) td.av.pu").count() == 0, "the Availability tab no longer shows them as a player umpire")
+    gave_round = page.evaluate("() => { const g = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.games; return location.hash.split(/[/?]/).find(x => x in g); }")
+    # They choose a different game instead: it goes on the board (umpires see it once published).
+    sign_out(page)
+    sign_in(page, "umpire4@demo.test")
+    check(page.locator(".appt").filter(has_text=pu_fixture).count() == 0, "the game they gave back is no longer listed under My appointments")
+    page.locator(".mode:has-text('Choose my own games') input").check()
+    page.wait_for_selector(".chooser-pick select[aria-label=Round]")
+    rsel = page.locator(".chooser-pick select[aria-label=Round]")
+    pu_round = rsel.locator("option").nth(2).get_attribute("value")          # another week: the given-back game's week stays given back
+    rsel.select_option(index=2)
+    page.wait_for_timeout(200)
+    row2 = page.locator(".pick-row").first
+    other = row2.locator("div").first.inner_text().strip().split(" ", 1)[1]
+    row2.locator("button.opt.yes:not([disabled])").first.click()
+    save(page)
+    sign_out(page)
+    sign_in(page, "admin@demo.test")
+    page.goto(BASE + f"#/admin/round/{pu_round}")
+    page.wait_for_selector("table.board")
+    check(page.locator(f"tr:has(.chip.pu):has-text('{other.split(' v ')[0]}')").count() >= 1, f"the newly chosen game is on the Assign board with them as player umpire ({other})")
+    page.goto(BASE + f"#/admin/round/{gave_round}/availability")
+    page.wait_for_selector("td.av")
     # Data left over from before this was fixed: a game still marked as a player umpire game, nobody chose it.
     rid = page.evaluate("() => { const g = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.games; return location.hash.split(/[/?]/).find(x => x in g); }")
     page.evaluate("""(rid) => { const k = 'pdca-umpires-demo-v2'; const db = JSON.parse(localStorage.getItem(k));
@@ -976,7 +998,8 @@ with sync_playwright() as p:
     page.reload()
     page.wait_for_selector("a.tab:has-text('Assign')")
     page.click("a.tab:has-text('Assign')")
-    page.wait_for_selector("table.board")
+    page.wait_for_selector("button:has-text('Select grades')")
+    check(page.locator("table.board tr:has(.chip.grade)").count() == 0, "a game left marked from a given-back choice, with nobody in it, goes off the board")
     page.click("button:has-text('Select grades')")
     page.wait_for_selector("dialog .grade-row")
     check(page.locator("dialog .chip.pu").count() == 0, "Select grades only marks games someone has chosen now (a stale mark is ignored)")

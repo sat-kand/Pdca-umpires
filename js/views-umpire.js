@@ -188,6 +188,9 @@ export async function viewMy(ctx) {
     }));
   }
 
+  // Games they have said they can't do are not listed any more (the officer decides, and publishes).
+  const gaveBack = ({ g, d, r }) => { const x = declined.find(y => y.gameId === g.id && y.date === d.date); return !!x && !((r.publishedAt || '') > x.at); };
+  for (let i = mine.length - 1; i >= 0; i--) if (gaveBack(mine[i])) mine.splice(i, 1);
   if (mine.length) {
     drawAppointments();
     root.append(h('section', { class: 'card' }, h('h2', {}, 'My appointments'),

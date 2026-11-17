@@ -160,3 +160,11 @@ test('choosing again a game they pulled out of does not put them back on the boa
   await applyPlayerUmpires(s, { today: TODAY });
   assert.ok(!(s.db.games.r1[0].alloc || {})['2026-11-21']?.some(Boolean));
 });
+
+test('a chosen game whose board is not there yet is added once it is', async () => {
+  const s = fakeStore({ picks: [pick('g1', ['2026-11-21'])], games: [] });
+  await applyPlayerUmpires(s, { today: TODAY });
+  s.db.games.r1 = [G('g1', 'Senior B09', ['2026-11-21'])];
+  await applyPlayerUmpires(s, { today: TODAY });
+  assert.equal(s.db.games.r1[0].alloc['2026-11-21'][0].p, 'p1');
+});

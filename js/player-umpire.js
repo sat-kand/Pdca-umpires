@@ -60,7 +60,10 @@ export async function applyPlayerUmpires(store, { today, enabled = true }) {
     for (const it of items) {
       const { gameId, date } = splitKey(it.key);
       const g = games.find(x => x.id === gameId);
-      if (!g || g.removed || !g.days.some(d => d.date === date)) continue;          // the fixture has gone
+      if (!g || g.removed || !g.days.some(d => d.date === date)) {                // not on a board (yet): try again next time
+        if (it.op === 'add') nextApplied[it.email] = (nextApplied[it.email] || []).filter(k => k !== it.key);
+        continue;
+      }
       const pid = it.u ? it.u.pid : null;
       const slots = [...((g.alloc || {})[date] || [])];
       const label = `${gradeShort(g.grade)}: ${g.home.name} v ${g.away.name}`;
