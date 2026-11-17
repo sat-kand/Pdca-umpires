@@ -485,9 +485,11 @@ with sync_playwright() as p:
         page.goto(BASE + f"#/admin/round/{jr0}/availability")
         page.wait_for_selector("td.av")
         check(page.locator("td.av.ok, td.av.no").count() > 0, "a round with no grades selected still shows availability for its days")
-        ranks = page.locator("table.board tbody tr").evaluate_all("""l => l.map(tr => { const c = [...tr.querySelectorAll('td.av')].map(td => td.classList.contains('ok') || td.classList.contains('pu') ? 0 : td.classList.contains('no') ? 1 : 2);
-            return [Math.min(...c), tr.querySelector('td').innerText.trim().split(' ').slice(-1)[0].toLowerCase()]; })""")
-        check(ranks == sorted(ranks), "available first, then not available, then no answer; last-name order within each")
+        ranks = page.locator("table.board tbody tr").evaluate_all("""l => l.map(tr => { const c = [...tr.querySelectorAll('td.av')];
+            const ok = c.filter(td => td.classList.contains('ok')).length, no = c.filter(td => td.classList.contains('no')).length;
+            const r = c.some(td => td.classList.contains('pu')) ? 2 : ok === c.length ? 0 : ok ? 1 : no ? 3 : 4;
+            return [r, tr.querySelector('td').innerText.trim().split(' ').slice(-1)[0].toLowerCase()]; })""")
+        check(ranks == sorted(ranks), "available every day, then some days, then player umpires, then not available, then no answer; last-name order within each")
     else:
         check(False, "sample data has a round with no grades selected")
     page.goto(BASE + "#/admin")
@@ -771,8 +773,10 @@ with sync_playwright() as p:
     page.locator(".dropouts a").first.click()
     page.wait_for_selector("table.board")
     check(page.locator(".change:has-text('no longer available')").count() >= 1, "the board flags the game")
-    lasts = page.locator("select.slot").first.evaluate("s => [...s.querySelectorAll('optgroup')].map(g => [...g.children].map(o => o.text.split(' \u00b7 ')[0].split(' ').slice(-1)[0].toLowerCase()))")
-    check(all(g == sorted(g) for g in lasts) and sum(len(g) for g in lasts) > 3, "names in the umpire lists are in last-name order")
+    # Each list in last-name order; the "unavailable or already allocated" list has the allocated ones first.
+    lasts = page.locator("select.slot").first.evaluate("""s => [...s.querySelectorAll('optgroup')].map(g => [...g.children].map(o =>
+        [/allocated|elsewhere/.test(o.text) || !/Unavailable/.test(g.label) ? 0 : 1, o.text.split(' \u00b7 ')[0].split(' ').slice(-1)[0].toLowerCase()]))""")
+    check(all(g == sorted(g) for g in lasts) and sum(len(g) for g in lasts) > 3, "names in the umpire lists are in last-name order (allocated before unavailable)")
     page.click("a.tab:has-text('Back to Allocate')")
     page.wait_for_selector(".comp-tile")
     check(page.locator(".dropouts").count() == 1, "the banner is still there until the officer dismisses it")

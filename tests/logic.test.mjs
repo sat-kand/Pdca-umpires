@@ -323,3 +323,16 @@ test('umpires see the published copy, not later work on the board', async () => 
   assert.equal(publishedAllocFor(round, g, '2026-11-21')[0].p, 'a');
   assert.equal(publishedAllocFor({}, g, '2026-11-21')[0].p, 'b', 'rounds published before copies existed use the board');
 });
+
+test('in "unavailable or already allocated", allocated umpires come before unavailable ones', async () => {
+  const { slotOptions } = await import('../js/logic.js');
+  const umpires = [
+    { pid: 'a', email: 'a@x', name: 'A Adams', active: true },     // not available
+    { pid: 'z', email: 'z@x', name: 'Z Zed', active: true },       // allocated elsewhere that day
+  ];
+  const availByEmail = { 'a@x': { days: { 'senior:2026-11-21': 'no' } }, 'z@x': { days: { 'senior:2026-11-21': 'yes' } } };
+  const game = { id: 'g', grade: 'Senior B09', comp: 'Senior', slots: 1, days: [{ date: '2026-11-21', day: 1 }], alloc: {} };
+  const busy = { 'senior:2026-11-21': { z: ['other'] } };
+  const rows = slotOptions({ game, date: '2026-11-21', slotIndex: 0, umpires, availByEmail, busy, loads: {} }).filter(r => r.group === 'avoid');
+  assert.deepEqual(rows.map(r => r.umpire.pid), ['z', 'a']);
+});

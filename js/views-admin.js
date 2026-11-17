@@ -464,11 +464,13 @@ export async function viewAvailabilityOverview(ctx, rid) {
   const ICON = { yes: ['✓', 'ok'], no: ['✗', 'no'], none: ['–', 'none'] };
   const counts = c => { const n = { yes: 0, no: 0, none: 0, pu: 0 }; active.forEach(u => { n[pickOf(u.pid, c.date, c.comp) ? 'pu' : availStatus(by, u, c.comp, c.date)]++; }); return n; };
   const emails = missing.map(u => u.email);
-  // Available first (on any day of the round, or a player umpire there), then not available, then no
-  // answer; by last name within each.
+  // Available every day of the round, then some days, then player umpires (chose a game here), then
+  // not available, then no answer; by last name within each.
   const rank = u => {
-    const s = cols.map(c => (pickOf(u.pid, c.date, c.comp) ? 'yes' : availStatus(by, u, c.comp, c.date)));
-    return s.includes('yes') ? 0 : s.includes('no') ? 1 : 2;
+    if (cols.some(c => pickOf(u.pid, c.date, c.comp))) return 2;
+    const s = cols.map(c => availStatus(by, u, c.comp, c.date));
+    const yes = s.filter(x => x === 'yes').length;
+    return cols.length && yes === cols.length ? 0 : yes ? 1 : s.includes('no') ? 3 : 4;
   };
   const ordered = [...active].sort((a, b) => rank(a) - rank(b) || compareMembers(a, b));
 
