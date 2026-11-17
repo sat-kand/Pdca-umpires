@@ -296,6 +296,17 @@ export function autoAllocate({ games, umpires, availByEmail, baseLoads = {}, cla
       const cur = allocFor(g, d.date);
       for (let i = 0; i < cur.length; i++) {
         if (cur[i]) { prevPid = cur[i].p; continue; }
+        // The player umpire who chose this game goes back in first, if they are not in it.
+        const chooser = claimOf && active.find(u => claimOf(u.pid, d.date) === g.id && !allocFor(g, d.date).some(a => a && a.p === u.pid));
+        if (chooser) {
+          const entry = { p: chooser.pid, n: chooser.name, pu: true };
+          (g.alloc[d.date] ||= [])[i] = entry;
+          ((busy[bk] ||= {})[chooser.pid] ||= []).push(g.id);
+          loads[chooser.pid] = (loads[chooser.pid] || 0) + 1;
+          changes.push({ gameId: g.id, date: d.date, slot: i, entry });
+          prevPid = chooser.pid;
+          continue;
+        }
         const cands = active.filter(u =>
           availStatus(availByEmail, u, comp, d.date) === 'yes' &&
           !(claimOf && claimOf(u.pid, d.date)) &&                // player umpires keep to the game they chose

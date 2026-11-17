@@ -306,7 +306,7 @@ with sync_playwright() as p:
 
     print("Admin: availability tab, report tab, publish")
     page.click("a.tab:has-text('Availability')")
-    page.wait_for_selector("table.board")
+    page.wait_for_selector("td.av")
     check(page.locator("td.av.ok").count() > 0 and page.locator("td.av.no").count() > 0, "availability grid shows yes and no cells")
     check(page.locator("th", has_text=re.compile("junior", re.I)).count() == 0, "this competition's grid has no Junior columns")
     page.click("a.tab:has-text('Report')")
@@ -746,6 +746,21 @@ with sync_playwright() as p:
     reload(page)
     page.wait_for_selector(".comp-tile")
     check(page.locator(".dropouts").count() == 0, "and it does not come back: the withdrawal is handled")
+
+    print("Umpire changes their mind: Available again for the same day")
+    sign_out(page)
+    sign_in(page, info["email"])
+    page.wait_for_selector(".comp-section")
+    page.locator(f".comp-section:has(h2:has-text('Senior')) .drow:has-text('{label}')").first.locator("button.opt.yes").click()
+    save(page)
+    page.wait_for_timeout(300)
+    sign_out(page)
+    sign_in(page, "admin@demo.test")
+    page.wait_for_selector(".comp-tile")
+    back = page.evaluate("""(info) => { const o = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca;
+        const g = o.games[info.roundId][info.gameId]; return { inSlot: (g.alloc[info.date] || []).some(x => x && x.n === info.name), note: g.changeNote || '' }; }""", info)
+    check(back["inSlot"] and "no longer available" not in back["note"], "they are put back on the game and the game's warning goes")
+    check(page.locator(".dropouts").count() == 0, "and nothing about it on Allocate")
 
     print("Settings: the officer decides whether there are player umpires")
     sign_out(page)

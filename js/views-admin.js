@@ -39,6 +39,7 @@ async function openGradesModal({ store, round, onDone }) {
   const perGame = g => ((g.slots || 0) || 1);                                          // umpires per game: what the board has, else 1
   // A game turned on only because a player umpire chose it does not count as selecting its grade.
   const want = Object.fromEntries(grades.map(gr => [gr, live.some(g => g.grade === gr && isPicked(g) && !g.puOnly)]));
+  const hasPu = g => Object.values(g.alloc || {}).some(arr => (arr || []).some(a => a && a.pu));
   const puGames = gr => live.filter(g => g.grade === gr && g.puOnly && isPicked(g)).length;
   const typeOf = gr => formatSummary(live.filter(g => g.grade === gr));              // Play Cricket's match type: One Day / Two Day / T20
 
@@ -66,8 +67,9 @@ async function openGradesModal({ store, round, onDone }) {
       if (want[g.grade]) {                                   // the grade is selected: every game, and none is "player umpire only" any more
         const n = perGame(g);
         if (n !== (g.slots || 0) || g.puOnly) { g.slots = n; g.puOnly = false; changed.push({ ...g }); }
-      } else if (g.puOnly && isPicked(g)) {
-        continue;                                            // a player umpire's game stays on by itself
+      } else if (g.puGame || hasPu(g) || (g.puOnly && isPicked(g))) {
+        // A game a player umpire chose stays on by itself when its grade is unticked.
+        if (!g.puOnly || !g.slots) { g.slots = g.slots || 1; g.puOnly = true; changed.push({ ...g }); }
       } else if (g.slots) { g.slots = 0; changed.push({ ...g }); }
     }
     if (changed.length) await store.saveGames(round.id, changed);
@@ -138,7 +140,7 @@ export async function viewAdminHome(ctx) {
       state.dropouts.length > 0 && h('div', { class: 'notice warn dropouts' },
         h('strong', {}, 'Umpires have pulled out of published games'),
         h('ul', { class: 'plain' }, state.dropouts.map(d => h('li', {}, `${d.name}: `,
-          d.games.map((g, i) => [i ? ', ' : '', h('a', { href: `#/admin/round/${g.roundId}` }, `${g.label} (${fmtDay(g.date)})`)])))),
+          d.shown.map((g, i) => [i ? ', ' : '', h('a', { href: `#/admin/round/${g.roundId}` }, `${g.label} (${fmtDay(g.date)})`)])))),
         h('p', { class: 'muted' }, 'Those slots are now empty and the games are flagged on the board.'),
         h('button', { class: 'btn small', type: 'button', onclick: async ev => { ev.currentTarget.disabled = true; await dismissWithdrawals(store, state.dropouts); state.dropouts = []; draw(); } }, 'Got it')),
       shown.sets.map((set, i) => [i > 0 && h('hr', { class: 'set-break' }), h('div', { class: 'cards' }, set.map(tile))]),

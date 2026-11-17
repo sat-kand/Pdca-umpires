@@ -140,7 +140,7 @@ export async function viewMy(ctx) {
     const next = { ...savedDays, [key]: 'no' };
     // A game they chose as a player umpire is given back for that day too, so it leaves their
     // choices and the officer's board as well.
-    declined = [...declined.filter(x => !(x.gameId === g.id && x.date === d.date)), { roundId: rOf(g).id, gameId: g.id, date: d.date, at: new Date().toISOString() }];
+    declined = [...declined.filter(x => !(x.gameId === g.id && x.date === d.date)), { roundId: rOf(g).id, gameId: g.id, comp: compKeyOf(g), date: d.date, at: new Date().toISOString() }];
     const nextPicks = savedPicks.map(p => (p.gameId === g.id ? { ...p, dates: p.dates.filter(x => x !== d.date) } : p)).filter(p => p.dates.length);
     try {
       await put(next, nextPicks);
@@ -413,6 +413,8 @@ export async function viewMy(ctx) {
     const next = { ...savedDays };
     if (modes.regular) for (const k of modes.comps) for (const x of keysFor(k)) { if (days[x]) next[x] = days[x]; else delete next[x]; }
     const nextPicks = puOn && modes.player ? picks.map(p => ({ ...p, dates: [...p.dates] })) : savedPicks;
+    // Available again for a game they had turned down (or chose it again): the turn-down no longer stands.
+    declined = declined.filter(x => !(next[`${x.comp || 'senior'}:${x.date}`] === 'yes' || nextPicks.some(p => p.gameId === x.gameId && p.dates.includes(x.date))));
     await put(next, nextPicks);
     savedDays = next;
     savedPicks = nextPicks;

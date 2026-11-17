@@ -64,6 +64,8 @@ export async function applyPlayerUmpires(store, { today, enabled = true }) {
         if (i < 0) continue;                                                          // the officer has already changed it
         slots[i] = null;
         g.alloc = { ...(g.alloc || {}), [date]: slots };
+        g.puGame = false;
+        if (g.puOnly && !Object.values(g.alloc).some(arr => (arr || []).some(Boolean))) { g.slots = 0; g.puOnly = false; }   // was only on for them
         touched.add(g.id);
         removed.push({ name: it.u.name, roundId, label, date });
         continue;
@@ -82,6 +84,7 @@ export async function applyPlayerUmpires(store, { today, enabled = true }) {
       // Turns this one game on. If its grade was not selected, only this game shows (`puOnly`), and the
       // grade itself stays unselected until the officer ticks it in Select grades.
       if (!(g.slots || 0)) g.puOnly = true;
+      g.puGame = true;                                                                 // stays on even if its grade is later unticked
       g.slots = n;
       g.alloc = { ...(g.alloc || {}), [date]: slots };
       touched.add(g.id);
