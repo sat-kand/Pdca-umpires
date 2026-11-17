@@ -762,6 +762,28 @@ with sync_playwright() as p:
     check(back["inSlot"] and "no longer available" not in back["note"], "they are put back on the game and the game's warning goes")
     check(page.locator(".dropouts").count() == 0, "and nothing about it on Allocate")
 
+    print("Pulls out again; the officer fills the place: the warning goes")
+    sign_out(page)
+    sign_in(page, info["email"])
+    page.wait_for_selector(".comp-section")
+    page.locator(f".comp-section:has(h2:has-text('Senior')) .drow:has-text('{label}')").first.locator("button.opt.no").click()
+    save(page)
+    page.wait_for_timeout(300)
+    sign_out(page)
+    sign_in(page, "admin@demo.test")
+    page.wait_for_selector(".dropouts")
+    page.locator(".dropouts a").first.click()
+    page.wait_for_selector(".change:has-text('no longer available')")
+    row = page.locator("tr:has(.change:has-text('no longer available'))").first
+    empty = row.locator("select.slot.empty").first
+    pick = empty.evaluate("(s, n) => [...s.options].find(o => o.value && !o.text.startsWith(n) && !o.disabled).value", info["name"])
+    empty.select_option(pick)
+    page.wait_for_timeout(400)
+    check(page.locator(".change:has-text('no longer available')").count() == 0, "a new umpire in that game: its 'no longer available' note goes")
+    page.click("a.tab:has-text('All rounds')")
+    page.wait_for_selector(".comp-tile")
+    check(page.locator(".dropouts").count() == 0, "and so does the Allocate banner")
+
     print("Settings: the officer decides whether there are player umpires")
     sign_out(page)
     sign_in(page, "admin@demo.test")

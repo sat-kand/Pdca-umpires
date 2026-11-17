@@ -199,7 +199,14 @@ export async function viewBoard(ctx, rid) {
   const draw = () => { const y = window.scrollY; setChildren(wrap, build()); window.scrollTo(0, y); };
   const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { console.error(e); toast(e.message || String(e), 'err'); draw(); } };
 
+  // A "no longer available" note goes as soon as the officer puts someone new in that game.
+  const DROPOUT = / is no longer available on /;
+  const newPeople = (g, alloc) => {
+    const had = new Set(Object.values(g.alloc || {}).flat().filter(Boolean).map(a => a.p));
+    return Object.values(alloc || {}).flat().some(a => a && !had.has(a.p));
+  };
   async function writeGame(g, patch) {
+    if (patch.alloc && DROPOUT.test(g.changeNote || '') && newPeople(g, patch.alloc)) patch = { ...patch, changeNote: '' };
     const next = { ...g, ...patch };
     await store.saveGame(rid, next);
     Object.assign(g, patch);
@@ -358,7 +365,11 @@ export async function viewBoard(ctx, rid) {
       if (!changes.length) { toast('No empty slots could be filled with umpires who said "Available".'); return; }
       const ids = new Set(changes.map(c => c.gameId));
       const updated = [];
-      for (const g of B.games) if (ids.has(g.id)) { g.alloc = applyChanges(g, changes); updated.push(g); }
+      for (const g of B.games) if (ids.has(g.id)) {
+        const alloc = applyChanges(g, changes);
+        if (DROPOUT.test(g.changeNote || '') && newPeople(g, alloc)) g.changeNote = '';
+        g.alloc = alloc; updated.push(g);
+      }
       await store.saveGames(rid, updated);
       await persistStats(); draw();
       toast(`Filled ${changes.length} slot(s). Please review before publishing.`);

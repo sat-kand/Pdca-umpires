@@ -99,3 +99,12 @@ test('nothing is put back once the round is no longer published', async () => {
   await applyWithdrawals(s);
   assert.equal(s.db.games.r1[0].alloc[DATE][0], null);
 });
+
+test('once the officer puts someone in the freed place, the warning and the banner go', async () => {
+  const s = store({ days: { [`senior:${DATE}`]: 'no' } });
+  await applyWithdrawals(s);
+  s.db.games.r1[0].alloc[DATE] = [{ p: 'p2', n: 'G Serrao' }, { p: 'p3', n: 'K Bakon' }];
+  const shown = await applyWithdrawals(s);
+  assert.equal(shown.length, 0);
+  assert.equal(s.db.games.r1[0].changeNote, '');
+});

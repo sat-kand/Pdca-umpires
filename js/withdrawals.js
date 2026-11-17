@@ -93,7 +93,7 @@ export async function applyWithdrawals(store) {
   const all = await store.listWithdrawals();
   // Older records only kept a count of what was freed: treat each of their games as freed.
   for (const w of all) if (w.handled && (w.freed || 0) > 0 && !(w.games || []).some(g => 'freed' in g)) (w.games || []).forEach(g => { g.freed = true; });
-  const open = all.filter(w => !w.handled || (w.games || []).some(g => g.freed && !g.restored));
+  const open = all.filter(w => !w.handled || (w.games || []).some(g => g.freed && !g.restored && !g.refilled));
   if (!open.length) return active(all);
   const season = store.getSeason ? await store.getSeason() : null;
   const avail = season && store.listAvailability ? await store.listAvailability(season.id) : [];
@@ -120,7 +120,7 @@ export async function applyWithdrawals(store) {
       const games = await store.listGames(roundId);
       let touched = false;
       for (const ref of refs) {
-        if (ref.restored) continue;
+        if (ref.restored || ref.refilled) continue;
         const game = games.find(x => x.id === ref.gameId);
         const slots = game && ((game.alloc || {})[ref.date] || []);
         const back = isBack(w, ref);
@@ -131,6 +131,16 @@ export async function applyWithdrawals(store) {
           game.changeNote = `${w.name} is no longer available on ${fmtDay(ref.date)}`;
           ref.freed = true;
           touched = true;
+          continue;
+        }
+        if (ref.freed && !back && game) {
+          // The officer has filled the place, or the note about them is gone: nothing left to flag.
+          const n = Math.max(game.slots || 0, 1);
+          const full = Array.from({ length: n }, (_, k) => slots[k]).every(Boolean);
+          if (full || !(game.changeNote || '').startsWith(`${w.name} is no longer available`)) {
+            ref.refilled = true;
+            if (full && (game.changeNote || '').startsWith(`${w.name} is no longer available`)) { game.changeNote = ''; touched = true; }
+          }
           continue;
         }
         if (!ref.freed || !back) continue;
@@ -155,7 +165,7 @@ export async function applyWithdrawals(store) {
       }
     }
     if (!w.handled) { w.handled = true; w.handledAt = new Date().toISOString(); }
-    w.freed = (w.games || []).filter(g => g.freed && !g.restored).length;
+    w.freed = (w.games || []).filter(g => g.freed && !g.restored && !g.refilled).length;
     await store.saveWithdrawal(w);
   }
   return active(all);
@@ -163,8 +173,8 @@ export async function applyWithdrawals(store) {
 
 // What the banner lists: games still pulled out of, for withdrawals the officer has not dismissed.
 const active = all => all
-  .filter(w => !w.dismissed && (w.games || []).some(g => g.freed && !g.restored))
-  .map(w => ({ ...w, shown: w.games.filter(g => g.freed && !g.restored) }))
+  .filter(w => !w.dismissed && (w.games || []).some(g => g.freed && !g.restored && !g.refilled))
+  .map(w => ({ ...w, shown: w.games.filter(g => g.freed && !g.restored && !g.refilled) }))
   .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
 // The officer has read the banner.
