@@ -104,7 +104,7 @@ export async function applyWithdrawals(store) {
   const isBack = (w, ref) => {
     const a = availOf(w.email);
     if (!a || !live(ref.roundId)) return false;
-    const that = (a.picks || []).filter(p => (p.dates || []).includes(ref.date));
+    const that = (a.picks || []).filter(p => (p.dates || []).includes(ref.date) && (p.comp || 'senior') === (ref.comp || 'senior'));
     if (that.some(p => p.gameId === ref.gameId)) return 'pu';
     if (that.length) return false;                                   // chose another game that day instead
     return (a.days || {})[`${ref.comp}:${ref.date}`] === 'yes' && (a.updatedAt || '') > (w.createdAt || '') ? 'yes' : false;

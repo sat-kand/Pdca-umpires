@@ -252,7 +252,7 @@ export async function viewBoard(ctx, rid) {
         // umpire is free and clean there. Day 2 can still be changed on its own.
         const alloc = structuredClone(g.alloc || {});
         // Putting a player umpire back in the game they chose marks them as the player umpire again.
-        const put = (dt) => { const arr = (alloc[dt] ||= []); while (arr.length <= i) arr.push(null); arr[i] = claimOf(u.pid, dt) === g.id ? { p: u.pid, n: u.name, pu: true } : { p: u.pid, n: u.name }; };
+        const put = (dt) => { const arr = (alloc[dt] ||= []); while (arr.length <= i) arr.push(null); arr[i] = claimOf(u.pid, dt, compKeyOf(g)) === g.id ? { p: u.pid, n: u.name, pu: true } : { p: u.pid, n: u.name }; };
         put(date);
         let extra = 0;
         const cleanPick = !assignmentWarnings({ game: g, date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy: busyMap, claimOf }).length;
@@ -278,7 +278,7 @@ export async function viewBoard(ctx, rid) {
     })() : [];
     return h('div', { class: 'slot-wrap' }, sel,
       // The tag follows the person, not the entry: it shows whenever the one who chose this game is in it.
-      cur && (cur.pu || claimOf(cur.p, date) === g.id) && h('span', { class: 'chip pu', title: 'Chose this game themselves' }, 'Player umpire'),
+      cur && (cur.pu || claimOf(cur.p, date, compKeyOf(g)) === g.id) && h('span', { class: 'chip pu', title: 'Chose this game themselves' }, 'Player umpire'),
       warn.length > 0 && h('span', { class: 'warn-icon', title: warn.join('\n'), tabindex: 0 }, '⚠'));
   }
 
@@ -411,14 +411,14 @@ export async function viewAvailabilityOverview(ctx, rid) {
   const by = Object.fromEntries(availList.map(a => [a.email, a]));
   const active = umpires.filter(u => u.active).sort((a, b) => a.name.localeCompare(b.name));
   const cols = roundColumns(games);
-  // Player umpires: the game they chose shows in its own column; their other columns that day show
-  // the tag too, because their choice comes first and they are not given anything else.
+  // Player umpires: the game they chose shows in its competition's column; other competitions show
+  // their answers as usual.
   const { pickOf } = claimsFrom(availList, umpires, puEnabled(store));
   const multi = new Set(cols.map(c => c.comp)).size > 1;
   const colName = c => (multi ? `${compLabel(c.comp)} · ` : '') + fmtDay(c.date);
-  const missing = active.filter(u => cols.every(c => availStatus(by, u, c.comp, c.date) === 'none' && !pickOf(u.pid, c.date)));
+  const missing = active.filter(u => cols.every(c => availStatus(by, u, c.comp, c.date) === 'none' && !pickOf(u.pid, c.date, c.comp)));
   const ICON = { yes: ['✓', 'ok'], no: ['✗', 'no'], none: ['–', 'none'] };
-  const counts = c => { const n = { yes: 0, no: 0, none: 0, pu: 0 }; active.forEach(u => { n[pickOf(u.pid, c.date) ? 'pu' : availStatus(by, u, c.comp, c.date)]++; }); return n; };
+  const counts = c => { const n = { yes: 0, no: 0, none: 0, pu: 0 }; active.forEach(u => { n[pickOf(u.pid, c.date, c.comp) ? 'pu' : availStatus(by, u, c.comp, c.date)]++; }); return n; };
   const emails = missing.map(u => u.email);
 
   return h('div', {},
@@ -430,9 +430,9 @@ export async function viewAvailabilityOverview(ctx, rid) {
         h('thead', {}, h('tr', {}, h('th', {}, 'Umpire'), cols.map(c => h('th', {}, colName(c))), h('th', {}, ''))),
         h('tbody', {}, active.map(u => h('tr', {}, h('td', {}, u.name),
           cols.map(c => {
-            const p = pickOf(u.pid, c.date);
+            const p = pickOf(u.pid, c.date, c.comp);
             if (p) return h('td', { class: 'av pu', title: `Chose ${gradeShort(p.grade)}: ${p.label}` },
-              h('span', { class: 'chip pu' }, 'Player umpire'), p.comp === c.comp && h('div', { class: 'muted small' }, `${gradeShort(p.grade)} \u00b7 ${p.label}`));
+              h('span', { class: 'chip pu' }, 'Player umpire'), h('div', { class: 'muted small' }, `${gradeShort(p.grade)} \u00b7 ${p.label}`));
             const [t, k] = ICON[availStatus(by, u, c.comp, c.date)]; return h('td', { class: 'av ' + k }, t); }),
           h('td', {}))))))),
     h('div', { class: 'card' }, h('h2', {}, `Haven't replied (${missing.length})`),

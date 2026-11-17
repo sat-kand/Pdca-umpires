@@ -98,9 +98,10 @@ test('a player umpire comes first: offered for the game they chose, kept out of 
   const avail = [{ email: 'sk@x.test', days, picks: [pick('g1', ['2026-11-21'])] }, { email: 'gs@x.test', days }];
   const availByEmail = Object.fromEntries(avail.map(a => [a.email, a]));
   const { claimOf, pickOf } = claimsFrom(avail, umpires);
-  assert.equal(claimOf('p1', '2026-11-21'), 'g1');
-  assert.equal(pickOf('p1', '2026-11-21').grade, 'Senior B09');
-  assert.equal(claimOf('p2', '2026-11-21'), null);
+  assert.equal(claimOf('p1', '2026-11-21', 'senior'), 'g1');
+  assert.equal(pickOf('p1', '2026-11-21', 'senior').grade, 'Senior B09');
+  assert.equal(claimOf('p2', '2026-11-21', 'senior'), null);
+  assert.equal(claimOf('p1', '2026-11-21', 'junior'), null, 'in Junior they are a full umpire as usual');
   const g1 = G('g1', 'Senior B09', ['2026-11-21'], { slots: 2 });
   const g2 = G('g2', 'Senior C10', ['2026-11-21'], { slots: 1 });
   const own = slotOptions({ game: g1, date: '2026-11-21', slotIndex: 0, umpires, availByEmail, busy: {}, claimOf }).find(o => o.umpire.pid === 'p1');
@@ -114,7 +115,13 @@ test('a player umpire comes first: offered for the game they chose, kept out of 
   const changes = autoAllocate({ games: [g1, g2], umpires, availByEmail, claimOf });
   assert.ok(changes.filter(c => c.entry.p === 'p1').every(c => c.gameId === 'g1' && c.entry.pu));
   // Switched off: nothing is claimed.
-  assert.equal(claimsFrom(avail, umpires, false).claimOf('p1', '2026-11-21'), null);
+  assert.equal(claimsFrom(avail, umpires, false).claimOf('p1', '2026-11-21', 'senior'), null);
+  // A Junior game that day: they are offered as usual, with no warning.
+  const jg = { ...G('j1', 'Junior U14', ['2026-11-21'], { slots: 1 }), comp: 'PDCA Junior Competition' };
+  const jr = slotOptions({ game: jg, date: '2026-11-21', slotIndex: 0, umpires, availByEmail, busy: {}, claimOf }).find(o => o.umpire.pid === 'p1');
+  assert.equal(jr.group, 'ok');
+  assert.ok(!jr.chosen && !jr.elsewhere);
+  assert.deepEqual(assignmentWarnings({ game: jg, date: '2026-11-21', slotIndex: 0, umpire: umpires[0], availByEmail, busy: {}, claimOf }), []);
 });
 
 test('a chosen game in an unselected grade is turned on by itself; in a selected grade it is just filled', async () => {

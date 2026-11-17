@@ -99,7 +99,7 @@ export async function applyPlayerUmpires(store, { today, enabled = true }) {
   return { added, removed, blocked };
 }
 
-// Who chose which game, day by day, for the Assign board. `claimOf(pid, date)` gives the game id a player
+// Who chose which game, day by day, for the Assign board. `claimOf(pid, date, comp)` gives the game id a player
 // umpire chose for that day; `pickOf` gives the whole choice. A choice comes before their date answers: on
 // that day they are only put in the game they chose. Nothing is claimed while player umpiring is off.
 export function claimsFrom(availList, umpires, enabled = true) {
@@ -111,10 +111,11 @@ export function claimsFrom(availList, umpires, enabled = true) {
       if (!pid) continue;
       for (const p of a.picks || []) {
         if (!PLAYER_UMPIRE_COMPS.includes(p.comp)) continue;
-        for (const d of p.dates || []) byDay.set(`${pid}|${d}`, p);
+        for (const d of p.dates || []) byDay.set(`${pid}|${p.comp}|${d}`, p);
       }
     }
   }
-  const pickOf = (pid, date) => byDay.get(`${pid}|${date}`) || null;
-  return { pickOf, claimOf: (pid, date) => { const p = pickOf(pid, date); return p ? p.gameId : null; } };
+  // Only within the competition they chose in: in any other competition they are a full umpire as usual.
+  const pickOf = (pid, date, comp) => byDay.get(`${pid}|${comp}|${date}`) || null;
+  return { pickOf, claimOf: (pid, date, comp) => { const p = pickOf(pid, date, comp); return p ? p.gameId : null; } };
 }

@@ -187,13 +187,13 @@ export function availStatus(availByEmail, umpire, comp, date) {
 }
 
 // Warnings for one umpire in one slot. Empty array = clean.
-// `claimOf(pid, date)` gives the game a player umpire chose for that day (or nothing). Their choice comes
-// first: on that day they are not given any other game.
+// `claimOf(pid, date, comp)` gives the game a player umpire chose for that day in that competition (or
+// nothing). Their choice comes first: that day they are not given any other game of that competition.
 export function assignmentWarnings({ game, date, slotIndex, umpire, availByEmail, busy, chosen = false, claimOf }) {
   const w = [];
   if (umpire.active === false) w.push('Not an active member');
   const comp = compKeyOf(game);
-  const claim = claimOf ? claimOf(umpire.pid, date) : null;
+  const claim = claimOf ? claimOf(umpire.pid, date, comp) : null;
   if (claim === game.id) chosen = true;
   else if (claim) w.push('Chose another game as a player umpire this day');
   // A player umpire picked this game themselves: their date answers are for the officer's own allocations.
@@ -210,7 +210,7 @@ export function assignmentWarnings({ game, date, slotIndex, umpire, availByEmail
 // Options for a slot dropdown, grouped and sorted.
 export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy, loads, claimOf }) {
   const rows = [];
-  const claimed = (pid, dt) => (claimOf ? claimOf(pid, dt) : null);
+  const claimed = (pid, dt) => (claimOf ? claimOf(pid, dt, compKeyOf(game)) : null);
   for (const u of umpires) {
     const st = availStatus(availByEmail, u, compKeyOf(game), date);
     const others = ((busy[availKey(compKeyOf(game), date)] || {})[u.pid] || []).filter(id => id !== game.id);
@@ -297,7 +297,7 @@ export function autoAllocate({ games, umpires, availByEmail, baseLoads = {}, cla
       for (let i = 0; i < cur.length; i++) {
         if (cur[i]) { prevPid = cur[i].p; continue; }
         // The player umpire who chose this game goes back in first, if they are not in it.
-        const chooser = claimOf && active.find(u => claimOf(u.pid, d.date) === g.id && !allocFor(g, d.date).some(a => a && a.p === u.pid));
+        const chooser = claimOf && active.find(u => claimOf(u.pid, d.date, comp) === g.id && !allocFor(g, d.date).some(a => a && a.p === u.pid));
         if (chooser) {
           const entry = { p: chooser.pid, n: chooser.name, pu: true };
           (g.alloc[d.date] ||= [])[i] = entry;
@@ -309,7 +309,7 @@ export function autoAllocate({ games, umpires, availByEmail, baseLoads = {}, cla
         }
         const cands = active.filter(u =>
           availStatus(availByEmail, u, comp, d.date) === 'yes' &&
-          !(claimOf && claimOf(u.pid, d.date)) &&                // player umpires keep to the game they chose
+          !(claimOf && claimOf(u.pid, d.date, comp)) &&                // player umpires keep to the game they chose
           !((busy[bk] || {})[u.pid] || []).length &&
           !allocFor(g, d.date).some(a => a && a.p === u.pid));
         if (!cands.length) continue;
