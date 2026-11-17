@@ -256,3 +256,4 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; }
 .chip.muted-chip { background: #f1f3f1; color: var(--muted); }
 .comp-row .comp-pick { margin: 0; }
 .drow.missing { background: #fdecea; border-radius: 8px; box-shadow: inset 3px 0 0 var(--red, #b3261e); padding-left: .5rem; }
+.mode-head { margin: .6rem 0 .3rem; font-size: 1rem; }

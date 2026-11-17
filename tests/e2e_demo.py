@@ -757,12 +757,14 @@ with sync_playwright() as p:
     sign_out(page)
     sign_in(page, "umpire4@demo.test")
     page.wait_for_selector(".mode")
-    regular = page.locator(".mode:has-text('Full umpire') input")
-    check(page.locator(".mode-row strong").all_inner_texts() == ["Full umpire", "Choose my own games"], "members see the officer's own name for it")
+    check(page.locator(".mode-row strong").all_inner_texts() == ["Choose my own games"] and page.locator("h3.mode-head").inner_text() == "Full umpire"
+          and page.locator(".mode:has-text('Full umpire')").count() == 0, "Full umpire is a heading with no tick box; the officer's own name for player umpiring")
     player = page.locator(".mode:has-text('Choose my own games') input")
-    check(regular.is_checked() and not player.is_checked(), "giving availability is the default; choosing games is a second option")
+    check(not player.is_checked(), "choosing games is a second option, off by default")
     check("Pick any Senior game you would like to umpire." in page.inner_text(".mode:has-text('Choose my own games')"), "members see the officer's own wording")
-    check(page.locator(".card:has(h2:has-text('How I will umpire')) .mode").count() == 2, "both options sit together under How I will umpire")
+    card = ".card:has(h2:has-text('How I will umpire'))"
+    check(page.locator(f"{card} h3.mode-head").count() == 1 and page.locator(f"{card} .mode").count() == 1,
+          "Full umpire and player umpiring sit together under How I will umpire")
     player.check()
     page.wait_for_selector(".pick-list")
     order = page.evaluate("() => { const a = document.querySelector('.avail-body'), p = document.querySelector('.player-card'); return !!(a.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING); }")
@@ -790,8 +792,10 @@ with sync_playwright() as p:
     page.wait_for_selector(".my-picks")
     check(game_text.split(" ", 1)[1] in page.inner_text(".my-picks"), f"the game is listed as theirs ({game_text})")
     check("1 game chosen" in page.inner_text(".savebar"), "the save bar counts it")
-    regular.uncheck()
-    check(page.locator(".avail-body").is_hidden(), "a player umpire only: the date list is hidden")
+    for c in ["Senior", "Junior", "T20"]:
+        page.locator(f".comp-pick:has-text('{c}') input").uncheck()
+    check(page.locator(".avail-body").is_hidden() and page.locator(".notice:has-text('Tick at least one competition')").count() == 0,
+          "a player umpire only: no competitions ticked, no date list, and no nagging")
     days_before = page.evaluate("() => (Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.availability).find(a => a.email === 'umpire4@demo.test') || {}).days || {}")
     page.click(".savebar button:has-text('Save')")
     page.wait_for_selector(".toast:has-text('will see the games you chose')")
@@ -799,7 +803,7 @@ with sync_playwright() as p:
     check(days_after == days_before, "choosing a game does not change their date answers, so the officer's Availability sheet is unaffected")
     page.reload()
     page.wait_for_selector(".my-picks")
-    check(not page.locator(".mode:has-text('Full umpire') input").is_checked() and page.locator(".mode:has-text('Choose my own games') input").is_checked(),
+    check(not any(c.is_checked() for c in page.locator(".comp-pick input").all()) and page.locator(".mode:has-text('Choose my own games') input").is_checked(),
           "the choice of how they umpire is saved")
     check(game_text.split(" ", 1)[1] in page.inner_text(".my-picks"), "and so is the game")
     dialogs = []
@@ -845,6 +849,12 @@ with sync_playwright() as p:
 
     print("Availability: tick boxes only show or hide; Save sends only what is ticked")
     sign_out(page)
+    # One of their saved T20 answers is missing, as old or imported data might be.
+    page.evaluate("""() => { const k = 'pdca-umpires-demo-v2'; const db = JSON.parse(localStorage.getItem(k));
+        const a = Object.values(db.orgs.pdca.availability).find(a => a.email === 'umpire5@demo.test');
+        const key = Object.keys(a.days).filter(x => x.startsWith('t20:')).sort()[0]; delete a.days[key]; localStorage.setItem(k, JSON.stringify(db)); }""")
+    page.reload()
+    page.wait_for_selector("#login-email")
     sign_in(page, "umpire5@demo.test")
     page.wait_for_selector(".comp-list")
     AV = "() => Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.availability).find(a => a.email === 'umpire5@demo.test')"
@@ -858,10 +868,6 @@ with sync_playwright() as p:
     check(page.locator(".comp-section:has(h2:has-text('Junior'))").is_hidden() and page.locator(".comp-section:has(h2:has-text('T20'))").is_hidden()
           and page.locator(".comp-section:has(h2:has-text('Senior'))").is_visible(), "unticking only hides those dates")
     check(save_btn.is_disabled() and page.locator(".chip:visible:has-text('Unsaved changes')").count() == 0, "and is not a change: nothing to save")
-    page.locator(".mode:has-text('Full umpire') input").uncheck()
-    page.locator(".comp-pick:has-text('Junior') input").check()
-    check(page.locator(".mode:has-text('Full umpire') input").is_checked(), "ticking a competition ticks Full umpire too")
-    page.locator(".comp-pick:has-text('Junior') input").uncheck()
     page.locator(".comp-pick:has-text('Senior') input").uncheck()
     check(page.locator(".notice:has-text('Tick at least one competition')").count() == 1, "with none ticked they are asked to tick one")
     check(page.locator(".savebar").is_hidden(), "and there is no Save bar (no 'All dates answered' with nothing to answer)")
@@ -906,6 +912,21 @@ with sync_playwright() as p:
     check([c.is_checked() for c in page.locator(".comp-pick input").all()] == [True, False, False] and page.locator(".comp-section:has(h2:has-text('Junior'))").is_hidden(),
           "which competitions are shown is remembered")
     check(save_btn.is_disabled(), "and it starts greyed out when nothing has changed")
+    # The bug: a ticked competition that was not edited but has a blank date must still stop the save.
+    page.locator(".comp-pick:has-text('T20') input").check()
+    sen_row2 = page.locator(".comp-section:has(h2:has-text('Senior')) .drow").nth(2)
+    sen_row2.locator("button.opt.no").click() if "on" not in (sen_row2.locator("button.opt.no").get_attribute("class") or "") else sen_row2.locator("button.opt.yes").click()
+    save_btn.click()
+    page.wait_for_selector(".toast:has-text('Answer every date')")
+    check("T20 has 1 left" in page.locator(".toast").last.inner_text(), "editing Senior with T20 ticked: T20's blank date (not edited) still stops the save")
+    t20_blank = page.locator(".comp-section:has(h2:has-text('T20')) .drow.missing")
+    check(t20_blank.count() == 1, "and that T20 date is highlighted")
+    t20_blank.locator("button.opt.yes").click()
+    save_btn.click()
+    page.wait_for_selector(".toast:has-text('saved')")
+    t20_now = page.evaluate(AV)["days"]
+    check(all(t20_now.get(k) for k in [x for x in t20_now] if k.startswith("t20:")) and page.locator(".comp-row:has-text('T20') .chip").inner_text() == "\u2713 Submitted",
+          "once every date is answered it saves, and T20 is complete")
     sign_out(page)
     sign_in(page, "admin@demo.test")
     page.click(".nav-link:has-text('Availability')")

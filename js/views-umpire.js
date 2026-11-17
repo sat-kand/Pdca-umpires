@@ -89,7 +89,7 @@ export async function viewMy(ctx) {
   // Player umpiring is switched on, and described, by the appointments officer in Settings.
   const pu = (store.org && store.org.playerUmpire) || {};
   const puOn = !!pu.enabled;
-  if (!puOn) modes.regular = true;              // the only way left to give availability
+  modes.regular = true;                          // Full umpire is a heading; each competition is ticked on its own
   // Which competitions they give availability for. Before they have said, the ones they have
   // answered in, or all of them for someone new.
   const ALL_COMPS = ['senior', 'junior', 't20'];
@@ -277,7 +277,6 @@ export async function viewMy(ctx) {
     const cb = h('input', { type: 'checkbox', checked: modes.comps.includes(key), 'aria-label': compLabel(key) });
     cb.onchange = () => {
       modes.comps = ALL_COMPS.filter(k => (k === key ? cb.checked : modes.comps.includes(k)));
-      if (cb.checked) modes.regular = true;      // a competition only counts for a full umpire
       drawModes();
       drawStatus();
     };
@@ -288,10 +287,10 @@ export async function viewMy(ctx) {
 
   function drawModes() {
     setChildren(modeCard,
-      h('h2', {}, puOn ? 'How I will umpire' : 'Full umpire'),
-      puOn && modeBox('regular', 'Full umpire'),
+      puOn ? h('h2', {}, 'How I will umpire') : h('h2', {}, 'Full umpire'),
+      puOn && h('h3', { class: 'mode-head' }, 'Full umpire'),
       h('div', { class: 'comp-list' + (puOn ? '' : ' flush') }, ALL_COMPS.filter(k => compsOffered.includes(k)).map(compBox)),
-      modes.regular && !modes.comps.some(k => compsOffered.includes(k)) && h('p', { class: 'notice warn' }, 'Tick at least one competition.'),
+      !modes.comps.some(k => compsOffered.includes(k)) && !(puOn && modes.player) && h('p', { class: 'notice warn' }, 'Tick at least one competition.'),
       puOn && modeBox('player', (pu.title || '').trim() || 'Player umpire', (pu.description || '').trim()));
     availCard.hidden = !modes.regular || !modes.comps.some(k => compsOffered.includes(k));
     for (const [k, el] of Object.entries(sectionEl)) el.hidden = !modes.comps.includes(k);
@@ -373,9 +372,9 @@ export async function viewMy(ctx) {
 
   const saveOnce = busy(saveBtn, async () => {
     if ((!regularChanged() && !picksChanged()) || savebar.hidden) return;
-    // A competition being sent must have every date answered, Available or Not available.
-    // Only the competitions being sent are checked: ticked, and changed since the last save.
-    const sending = modes.regular ? modes.comps.filter(k => compsOffered.includes(k) && keysFor(k).some(x => days[x] !== savedDays[x])) : [];
+    // Every ticked competition is sent with Save, new or edited, so each one must have every date
+    // answered, Available or Not available. Unticked competitions are neither sent nor checked.
+    const sending = modes.comps.filter(k => compsOffered.includes(k));
     const blanks = sending.map(k => ({ k, keys: comps.filter(c => c.comp === k).flatMap(keysOf).filter(x => !days[x]) })).filter(b => b.keys.length);
     if (blanks.length) {
       Object.values(rowEl).forEach(el => el.classList.remove('missing'));
