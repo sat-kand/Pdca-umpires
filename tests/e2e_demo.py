@@ -521,7 +521,7 @@ with sync_playwright() as p:
     page.click(".menu-items .nav-link:has-text('Members')")
     page.wait_for_selector("table.board")
     check(page.locator("h1").first.inner_text() == "Members", "the Umpires page is now called Members")
-    check(page.locator("table.members thead th").all_inner_texts() == ["ACTIVE", "PROFILE", "FIRST NAME", "LAST NAME", "D.O.B", "ADDRESS", "EMAIL", "MOBILE", "ACCREDITATION NO.", "MEMBERSHIP"],
+    check(page.locator("table.members thead th").all_inner_texts() == ["ACTIVE", "NAME", "D.O.B", "ADDRESS", "EMAIL", "MOBILE", "ACCREDITATION NO.", "MEMBERSHIP"],
           "members have a first and last name, date of birth, address, accreditation number and membership type")
     u1 = page.locator("tr:has-text('umpire1@demo.test')")
     check(u1.locator("input:not([type=checkbox])").count() == 0 and u1.locator("select").count() == 1 and "L1-2200" in u1.inner_text(),
@@ -529,7 +529,7 @@ with sync_playwright() as p:
     check(page.locator("text=1 member(s) are waiting for approval").count() == 1, "officer sees the pending member")
     row = page.locator("tr.needs")
     cells = row.locator("td").all_inner_texts()
-    check(cells[2] == "New" and cells[3] == "Umpire", "the name they typed is split into the two fields")
+    check(cells[1] == "New Umpire", "the name they typed is shown, linking to their profile")
     row.locator("input[type=checkbox]").click()
     page.wait_for_function("() => !document.querySelector('tr.needs')")
     check(True, "approving moves the member to active")
@@ -537,7 +537,7 @@ with sync_playwright() as p:
     page.click("button:has-text('Add members')")
     page.wait_for_selector("td:has-text('pat@example.com')")
     pat = page.locator("tr:has-text('pat@example.com') td").all_inner_texts()
-    check(pat[2] == "Pat" and pat[3] == "Example" and pat[7] == "0400 000 000" and pat[8] == "L3-7782", "bulk add reads First name, Last name, email, mobile and accreditation number")
+    check(pat[1] == "Pat Example" and pat[5] == "0400 000 000" and pat[6] == "L3-7782", "bulk add reads First name, Last name, email, mobile and accreditation number")
     page.goto(BASE + "#/admin/members")
     page.wait_for_selector("table.members")
     check(page.locator("h1").first.inner_text() == "Members", "the old /admin/umpires link still opens it")

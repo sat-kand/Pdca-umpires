@@ -769,7 +769,7 @@ export async function viewUmpires(ctx) {
       return h('div', { class: 'member-type' }, sel, fee ? h('span', { class: 'muted fee' }, money(fee)) : null);
     };
     const pending = members.filter(u => !u.active && !u.deactivated);      // registered, not yet approved
-    const COLS = ['Active', 'Profile', 'First name', 'Last name', 'D.O.B', 'Address', 'Email', 'Mobile', 'Accreditation no.', 'Membership'];
+    const COLS = ['Active', 'Name', 'D.O.B', 'Address', 'Email', 'Mobile', 'Accreditation no.', 'Membership'];
     setChildren(wrap,
       h('div', { class: 'row-between' }, h('h1', {}, 'Members'), h('a', { class: 'btn', href: '#/admin' }, '\u2190 Allocate')),
       pending.length > 0 && h('p', { class: 'notice warn' }, `${pending.length} member(s) are waiting for approval. Tick "Active" to approve them.`),
@@ -778,8 +778,6 @@ export async function viewUmpires(ctx) {
         h('tbody', {}, members.map(u => { const n = nameParts(u); return h('tr', { class: u.active ? '' : u.deactivated ? 'inactive' : 'needs' },
           h('td', {}, h('input', { type: 'checkbox', checked: !!u.active, 'aria-label': 'Active', onchange: e => save(u, { active: e.target.checked, deactivated: !e.target.checked }, true) })),
           h('td', {}, profileLink(u)),
-          h('td', {}, text(n.firstName)),
-          h('td', {}, text(n.lastName)),
           h('td', {}, text(u.dob && new Date(`${u.dob}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }))),
           h('td', {}, text(u.address)),
           h('td', { class: 'muted' }, u.email),
