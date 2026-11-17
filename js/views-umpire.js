@@ -173,7 +173,7 @@ export async function viewMy(ctx) {
   }
 
   // ---- how this member umpires
-  // Layout: one card with the choices (Regular umpire and its competitions, Player umpire), then the
+  // Layout: one card with the choices (Full umpire and its competitions, Player umpire), then the
   // date form, then the games chosen as a player umpire.
   const modeCard = h('section', { class: 'card' });
   const availCard = h('section', { class: 'card' });
@@ -277,6 +277,7 @@ export async function viewMy(ctx) {
     const cb = h('input', { type: 'checkbox', checked: modes.comps.includes(key), 'aria-label': compLabel(key) });
     cb.onchange = () => {
       modes.comps = ALL_COMPS.filter(k => (k === key ? cb.checked : modes.comps.includes(k)));
+      if (cb.checked) modes.regular = true;      // a competition only counts for a full umpire
       drawModes();
       drawStatus();
     };
@@ -287,11 +288,11 @@ export async function viewMy(ctx) {
 
   function drawModes() {
     setChildren(modeCard,
-      h('h2', {}, puOn ? 'How I will umpire' : 'Regular umpire'),
-      puOn && modeBox('regular', 'Regular umpire'),
+      h('h2', {}, puOn ? 'How I will umpire' : 'Full umpire'),
+      puOn && modeBox('regular', 'Full umpire'),
       h('div', { class: 'comp-list' + (puOn ? '' : ' flush') }, ALL_COMPS.filter(k => compsOffered.includes(k)).map(compBox)),
       modes.regular && !modes.comps.some(k => compsOffered.includes(k)) && h('p', { class: 'notice warn' }, 'Tick at least one competition.'),
-      puOn && modeBox('player', 'Choose my own games (player umpire)', (pu.description || '').trim()));
+      puOn && modeBox('player', (pu.title || '').trim() || 'Player umpire', (pu.description || '').trim()));
     availCard.hidden = !modes.regular || !modes.comps.some(k => compsOffered.includes(k));
     for (const [k, el] of Object.entries(sectionEl)) el.hidden = !modes.comps.includes(k);
     const n = modes.comps.filter(k => compsOffered.includes(k)).length;
@@ -319,7 +320,7 @@ export async function viewMy(ctx) {
     // ticked = this part will be sent by Save; an untouched change in an unticked part says so
     const paintChip = (c, ticked, changed, has) => {
       c.className = 'chip ' + (changed ? 'warn' : has ? 'ok' : 'muted-chip');
-      c.textContent = changed ? (ticked ? 'Unsaved changes' : 'Unsaved \u00b7 not ticked') : has ? '\u2713 Submitted' : 'Not submitted';
+      c.textContent = changed ? 'Unsaved changes' : has ? '\u2713 Submitted' : 'Not submitted';
     };
     for (const k of ALL_COMPS) {
       paintChip(statusChips[k], modes.regular && modes.comps.includes(k),
@@ -338,7 +339,11 @@ export async function viewMy(ctx) {
   };
 
   const buttons = {};
-  const paint = key => buttons[key].forEach(([v, b]) => { b.classList.toggle('on', days[key] === v); b.setAttribute('aria-pressed', String(days[key] === v)); });
+  const rowEl = {};
+  const paint = key => {
+    buttons[key].forEach(([v, b]) => { b.classList.toggle('on', days[key] === v); b.setAttribute('aria-pressed', String(days[key] === v)); });
+    if (days[key] && rowEl[key]) rowEl[key].classList.remove('missing');
+  };
   const choose = (key, v) => {
     if (days[key] === v) delete days[key]; else days[key] = v;
     paint(key); drawStatus();
@@ -354,7 +359,7 @@ export async function viewMy(ctx) {
       const yes = optBtn(key, 'yes', 'Available'), no = optBtn(key, 'no', 'Not available');
       buttons[key] = [['yes', yes], ['no', no]];
       yes.classList.toggle('on', days[key] === 'yes'); no.classList.toggle('on', days[key] === 'no');
-      return h('div', { class: 'drow' }, h('span', { class: 'dlabel' }, label), h('div', { class: 'opts' }, yes, no));
+      return (rowEl[key] = h('div', { class: 'drow' }, h('span', { class: 'dlabel' }, label), h('div', { class: 'opts' }, yes, no)));
     };
     // Same-length competitions: Round 2 -> Day 1 / Day 2. Mixed lengths (Juniors): a plain list of
     // dates grouped by month, because the same Saturday can be Day 2 for one grade and a one-day
@@ -368,8 +373,20 @@ export async function viewMy(ctx) {
 
   const saveOnce = busy(saveBtn, async () => {
     if ((!regularChanged() && !picksChanged()) || savebar.hidden) return;
+    // A competition being sent must have every date answered, Available or Not available.
+    // Only the competitions being sent are checked: ticked, and changed since the last save.
+    const sending = modes.regular ? modes.comps.filter(k => compsOffered.includes(k) && keysFor(k).some(x => days[x] !== savedDays[x])) : [];
+    const blanks = sending.map(k => ({ k, keys: comps.filter(c => c.comp === k).flatMap(keysOf).filter(x => !days[x]) })).filter(b => b.keys.length);
+    if (blanks.length) {
+      Object.values(rowEl).forEach(el => el.classList.remove('missing'));
+      blanks.forEach(b => b.keys.forEach(x => rowEl[x] && rowEl[x].classList.add('missing')));
+      const first = rowEl[blanks[0].keys[0]];
+      if (first && first.scrollIntoView) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      toast(`Answer every date before saving: ${blanks.map(b => `${compLabel(b.k)} has ${b.keys.length} left`).join(', ')}.`, 'err');
+      return;
+    }
     const before = savedDays;
-    // Answers for a competition that is not ticked (or with Regular umpire unticked) stay as last saved,
+    // Answers for a competition that is not ticked (or with Full umpire unticked) stay as last saved,
     // and so do the chosen games when Player umpire is unticked.
     const next = { ...savedDays };
     if (modes.regular) for (const k of modes.comps) for (const x of keysFor(k)) { if (days[x]) next[x] = days[x]; else delete next[x]; }

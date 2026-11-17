@@ -117,17 +117,19 @@ export async function viewOrgSettings(ctx) {
     const p = org.playerUmpire || {};
     const on = h('input', { type: 'checkbox', checked: !!p.enabled });
     const text = h('textarea', { rows: 2, placeholder: 'e.g. Pick any Senior round, grade or fixture you want to umpire.' }, p.description || '');
+    const title = h('input', { value: p.title || '', placeholder: 'Player umpire', 'aria-label': 'Name for player umpiring' });
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
     return h('form', { class: 'card', onsubmit: busy(saveBtn, async e => {
       e.preventDefault();
-      await store.saveOrg({ playerUmpire: { enabled: on.checked, description: text.value.trim() }, updatedAt: new Date().toISOString() });
+      await store.saveOrg({ playerUmpire: { enabled: on.checked, title: title.value.trim(), description: text.value.trim() }, updatedAt: new Date().toISOString() });
       await ctx.refreshUser();
       toast('Saved', 'ok');
       await draw();
     }) },
     h('h2', {}, 'Player umpires'),
     h('label', { class: 'inline' }, on, ' Let members choose their own Senior games to umpire'),
-    h('p', { class: 'muted small' }, 'When this is off, members only see "Regular umpire". Games already chosen stay where they are.'),
+    h('p', { class: 'muted small' }, 'When this is off, members only see "Full umpire". Games already chosen stay where they are.'),
+    h('label', {}, 'What it is called (leave empty for "Player umpire")', title),
     h('label', {}, 'What members are told (leave empty to show nothing)', text),
     saveBtn);
   }
