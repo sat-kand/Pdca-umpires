@@ -885,6 +885,7 @@ with sync_playwright() as p:
     page.click("a.tab:has-text('Availability')")
     page.wait_for_selector("table.board")
     bc = page.locator("tr:has(td:text-is('B Chellapa'))")
+    page.wait_for_selector("td.av.pu")
     check(bc.locator("td.av.pu .chip.pu").count() >= 1 and "player umpire" in page.inner_text(".summary"),
           "the round's Availability tab shows their choice, tagged Player umpire")
     page.click("a.tab:has-text('Assign')")
@@ -1108,6 +1109,8 @@ with sync_playwright() as p:
     summ = fp.inner_text(".my-summary")
     check(fp.locator(".avail-form").is_hidden() and all(c in summ for c in ["Senior", "Junior", "T20"]) and "available" in summ and "Submitted" in summ,
           "once submitted, the form folds into a short summary: each competition, how many dates available, Submitted")
+    check(fp.locator(".summary-list > li", has_text="Player umpire").locator(".chip").inner_text() == "Not submitted",
+          "player umpiring is listed too, as Not submitted when no games are chosen")
     fp.click(".my-summary button:has-text('Edit availability')")
     fp.wait_for_selector(".drow")
     check(fp.locator(".comp-title").count() == 3 and fp.locator("button.opt.yes").count() > 10, "Edit availability opens the date-by-date form")

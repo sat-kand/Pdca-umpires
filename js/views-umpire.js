@@ -456,9 +456,11 @@ export async function viewMy(ctx) {
       h('div', { class: 'row-between' }, h('h2', {}, 'My availability'),
         h('button', { class: 'btn', type: 'button', onclick: () => setEditing(true) }, 'Edit availability')),
       h('ul', { class: 'plain summary-list' }, items,
-        puOn && n > 0 && h('li', {},
-          h('div', { class: 'row-between' }, h('strong', {}, puTitle), h('span', { class: 'chip ok' }, `${n} game${n === 1 ? '' : 's'} chosen`)),
-          h('ul', { class: 'plain muted small' }, savedPicks.map(p => h('li', {}, `${p.dates.map(fmtDay).join(' & ')} \u00b7 ${gradeShort(p.grade)} \u00b7 ${p.label}`))))));
+        // Shown like the competitions, chosen games or not, so every part's status is in one place.
+        puOn && h('li', {},
+          h('div', { class: 'row-between' }, h('span', {}, h('strong', {}, puTitle), n > 0 && h('span', { class: 'muted' }, ` \u00b7 ${n} game${n === 1 ? '' : 's'} chosen`)),
+            h('span', { class: 'chip ' + (n ? 'ok' : 'muted-chip') }, n ? '\u2713 Submitted' : 'Not submitted')),
+          n > 0 && h('ul', { class: 'plain muted small' }, savedPicks.map(p => h('li', {}, `${p.dates.map(fmtDay).join(' & ')} \u00b7 ${gradeShort(p.grade)} \u00b7 ${p.label}`))))));
   };
   cancelBtn.onclick = () => {
     for (const k of Object.keys(days)) delete days[k];
