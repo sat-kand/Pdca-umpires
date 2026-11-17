@@ -336,3 +336,18 @@ test('in "unavailable or already allocated", allocated umpires come before unava
   const rows = slotOptions({ game, date: '2026-11-21', slotIndex: 0, umpires, availByEmail, busy, loads: {} }).filter(r => r.group === 'avoid');
   assert.deepEqual(rows.map(r => r.umpire.pid), ['z', 'a']);
 });
+
+test('player umpires elsewhere come after allocated umpires and before unavailable ones', async () => {
+  const { slotOptions } = await import('../js/logic.js');
+  const umpires = [
+    { pid: 'a', email: 'a@x', name: 'A Adams', active: true },     // not available
+    { pid: 'm', email: 'm@x', name: 'M Moss', active: true },      // chose another game as a player umpire
+    { pid: 'z', email: 'z@x', name: 'Z Zed', active: true },       // allocated elsewhere that day
+  ];
+  const availByEmail = { 'a@x': { days: { 'senior:2026-11-21': 'no' } }, 'm@x': { days: { 'senior:2026-11-21': 'yes' } }, 'z@x': { days: { 'senior:2026-11-21': 'yes' } } };
+  const game = { id: 'g', grade: 'Senior B09', comp: 'Senior', slots: 1, days: [{ date: '2026-11-21', day: 1 }], alloc: {} };
+  const busy = { 'senior:2026-11-21': { z: ['other'] } };
+  const claimOf = (pid, date, comp) => (pid === 'm' ? 'other2' : null);
+  const rows = slotOptions({ game, date: '2026-11-21', slotIndex: 0, umpires, availByEmail, busy, loads: {}, claimOf }).filter(r => r.group === 'avoid');
+  assert.deepEqual(rows.map(r => r.umpire.pid), ['z', 'm', 'a']);
+});

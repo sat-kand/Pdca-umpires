@@ -255,9 +255,9 @@ export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy
       : st === 'yes' ? (days.length > 1 ? (bothDays ? 'both' : 'ok') : 'ok') : 'none';
     rows.push({ umpire: u, status: st, busy: others.length > 0, dup, chosen, elsewhere, group, bothDays, okDays, member, load: (loads && loads[u.pid]) || 0 });
   }
-  // By last name; in the "unavailable or already allocated" group, those already on a game that day
-  // (or who chose another game as a player umpire) come before those who said they are not available.
-  const taken = r => (r.busy || r.dup || r.elsewhere ? 0 : 1);
+  // By last name; in the "unavailable or already allocated" group: those already on a game that day,
+  // then player umpires who chose another game, then those who said they are not available.
+  const taken = r => (r.busy || r.dup ? 0 : r.elsewhere ? 1 : 2);
   rows.sort((a, b) => (a.group === 'avoid' && b.group === 'avoid' ? taken(a) - taken(b) : 0) || compareMembers(a.umpire, b.umpire));
   return rows;
 }

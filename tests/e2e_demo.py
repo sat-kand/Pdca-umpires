@@ -775,8 +775,8 @@ with sync_playwright() as p:
     check(page.locator(".change:has-text('no longer available')").count() >= 1, "the board flags the game")
     # Each list in last-name order; the "unavailable or already allocated" list has the allocated ones first.
     lasts = page.locator("select.slot").first.evaluate("""s => [...s.querySelectorAll('optgroup')].map(g => [...g.children].map(o =>
-        [/allocated|elsewhere/.test(o.text) || !/Unavailable/.test(g.label) ? 0 : 1, o.text.split(' \u00b7 ')[0].split(' ').slice(-1)[0].toLowerCase()]))""")
-    check(all(g == sorted(g) for g in lasts) and sum(len(g) for g in lasts) > 3, "names in the umpire lists are in last-name order (allocated before unavailable)")
+        [!/Unavailable/.test(g.label) || /allocated/.test(o.text) ? 0 : /elsewhere/.test(o.text) ? 1 : 2, o.text.split(' \u00b7 ')[0].split(' ').slice(-1)[0].toLowerCase()]))""")
+    check(all(g == sorted(g) for g in lasts) and sum(len(g) for g in lasts) > 3, "names in the umpire lists are in last-name order (allocated, then player umpire elsewhere, then unavailable)")
     page.click("a.tab:has-text('Back to Allocate')")
     page.wait_for_selector(".comp-tile")
     check(page.locator(".dropouts").count() == 1, "the banner is still there until the officer dismisses it")
