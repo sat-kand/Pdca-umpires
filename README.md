@@ -121,3 +121,11 @@ python3 tests/e2e_demo.py  # browser test of the whole flow in demo mode (needs 
 Officers click any member's name (Members page, the season Availability sheet, or a round's Availability tab) to open their profile: membership details (type, fee, status, **Member since**, which is set when a member is added or approved and can be changed there), this season's availability (click a date to change it, as on the Availability sheet), status (approve or reject a new registration; make a member active or inactive), upcoming and past appointments in this association, games umpired here, pull-outs and fulfilment rate (the share of their published games they kept).
 
 The profile also lists the member's memberships with **other associations** — association, type, active or past, since when — and nothing else from them. Each association writes its own line to `memberships/{email}/orgs/{orgId}` when an officer saves or opens a member; an officer can read a member's lines only after registering as a viewer, which the rules allow only for an officer of an association that member belongs to. Publish the updated `firestore.rules` for this to work on the live site.
+
+## What the security rules enforce
+
+- An association's rounds, fixtures, season calendar and published games can be read only by its officers and people with a member record there, not by anyone who happens to be signed in.
+- A pull-out ("I can't do this" / Not available after publishing) can only be recorded for yourself: both the email and the umpire id must match your own member record.
+- Alert emails can only be queued by an association's officers and members, and only to the address set in its Settings.
+
+After changing `firestore.rules`, publish it in the Firebase console (Firestore Database → Rules → Publish).

@@ -16,6 +16,7 @@ rules_version = '2';
 //                              - read/write their own umpire profile there (cannot approve themselves)
 //                              - read/write their own season availability there
 //                              - read its season calendar and rounds, and the games of PUBLISHED rounds only
+//                                (all of these only once they have a member record there)
 //   A suspended association is read-only.
 //   Everything else is denied.
 
@@ -34,6 +35,14 @@ service cloud.firestore {
     function isOrgAdmin(orgId) {
       return signedIn() && exists(/databases/$(database)/documents/orgs/$(orgId)/admins/$(me()));
     }
+    // Has a member record in this association (approved or still waiting): what lets someone see
+    // its rounds and fixtures, and send its officer an alert.
+    function isMember(orgId) {
+      return signedIn() && exists(/databases/$(database)/documents/orgs/$(orgId)/umpires/$(me()));
+    }
+    function inOrg(orgId) {
+      return isOrgAdmin(orgId) || isMember(orgId);
+    }
     function orgData(orgId) {
       return get(/databases/$(database)/documents/orgs/$(orgId)).data;
     }
@@ -51,6 +60,7 @@ service cloud.firestore {
     match /mail/{id} {
       allow read, update, delete: if false;
       allow create: if signedIn()
+        && inOrg(request.resource.data.orgId)                                   // only that association's people
         && request.resource.data.keys().hasOnly(['to', 'message', 'orgId', 'createdAt'])
         && request.resource.data.to == get(/databases/$(database)/documents/orgs/$(request.resource.data.orgId)).data.notifyEmail;
     }
@@ -136,13 +146,13 @@ service cloud.firestore {
       }
 
       match /rounds/{roundId} {
-        allow read: if signedIn();
+        allow read: if inOrg(orgId);
         allow write: if isOrgAdmin(orgId) && orgOpen(orgId);
 
         // Allocations are only visible to umpires once the round is published.
         match /games/{gameId} {
           allow read: if isOrgAdmin(orgId)
-            || (signedIn() && get(/databases/$(database)/documents/orgs/$(orgId)/rounds/$(roundId)).data.published == true);
+            || (isMember(orgId) && get(/databases/$(database)/documents/orgs/$(orgId)/rounds/$(roundId)).data.published == true);
           allow write: if isOrgAdmin(orgId) && orgOpen(orgId);
         }
       }
@@ -150,13 +160,13 @@ service cloud.firestore {
       // Each round's games with no allocations, so a member can choose games to umpire
       // (player umpire) before a round is published.
       match /fixtures/{roundId} {
-        allow read: if signedIn();
+        allow read: if inOrg(orgId);
         allow write: if isOrgAdmin(orgId) && orgOpen(orgId);
       }
 
       // The season calendar (dates umpires answer for). Officers sync it from Play Cricket.
       match /config/{id} {
-        allow read: if signedIn();
+        allow read: if inOrg(orgId);
         allow write: if isOrgAdmin(orgId) && orgOpen(orgId);
       }
 
@@ -176,7 +186,11 @@ service cloud.firestore {
       // the officer's app frees the slot and marks it handled.
       match /withdrawals/{id} {
         allow get, list: if isOrgAdmin(orgId);
-        allow create: if signedIn() && orgOpen(orgId) && request.resource.data.email == me() && request.resource.data.handled == false;
+        // Only for yourself: the email AND the umpire id must be your own member record's.
+        allow create: if isMember(orgId) && orgOpen(orgId)
+          && request.resource.data.email == me()
+          && request.resource.data.pid == get(/databases/$(database)/documents/orgs/$(orgId)/umpires/$(me())).data.pid
+          && request.resource.data.handled == false;
         allow update, delete: if isOrgAdmin(orgId) && orgOpen(orgId);
       }
 
