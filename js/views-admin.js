@@ -450,10 +450,11 @@ export async function viewAvailabilityOverview(ctx, rid) {
   if (!round) return h('p', { class: 'notice warn' }, 'Round not found.');
   if (isLocked(round)) { location.replace(`#/admin/round/${rid}/report`); return h('div'); }
   const [umpires, availList, allGames] = await Promise.all([store.listUmpires(), store.listAvailability((round.season && round.season.id) || 'manual'), store.listGames(rid)]);
-  const games = allGames.filter(isPicked);
   const by = Object.fromEntries(availList.map(a => [a.email, a]));
-  const active = umpires.filter(u => u.active).sort((a, b) => a.name.localeCompare(b.name));
-  const cols = roundColumns(games);
+  const active = umpires.filter(u => u.active).sort(compareMembers);
+  // Every playing date of the round, whether or not its grades are selected yet: availability is
+  // about the day, and is what helps decide which grades to cover.
+  const cols = roundColumns(allGames);
   // Player umpires: the game they chose shows in its competition's column; other competitions show
   // their answers as usual.
   const { pickOf } = claimsFrom(availList, umpires, puEnabled(store));

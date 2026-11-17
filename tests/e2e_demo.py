@@ -477,6 +477,19 @@ with sync_playwright() as p:
     page.goto(BASE + "#/admin")
     page.wait_for_selector(".tile-round")
 
+    # A round with no grades selected yet still shows everyone's availability for its days.
+    jr0 = page.evaluate("""() => { const o = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca; const t = new Date().toISOString().slice(0, 10);
+        const r = Object.values(o.rounds).find(r => r.end >= t && Object.values(o.games[r.id] || {}).length && Object.values(o.games[r.id]).every(g => !(g.slots > 0)));
+        return r && r.id; }""")
+    if jr0:
+        page.goto(BASE + f"#/admin/round/{jr0}/availability")
+        page.wait_for_selector("td.av")
+        check(page.locator("td.av.ok, td.av.no").count() > 0, "a round with no grades selected still shows availability for its days")
+    else:
+        check(False, "sample data has a round with no grades selected")
+    page.goto(BASE + "#/admin")
+    page.wait_for_selector(".tile-round")
+
     print("Admin: season availability dashboard")
     page.click(".nav-link:has-text('Availability')")
     page.wait_for_selector(".season-grid table")
