@@ -357,7 +357,8 @@ with sync_playwright() as p:
     check(page.locator(".dlabel", has_text=date_part).count() >= 2, "the same date is listed under more than one competition (overlapping dates)")
     check(page.locator("button.opt").count() == 2 * page.locator(".drow").count(), "only two options per day (Available / Not available)")
     check(page.locator("text=Maybe").count() == 0 and page.locator("textarea").count() == 0, "no 'Maybe' option and no note box")
-    check(page.locator(".chip:visible:has-text('\u2713 Submitted')").count() == 1, "a 'Submitted' chip shows for what they have sent, no Edit step")
+    check(all(page.locator(f".comp-row:has-text('{c}') .chip").inner_text() == "\u2713 Submitted" for c in ["Senior", "Junior", "T20"]),
+          "each competition shows its own status: all three Submitted, no Edit step")
     sen_first = sen.locator(".drow").first
     jun_first = jun.locator(".drow", has_text=date_part).first
     check("on" in sen_first.locator("button.opt.yes").get_attribute("class"), "existing Senior answer is pre-highlighted")
@@ -365,10 +366,11 @@ with sync_playwright() as p:
     sen_first.locator("button.opt.no").click()
     check("on" in sen_first.locator("button.opt.no").get_attribute("class") and "on" not in sen_first.locator("button.opt.yes").get_attribute("class"), "tapping highlights the new choice only")
     check(jun_first.locator("button.opt.no").get_attribute("class") == jun_before, "changing Senior leaves the Junior answer for the same day alone")
-    check(page.locator(".chip:has-text('Unsaved changes')").count() == 1, "chip warns about unsaved changes")
+    check(page.locator(".comp-row:has-text('Senior') .chip").inner_text() == "Unsaved changes" and page.locator(".comp-row:has-text('Junior') .chip").inner_text() == "\u2713 Submitted",
+          "only Senior shows unsaved changes; Junior is still Submitted")
     page.click(".savebar button:has-text('Save')")
-    page.wait_for_selector(".chip:has-text('Submitted')")
-    check(True, "one Save updates the whole season and the chip returns to Submitted")
+    page.wait_for_selector(".comp-row:has-text('Senior') .chip:has-text('Submitted')")
+    check(True, "one Save sends it and Senior returns to Submitted")
     page.reload()
     page.wait_for_selector(".tile")
     sen = page.locator(".comp-section:has(h2:has-text('Senior'))")
@@ -720,7 +722,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".toast:has-text('Saved')")
     sign_out(page)
     sign_in(page, "umpire4@demo.test")
-    page.wait_for_selector(".comp-picks")
+    page.wait_for_selector(".comp-list")
     check(page.locator(".mode").count() == 0 and page.locator("h2:has-text('Regular umpire')").count() == 1 and page.locator(".player-card").is_hidden(),
           "switched off: only Regular umpire, with no tick box")
     body = page.inner_text("body")
@@ -802,6 +804,7 @@ with sync_playwright() as p:
     page.locator(".mode:has-text('Choose my own games') input").uncheck()
     check(not dialogs and page.locator(".player-card").is_hidden() and page.locator(".savebar button:has-text('Save')").is_disabled(),
           "unticking Player umpire asks nothing and saves nothing; it only hides the games")
+    check(page.locator(".mode-row:has-text('Choose my own games') .chip").inner_text() == "\u2713 Submitted", "unticked, Player umpire still shows its status")
     page.reload()
     page.wait_for_selector(".mode")
     page.locator(".mode:has-text('Choose my own games') input").check()
@@ -840,7 +843,7 @@ with sync_playwright() as p:
     print("Availability: tick boxes only show or hide; Save sends only what is ticked")
     sign_out(page)
     sign_in(page, "umpire5@demo.test")
-    page.wait_for_selector(".comp-picks")
+    page.wait_for_selector(".comp-list")
     AV = "() => Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.availability).find(a => a.email === 'umpire5@demo.test')"
     saved0 = page.evaluate(AV)
     check([c.is_checked() for c in page.locator(".comp-pick input").all()] == [True, True, True] and page.locator(".comp-pick").all_inner_texts() == ["Senior", "Junior", "T20"],
@@ -860,9 +863,11 @@ with sync_playwright() as p:
     jun_btn = page.locator(".comp-section:has(h2:has-text('Junior')) .drow").first
     jun_key_on = jun_btn.locator("button.opt.on").count()
     jun_btn.locator("button.opt.no").click() if "on" not in (jun_btn.locator("button.opt.no").get_attribute("class") or "") else jun_btn.locator("button.opt.yes").click()
-    check(not save_btn.is_disabled() and page.locator(".mode-row:has-text('Regular umpire') .chip").inner_text() == "Unsaved changes", "a Junior change marks Regular umpire as changed")
+    check(not save_btn.is_disabled() and page.locator(".comp-row:has-text('Junior') .chip").inner_text() == "Unsaved changes", "a Junior change shows on Junior")
     page.locator(".comp-pick:has-text('Junior') input").uncheck()
     check(save_btn.is_disabled(), "hiding Junior again: its change will not be sent, so nothing to save")
+    check(page.locator(".comp-row:has-text('Junior') .chip").inner_text() == "Unsaved \u00b7 not ticked" and page.locator(".comp-row:has-text('T20') .chip").inner_text() == "\u2713 Submitted",
+          "unticked competitions still show their status: Junior unsaved and not ticked, T20 submitted")
     page.locator(".comp-pick:has-text('Senior') input").check()
     sen_row = page.locator(".comp-section:has(h2:has-text('Senior')) .drow").first
     sen_row.locator("button.opt.no").click() if "on" not in (sen_row.locator("button.opt.no").get_attribute("class") or "") else sen_row.locator("button.opt.yes").click()
@@ -876,9 +881,10 @@ with sync_playwright() as p:
     sen_changed = [k for k in saved1["days"] if k.startswith("senior:") and saved1["days"][k] != saved0["days"].get(k)]
     check(jun0 and jun1 == jun0, "the hidden Junior change was not sent: Junior answers are as before")
     check(len(sen_changed) == 1, "only the Senior change was sent")
-    check(save_btn.is_disabled() and page.locator(".mode-row:has-text('Regular umpire') .chip").inner_text() == "\u2713 Submitted", "after saving, Save is greyed out and the part says Submitted")
+    check(save_btn.is_disabled() and page.locator(".comp-row:has-text('Senior') .chip").inner_text() == "\u2713 Submitted"
+          and page.locator(".comp-row:has-text('Junior') .chip").inner_text() == "Unsaved \u00b7 not ticked", "after saving, Senior says Submitted and the unsent Junior change still shows")
     page.reload()
-    page.wait_for_selector(".comp-picks")
+    page.wait_for_selector(".comp-list")
     check([c.is_checked() for c in page.locator(".comp-pick input").all()] == [True, False, False] and page.locator(".comp-section:has(h2:has-text('Junior'))").is_hidden(),
           "which competitions are shown is remembered")
     check(save_btn.is_disabled(), "and it starts greyed out when nothing has changed")
@@ -946,7 +952,8 @@ with sync_playwright() as p:
     check(page.locator(".comp-section:has(h2:has-text('Senior'))").get_by_text("Round").count() == 0 and page.locator(".comp-section:has(h2:has-text('Junior'))").get_by_text("Round").count() == 0, "mixed-length competitions have no round text")
     check(page.locator(".comp-section:has(h2:has-text('T20'))").get_by_text("Round 1").count() == 1, "the all-one-day T20 competition is shown by round")
     check(page.locator(".dlabel", has_text=fmt_day_check()).count() == 1, "a date plays out as just the date")
-    check(page.locator(".chip:visible:has-text('Not submitted')").count() == 1, "a fresh season starts as 'Not submitted'")
+    check(all(t == "Not submitted" for t in page.locator(".comp-row .chip").all_inner_texts()) and page.locator(".comp-row .chip").count() == 3,
+          "a fresh season: every competition starts as 'Not submitted'")
 
     print("Mobile layout")
     m = ctx.new_page()

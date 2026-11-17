@@ -190,7 +190,7 @@ export async function viewMy(ctx) {
     };
     return h('div', { class: 'row-between mode-row' },
       h('label', { class: 'mode' }, cb, h('span', {}, h('strong', {}, title), hint && h('span', { class: 'muted' }, hint))),
-      statusChips[key]);
+      statusChips[key] || null);
   };
 
   // Player umpire: the games this member has chosen, and a way to choose more.
@@ -280,14 +280,16 @@ export async function viewMy(ctx) {
       drawModes();
       drawStatus();
     };
-    return h('label', { class: 'comp-pick' + (cb.checked ? ' on' : '') }, cb, compLabel(key));
+    return h('div', { class: 'comp-row' },
+      h('label', { class: 'comp-pick' + (cb.checked ? ' on' : '') }, cb, compLabel(key)),
+      statusChips[key]);
   };
 
   function drawModes() {
     setChildren(modeCard,
-      puOn ? h('h2', {}, 'How I will umpire') : h('div', { class: 'row-between' }, h('h2', {}, 'Regular umpire'), statusChips.regular),
+      h('h2', {}, puOn ? 'How I will umpire' : 'Regular umpire'),
       puOn && modeBox('regular', 'Regular umpire'),
-      modes.regular && h('div', { class: 'comp-picks' + (puOn ? '' : ' flush') }, h('span', { class: 'muted' }, 'For'), ALL_COMPS.filter(k => compsOffered.includes(k)).map(compBox)),
+      h('div', { class: 'comp-list' + (puOn ? '' : ' flush') }, ALL_COMPS.filter(k => compsOffered.includes(k)).map(compBox)),
       modes.regular && !modes.comps.some(k => compsOffered.includes(k)) && h('p', { class: 'notice warn' }, 'Tick at least one competition.'),
       puOn && modeBox('player', 'Choose my own games (player umpire)', (pu.description || '').trim()));
     availCard.hidden = !modes.regular || !modes.comps.some(k => compsOffered.includes(k));
@@ -303,7 +305,8 @@ export async function viewMy(ctx) {
   const sectionEl = {};
   const availIntro = h('p', { class: 'muted' });
   const card = h('div', { class: 'avail-body' });
-  const statusChips = { regular: h('span', { class: 'chip' }), player: h('span', { class: 'chip' }) };
+  // A status for each competition and for player umpiring, shown whether or not it is ticked.
+  const statusChips = { senior: h('span', { class: 'chip' }), junior: h('span', { class: 'chip' }), t20: h('span', { class: 'chip' }), player: h('span', { class: 'chip' }) };
   if (!season) {
     root.append(h('section', { class: 'card' }, h('h2', {}, 'Availability'), h('p', { class: 'muted' }, 'The season dates have not been set up yet. Please check back soon.')));
     return root;
@@ -313,13 +316,16 @@ export async function viewMy(ctx) {
   const savebar = h('div', { class: 'savebar' }, hint, saveBtn);
   drawStatus = () => {
     const regDirty = regularChanged(), plDirty = picksChanged();
-    const paintChip = (c, on, changed, has) => {
-      c.hidden = !on;
-      c.className = 'chip ' + (changed || !has ? 'warn' : 'ok');
-      c.textContent = changed ? 'Unsaved changes' : has ? '\u2713 Submitted' : 'Not submitted';
+    // ticked = this part will be sent by Save; an untouched change in an unticked part says so
+    const paintChip = (c, ticked, changed, has) => {
+      c.className = 'chip ' + (changed ? 'warn' : has ? 'ok' : 'muted-chip');
+      c.textContent = changed ? (ticked ? 'Unsaved changes' : 'Unsaved \u00b7 not ticked') : has ? '\u2713 Submitted' : 'Not submitted';
     };
-    paintChip(statusChips.regular, modes.regular, regDirty, modes.comps.some(k => Object.keys(savedDays).some(x => x.startsWith(k + ':'))));
-    paintChip(statusChips.player, puOn && modes.player, plDirty, savedPicks.length > 0);
+    for (const k of ALL_COMPS) {
+      paintChip(statusChips[k], modes.regular && modes.comps.includes(k),
+        keysFor(k).some(x => days[x] !== savedDays[x]), Object.keys(savedDays).some(x => x.startsWith(k + ':')));
+    }
+    paintChip(statusChips.player, modes.player, pickSig(picks) !== pickSig(savedPicks), savedPicks.length > 0);
     const left = comps.filter(c => modes.comps.includes(c.comp)).flatMap(keysOf).filter(d => !days[d]).length;
     const regularOn = modes.regular && modes.comps.some(k => compsOffered.includes(k));
     const playerOn = puOn && modes.player;
