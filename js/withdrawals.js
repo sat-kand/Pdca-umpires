@@ -5,7 +5,7 @@
 // a *withdrawal* and queues an email to the address in Settings. The officer's app applies it the
 // next time the Allocate page opens: the slots go back to empty and the game carries a note.
 
-import { compLabel, fmtDay, gradeShort, summarise } from './logic.js';
+import { compLabel, fmtDay, gradeShort, summarise, publishedAllocFor } from './logic.js';
 import { todayLocal } from './ui.js';
 
 const dateOf = key => key.slice(key.indexOf(':') + 1);
@@ -29,8 +29,7 @@ export async function affectedGames(store, { umpire, dropped, today = todayLocal
     for (const g of await store.listGames(r.id)) {
       if (g.removed) continue;
       for (const { date } of wanted) {
-        const slots = (g.alloc || {})[date] || [];
-        if (slots.some(a => a && a.p === umpire.pid)) {
+        if (publishedAllocFor(r, g, date).some(a => a && a.p === umpire.pid)) {          // a game they were given
           out.push({ roundId: r.id, gameId: g.id, date, comp: r.comp || 'senior',
             label: `${gradeShort(g.grade)}: ${g.home.name} v ${g.away.name}` });
         }
@@ -83,33 +82,14 @@ async function queueEmail(store, w) {
 // Officer side: free the slots of every withdrawal not yet handled, then return the ones the officer
 // has not dismissed, so the banner survives a reload until they have seen it.
 //
-// An umpire can change their mind (or have tapped by mistake): if, after pulling out, they say
-// Available again for that day, or choose that same game again as a player umpire, the pull-out is
-// undone. Only the published game they were given is ever restored (a withdrawal only lists those),
-// and only while its round is still published. Not yet acted on: the place is simply not freed.
-// Already freed: they go back in if the place is still empty, the note goes, and so does the banner.
-// Someone who has chosen a different game that day as a player umpire is not put back.
+// A pull-out stands: the umpire is never put back automatically, even if they say Available again
+// or choose the game again. The officer decides, and nothing reaches umpires until they publish.
 export async function applyWithdrawals(store) {
   const all = await store.listWithdrawals();
   // Older records only kept a count of what was freed: treat each of their games as freed.
   for (const w of all) if (w.handled && (w.freed || 0) > 0 && !(w.games || []).some(g => 'freed' in g)) (w.games || []).forEach(g => { g.freed = true; });
   const open = all.filter(w => !w.handled || (w.games || []).some(g => g.freed && !g.restored && !g.refilled));
   if (!open.length) return active(all);
-  const season = store.getSeason ? await store.getSeason() : null;
-  const avail = season && store.listAvailability ? await store.listAvailability(season.id) : [];
-  const availOf = email => avail.find(a => a.email === email);
-  // Back for this game: said Available for the day since pulling out, or chose the game again.
-  const rounds = store.listRounds ? await store.listRounds() : null;
-  const live = id => !rounds || rounds.some(r => r.id === id && r.published);
-  const isBack = (w, ref) => {
-    const a = availOf(w.email);
-    if (!a || !live(ref.roundId)) return false;
-    const that = (a.picks || []).filter(p => (p.dates || []).includes(ref.date) && (p.comp || 'senior') === (ref.comp || 'senior'));
-    if (that.some(p => p.gameId === ref.gameId)) return 'pu';
-    if (that.length) return false;                                   // chose another game that day instead
-    return (a.days || {})[`${ref.comp}:${ref.date}`] === 'yes' && (a.updatedAt || '') > (w.createdAt || '') ? 'yes' : false;
-  };
-
   for (const w of open) {
     const byRound = new Map();
     for (const ref of w.games || []) {
@@ -123,9 +103,7 @@ export async function applyWithdrawals(store) {
         if (ref.restored || ref.refilled) continue;
         const game = games.find(x => x.id === ref.gameId);
         const slots = game && ((game.alloc || {})[ref.date] || []);
-        const back = isBack(w, ref);
         if (!w.handled) {
-          if (back) { ref.restored = true; continue; }                                     // changed their mind in time: nothing to undo
           if (!slots || !slots.some(a => a && a.p === w.pid)) continue;
           game.alloc[ref.date] = slots.map(a => (a && a.p === w.pid ? null : a));
           game.changeNote = `${w.name} is no longer available on ${fmtDay(ref.date)}`;
@@ -133,7 +111,7 @@ export async function applyWithdrawals(store) {
           touched = true;
           continue;
         }
-        if (ref.freed && !back && game) {
+        if (ref.freed && game) {
           // The officer has filled the place, or the note about them is gone: nothing left to flag.
           const n = Math.max(game.slots || 0, 1);
           const full = Array.from({ length: n }, (_, k) => slots[k]).every(Boolean);
@@ -142,21 +120,6 @@ export async function applyWithdrawals(store) {
             if (full && (game.changeNote || '').startsWith(`${w.name} is no longer available`)) { game.changeNote = ''; touched = true; }
           }
           continue;
-        }
-        if (!ref.freed || !back) continue;
-        // Freed earlier and now back: put them in an empty place if there is one.
-        ref.restored = true;
-        if (game) {
-          const n = Math.max(game.slots || 0, 1);
-          const arr = [...slots];
-          const i = Array.from({ length: n }, (_, k) => k).find(k => !arr[k]);
-          if (!arr.some(a => a && a.p === w.pid) && i !== undefined) {
-            while (arr.length <= i) arr.push(null);
-            arr[i] = back === 'pu' ? { p: w.pid, n: w.name, pu: true } : { p: w.pid, n: w.name };
-            game.alloc = { ...(game.alloc || {}), [ref.date]: arr };
-          }
-          if ((game.changeNote || '').startsWith(`${w.name} is no longer available`)) game.changeNote = '';
-          touched = true;
         }
       }
       if (touched) {

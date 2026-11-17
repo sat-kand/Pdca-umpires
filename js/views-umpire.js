@@ -3,7 +3,7 @@
 import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
 import { recordWithdrawal } from './withdrawals.js';
 import { PLAYER_UMPIRE_COMPS } from './player-umpire.js';
-import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName } from './logic.js';
+import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName } from './logic.js';
 
 export function viewLogin(ctx) {
   const { store } = ctx;
@@ -120,7 +120,8 @@ export async function viewMy(ctx) {
   for (const r of rounds.filter(r => r.published && (r.end || r.start || '') >= today)) {
     for (const g of await store.listGames(r.id)) {
       if (g.removed) continue;
-      for (const d of g.days) if (d.date >= today && allocFor(g, d.date).some(a => a && a.p === u.pid)) mine.push({ g, d, r });
+      // Only what the officer has published: changes since then reach umpires when they publish again.
+      for (const d of g.days) if (d.date >= today && publishedAllocFor(r, g, d.date).some(a => a && a.p === u.pid)) mine.push({ g, d, r });
     }
   }
   // Soonest first: by date, then start time, then grade.
@@ -415,8 +416,6 @@ export async function viewMy(ctx) {
     const next = { ...savedDays };
     if (modes.regular) for (const k of modes.comps) for (const x of keysFor(k)) { if (days[x]) next[x] = days[x]; else delete next[x]; }
     const nextPicks = puOn && modes.player ? picks.map(p => ({ ...p, dates: [...p.dates] })) : savedPicks;
-    // Available again for a game they had turned down (or chose it again): the turn-down no longer stands.
-    declined = declined.filter(x => !(next[`${x.comp || 'senior'}:${x.date}`] === 'yes' || nextPicks.some(p => p.gameId === x.gameId && p.dates.includes(x.date))));
     await put(next, nextPicks);
     savedDays = next;
     savedPicks = nextPicks;

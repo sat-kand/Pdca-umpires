@@ -157,6 +157,26 @@ export const isPicked = game => (game.slots || 0) > 0;
 
 export function slotCount(game) { return game.removed ? 0 : (game.slots || 0); }
 
+// What umpires see is what was last published, not the officer's work since. Publishing stores a copy
+// of the allocation on the round; rounds published before that existed fall back to the live board.
+export function publishedSnapshot(games) {
+  const out = {};
+  for (const g of games) {
+    if (g.removed || !isPicked(g)) continue;
+    const a = {};
+    for (const d of g.days) {
+      const arr = allocFor(g, d.date).map(x => (x ? { p: x.p, n: x.n, ...(x.pu ? { pu: true } : {}) } : null));
+      if (arr.some(Boolean)) a[d.date] = arr;
+    }
+    if (Object.keys(a).length) out[g.id] = a;
+  }
+  return out;
+}
+export function publishedAllocFor(round, game, date) {
+  if (round && round.publishedAlloc) return ((round.publishedAlloc[game.id] || {})[date]) || [];
+  return allocFor(game, date);
+}
+
 export function allocFor(game, date) {
   const n = slotCount(game);
   const cur = (game.alloc && game.alloc[date]) || [];

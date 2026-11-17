@@ -314,3 +314,12 @@ test('Suggest allocations gives empty places to the most reliable umpires first'
   const even = autoAllocate({ games: [structuredClone(game)], umpires, availByEmail, baseLoads: { a: 1, b: 5 }, reliability: rel({ kept: { a: 1, b: 5 } }) });
   assert.equal(even[0].entry.p, 'a');
 });
+
+test('umpires see the published copy, not later work on the board', async () => {
+  const { publishedSnapshot, publishedAllocFor } = await import('../js/logic.js');
+  const g = { id: 'g', grade: 'Senior B09', slots: 1, days: [{ date: '2026-11-21', day: 1 }], alloc: { '2026-11-21': [{ p: 'a', n: 'A Able' }] } };
+  const round = { publishedAlloc: publishedSnapshot([g]) };
+  g.alloc['2026-11-21'] = [{ p: 'b', n: 'B Baker' }];                // the officer changes it after publishing
+  assert.equal(publishedAllocFor(round, g, '2026-11-21')[0].p, 'a');
+  assert.equal(publishedAllocFor({}, g, '2026-11-21')[0].p, 'b', 'rounds published before copies existed use the board');
+});

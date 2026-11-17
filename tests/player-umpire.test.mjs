@@ -153,3 +153,10 @@ test('a player umpire who pulled out: their game (only on for them) leaves the b
   assert.equal(g.slots, 0);
   assert.ok(!g.puOnly && !g.puGame);
 });
+
+test('choosing again a game they pulled out of does not put them back on the board', async () => {
+  const s = fakeStore({ picks: [pick('g1', ['2026-11-21'])], games: [G('g1', 'Senior B09', ['2026-11-21'])] });
+  s.listWithdrawals = async () => [{ email: 'sk@x.test', games: [{ roundId: 'r1', gameId: 'g1', date: '2026-11-21' }] }];
+  await applyPlayerUmpires(s, { today: TODAY });
+  assert.ok(!(s.db.games.r1[0].alloc || {})['2026-11-21']?.some(Boolean));
+});

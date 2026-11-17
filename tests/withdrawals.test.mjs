@@ -32,34 +32,6 @@ test('pulling out frees the place and flags the game', async () => {
   assert.equal(shown[0].shown.length, 1);
 });
 
-test('available again before the officer acts: nothing is freed and there is no warning', async () => {
-  const s = store({ days: { [`senior:${DATE}`]: 'yes' } });
-  const shown = await applyWithdrawals(s);
-  assert.equal(s.db.games.r1[0].alloc[DATE][0].p, 'p1');
-  assert.ok(!s.db.games.r1[0].changeNote);
-  assert.equal(shown.length, 0);
-});
-
-test('available again after the place was freed: put back, note and banner gone', async () => {
-  const s = store({ days: { [`senior:${DATE}`]: 'no' } });
-  await applyWithdrawals(s);
-  s.db.avail[0].days[`senior:${DATE}`] = 'yes';
-  s.db.avail[0].updatedAt = '2099-01-03T00:00:00Z';
-  const shown = await applyWithdrawals(s);
-  assert.equal(s.db.games.r1[0].alloc[DATE][0].p, 'p1');
-  assert.equal(s.db.games.r1[0].changeNote, '');
-  assert.equal(shown.length, 0);
-});
-
-test('a player umpire who chooses the game again goes back as the player umpire', async () => {
-  const s = store({ alloc: [{ p: 'p1', n: 'D Henry', pu: true }] });
-  await applyWithdrawals(s);
-  assert.equal(s.db.games.r1[0].alloc[DATE][0], null);
-  s.db.avail[0].picks = [{ gameId: 'g1', comp: 'senior', dates: [DATE] }];
-  await applyWithdrawals(s);
-  assert.deepEqual(s.db.games.r1[0].alloc[DATE][0], { p: 'p1', n: 'D Henry', pu: true });
-});
-
 test('if the officer already filled the place, the other umpire stays; the warning still goes', async () => {
   const s = store({ days: { [`senior:${DATE}`]: 'no' } });
   await applyWithdrawals(s);
@@ -80,26 +52,6 @@ test('dismissing keeps the record whole', async () => {
   assert.ok(!('shown' in s.db.w.w1));
 });
 
-test('choosing a different game that day as a player umpire does not put them back', async () => {
-  const s = store({ days: { [`senior:${DATE}`]: 'no' } });
-  await applyWithdrawals(s);
-  s.db.avail[0].days[`senior:${DATE}`] = 'yes';
-  s.db.avail[0].updatedAt = '2099-01-03T00:00:00Z';
-  s.db.avail[0].picks = [{ gameId: 'g9', comp: 'senior', dates: [DATE] }];
-  await applyWithdrawals(s);
-  assert.equal(s.db.games.r1[0].alloc[DATE][0], null);
-});
-
-test('nothing is put back once the round is no longer published', async () => {
-  const s = store({ days: { [`senior:${DATE}`]: 'no' } });
-  await applyWithdrawals(s);
-  s.db.published = false;
-  s.db.avail[0].days[`senior:${DATE}`] = 'yes';
-  s.db.avail[0].updatedAt = '2099-01-03T00:00:00Z';
-  await applyWithdrawals(s);
-  assert.equal(s.db.games.r1[0].alloc[DATE][0], null);
-});
-
 test('once the officer puts someone in the freed place, the warning and the banner go', async () => {
   const s = store({ days: { [`senior:${DATE}`]: 'no' } });
   await applyWithdrawals(s);
@@ -107,4 +59,13 @@ test('once the officer puts someone in the freed place, the warning and the bann
   const shown = await applyWithdrawals(s);
   assert.equal(shown.length, 0);
   assert.equal(s.db.games.r1[0].changeNote, '');
+});
+
+test('a pull-out stands: saying Available again or choosing the game again never puts them back', async () => {
+  const s = store({ days: { [`senior:${DATE}`]: 'yes' }, picks: [{ gameId: 'g1', comp: 'senior', dates: [DATE] }], updatedAt: '2099-01-03T00:00:00Z' });
+  const shown = await applyWithdrawals(s);
+  assert.equal(s.db.games.r1[0].alloc[DATE][0], null, 'freed even though they say Available again');
+  assert.equal(shown.length, 1, 'and the officer is told');
+  await applyWithdrawals(s);
+  assert.equal(s.db.games.r1[0].alloc[DATE][0], null, 'and not put back later either');
 });

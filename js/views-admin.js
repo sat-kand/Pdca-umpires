@@ -4,7 +4,7 @@ import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './u
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
   slotOptions, recount, summarise, formatSummary, publishState, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
-  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf,
+  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot,
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
@@ -212,10 +212,10 @@ export async function viewBoard(ctx, rid) {
 
   // A "no longer available" note goes as soon as the officer puts someone new in that game.
   const DROPOUT = / is no longer available on /;
-  const newPeople = (g, alloc) => {
-    const had = new Set(Object.values(g.alloc || {}).flat().filter(Boolean).map(a => a.p));
-    return Object.values(alloc || {}).flat().some(a => a && !had.has(a.p));
-  };
+  const newPeople = (g, alloc) => Object.entries(alloc || {}).some(([date, arr]) => {
+    const had = new Set(((g.alloc || {})[date] || []).filter(Boolean).map(a => a.p));     // someone new on that day
+    return (arr || []).some(a => a && !had.has(a.p));
+  });
   async function writeGame(g, patch) {
     if (patch.alloc && DROPOUT.test(g.changeNote || '') && newPeople(g, patch.alloc)) patch = { ...patch, changeNote: '' };
     const next = { ...g, ...patch };
@@ -342,7 +342,8 @@ export async function viewBoard(ctx, rid) {
       pub.key === 'stale' ? 'Re-publish' : pub.key === 'live' ? pub.label : 'Publish');
     publishBtn.disabled = pub.key === 'live';
     publishBtn.onclick = guard(async () => {
-      const patch = { published: true, publishedAt: new Date().toISOString() };
+      // Umpires see this copy until the next publish; the officer can keep working on the board meanwhile.
+      const patch = { published: true, publishedAt: new Date().toISOString(), publishedAlloc: publishedSnapshot(B.games) };
       Object.assign(B.round, patch);
       await store.saveRound({ id: rid, ...patch });
       const left = st.needed - st.filled;

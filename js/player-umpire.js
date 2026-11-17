@@ -48,6 +48,11 @@ export async function applyPlayerUmpires(store, { today, enabled = true }) {
   }
   if (!work.size) return { added: [], removed: [], blocked: [] };
 
+  // A game they pulled out of after it was published is never handed back to them automatically.
+  const pulled = new Set();
+  for (const w of (store.listWithdrawals ? await store.listWithdrawals() : []))
+    for (const r of w.games || []) pulled.add(`${w.email}|${r.gameId}|${r.date}`);
+
   const added = [], removed = [], blocked = [];
   for (const [roundId, items] of work) {
     const games = await store.listGames(roundId);
@@ -77,6 +82,7 @@ export async function applyPlayerUmpires(store, { today, enabled = true }) {
         continue;
       }
       if (slots.some(x => x && x.p === pid)) continue;                                // already there
+      if (pulled.has(`${it.email}|${gameId}|${date}`)) continue;                     // pulled out of it: the officer decides
       let n = Math.max(g.slots || 0, 1);
       let i = Array.from({ length: n }, (_, j) => j).find(j => !slots[j]);
       if (i === undefined && n < 2) { n = 2; i = 1; }
