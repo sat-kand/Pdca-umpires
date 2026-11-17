@@ -141,3 +141,15 @@ test('Suggest allocations puts the player umpire back in their own empty game fi
   const changes = autoAllocate({ games: [g1], umpires, availByEmail: Object.fromEntries(avail.map(a => [a.email, a])), claimOf });
   assert.deepEqual(changes.map(c => [c.entry.p, !!c.entry.pu]), [['p1', true], ['p2', false]]);
 });
+
+test('a player umpire who pulled out: their game (only on for them) leaves the board', async () => {
+  const s = fakeStore({ picks: [pick('g1', ['2026-11-21'])], games: [G('g1', 'Senior B09', ['2026-11-21'])] });
+  await applyPlayerUmpires(s, { today: TODAY });
+  // "I can't do this": the withdrawal frees the place first, and the choice is given back.
+  s.db.games.r1[0].alloc['2026-11-21'] = [null];
+  s.db.avail[0].picks = [];
+  await applyPlayerUmpires(s, { today: TODAY });
+  const g = s.db.games.r1[0];
+  assert.equal(g.slots, 0);
+  assert.ok(!g.puOnly && !g.puGame);
+});

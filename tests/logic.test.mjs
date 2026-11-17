@@ -297,3 +297,20 @@ test('one-day games never use the "both days" group', () => {
   const opts = slotOptions({ game: g, date: D1, slotIndex: 0, umpires: [U('u1', 'Ann')], availByEmail: avail({ u1: { [D1]: 'yes' } }), busy: {}, loads: {} });
   assert.equal(opts[0].group, 'ok');
 });
+
+import { reliabilityOf as rel } from '../js/logic.js';
+test('Suggest allocations gives empty places to the most reliable umpires first', async () => {
+  const { autoAllocate } = await import('../js/logic.js');
+  const umpires = [{ pid: 'a', email: 'a@x', name: 'A Able', active: true }, { pid: 'b', email: 'b@x', name: 'B Baker', active: true }];
+  const days = { 'senior:2026-11-21': 'yes' };
+  const availByEmail = { 'a@x': { days }, 'b@x': { days } };
+  const game = { id: 'g', grade: 'Senior B09', comp: 'Senior', slots: 1, days: [{ date: '2026-11-21', day: 1 }], alloc: {} };
+  // A has fewer games but pulled out of 2 of 3 published appointments; B kept all 5.
+  const reliability = rel({ kept: { a: 1, b: 5 }, dropped: { a: 2 } });
+  assert.ok(reliability.a < reliability.b);
+  const changes = autoAllocate({ games: [structuredClone(game)], umpires, availByEmail, baseLoads: { a: 1, b: 5 }, reliability });
+  assert.equal(changes[0].entry.p, 'b');
+  // With equal records, fewest games wins as before.
+  const even = autoAllocate({ games: [structuredClone(game)], umpires, availByEmail, baseLoads: { a: 1, b: 5 }, reliability: rel({ kept: { a: 1, b: 5 } }) });
+  assert.equal(even[0].entry.p, 'a');
+});

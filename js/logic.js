@@ -278,7 +278,17 @@ export function seasonLoads(statsList) {
 
 // Greedy fill of EMPTY slots using only umpires who said "yes".
 // Returns a list of changes; does not mutate. Fairness: least-loaded first.
-export function autoAllocate({ games, umpires, availByEmail, baseLoads = {}, claimOf }) {
+// How far an umpire can be relied on: the share of their published appointments they kept, from 0 to 1.
+// `kept` is games they have this season, `dropped` how many published ones they pulled out of (and did not
+// take back). Someone with no record counts as fully reliable.
+export function reliabilityOf({ kept = {}, dropped = {} }) {
+  const pids = new Set([...Object.keys(kept), ...Object.keys(dropped)]);
+  const out = {};
+  for (const p of pids) out[p] = ((kept[p] || 0) + 1) / ((kept[p] || 0) + (dropped[p] || 0) + 1);
+  return out;
+}
+
+export function autoAllocate({ games, umpires, availByEmail, baseLoads = {}, claimOf, reliability = {} }) {
   const active = umpires.filter(u => u.active);
   const busy = buildBusyMap(games);
   const loads = { ...baseLoads };
@@ -313,13 +323,16 @@ export function autoAllocate({ games, umpires, availByEmail, baseLoads = {}, cla
           !((busy[bk] || {})[u.pid] || []).length &&
           !allocFor(g, d.date).some(a => a && a.p === u.pid));
         if (!cands.length) continue;
+        // Most reliable first (kept their published games), then fewest games so far, so work is shared.
+        const rel = u => (u.pid in reliability ? reliability[u.pid] : 1);
         cands.sort((a, b) =>
+          rel(b) - rel(a) ||
           (loads[a.pid] || 0) - (loads[b.pid] || 0) ||
           (b.pid === prevPid) - (a.pid === prevPid) ||
           a.name.localeCompare(b.name));
         // keep the same umpire across a two-day game when that is fair enough
         const same = prevPid && cands.find(u => u.pid === prevPid);
-        const pick = same && (loads[same.pid] || 0) <= (loads[cands[0].pid] || 0) + 1 ? same : cands[0];
+        const pick = same && rel(same) >= rel(cands[0]) && (loads[same.pid] || 0) <= (loads[cands[0].pid] || 0) + 1 ? same : cands[0];
         const entry = { p: pick.pid, n: pick.name };
         (g.alloc[d.date] ||= [])[i] = entry;
         ((busy[bk] ||= {})[pick.pid] ||= []).push(g.id);

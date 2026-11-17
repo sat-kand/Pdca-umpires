@@ -4,7 +4,7 @@ import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './u
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
   slotOptions, recount, summarise, formatSummary, publishState, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
-  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS,
+  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf,
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
@@ -361,7 +361,15 @@ export async function viewBoard(ctx, rid) {
 
     const autoBtn = h('button', { class: 'btn', type: 'button' }, '✨ Suggest allocations');
     autoBtn.onclick = busy(autoBtn, guard(async () => {
-      const changes = autoAllocate({ games: B.games, umpires: B.umpires, availByEmail: B.availByEmail, baseLoads: seasonLoads(otherStats), claimOf });
+      // Pull-outs after publishing this season, per umpire (ones they took back do not count).
+      const dropped = {};
+      for (const w of await store.listWithdrawals()) {
+        const n = (w.games || []).filter(r => !r.restored).length;
+        if (n && w.pid) dropped[w.pid] = (dropped[w.pid] || 0) + n;
+      }
+      const kept = { ...seasonLoads(otherStats) };
+      for (const g of B.games) for (const d of g.days) for (const a of allocFor(g, d.date)) if (a) kept[a.p] = (kept[a.p] || 0) + 1;
+      const changes = autoAllocate({ games: B.games, umpires: B.umpires, availByEmail: B.availByEmail, baseLoads: seasonLoads(otherStats), claimOf, reliability: reliabilityOf({ kept, dropped }) });
       if (!changes.length) { toast('No empty slots could be filled with umpires who said "Available".'); return; }
       const ids = new Set(changes.map(c => c.gameId));
       const updated = [];

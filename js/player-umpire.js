@@ -61,13 +61,19 @@ export async function applyPlayerUmpires(store, { today, enabled = true }) {
       const label = `${gradeShort(g.grade)}: ${g.home.name} v ${g.away.name}`;
       if (it.op === 'remove') {
         const i = slots.findIndex(x => x && x.p === pid && x.pu);
-        if (i < 0) continue;                                                          // the officer has already changed it
-        slots[i] = null;
-        g.alloc = { ...(g.alloc || {}), [date]: slots };
-        g.puGame = false;
-        if (g.puOnly && !Object.values(g.alloc).some(arr => (arr || []).some(Boolean))) { g.slots = 0; g.puOnly = false; }   // was only on for them
-        touched.add(g.id);
-        removed.push({ name: it.u.name, roundId, label, date });
+        if (i >= 0) {
+          slots[i] = null;
+          g.alloc = { ...(g.alloc || {}), [date]: slots };
+          removed.push({ name: it.u.name, roundId, label, date });
+        }
+        // Their place may already be empty (they pulled out with "I can't do this"). Either way the
+        // game is no longer a player umpire game, and one that was only on for them goes off the board.
+        const anyone = Object.values(g.alloc || {}).some(arr => (arr || []).some(Boolean));
+        if (i >= 0 || g.puGame || (g.puOnly && !anyone)) {
+          g.puGame = false;
+          if (g.puOnly && !anyone) { g.slots = 0; g.puOnly = false; }
+          touched.add(g.id);
+        }
         continue;
       }
       if (slots.some(x => x && x.p === pid)) continue;                                // already there
