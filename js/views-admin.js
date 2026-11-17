@@ -271,9 +271,9 @@ export async function viewBoard(ctx, rid) {
     const multi = g.days.length > 1;
     // Two-day games: umpires free on every day come first, so one pick can cover both days.
     const GROUPS = multi
-      ? [['chosen', 'Player umpire (chose this game)'], ['both', 'Available both days'], ['ok', 'Available this day only'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']]
-      : [['chosen', 'Player umpire (chose this game)'], ['ok', 'Available'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']];
-    const label = o => `${o.umpire.name}${o.elsewhere ? ' · player umpire elsewhere' : o.busy ? ' · busy' : ''}`;
+      ? [['chosen', 'Player umpire (chose this game)'], ['both', 'Available both days'], ['ok', 'Available this day only'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already allocated']]
+      : [['chosen', 'Player umpire (chose this game)'], ['ok', 'Available'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already allocated']];
+    const label = o => `${o.umpire.name}${o.elsewhere ? ' · player umpire elsewhere' : o.busy ? ' · allocated' : ''}`;
     const sel = h('select', { class: 'slot' + (cur ? '' : ' empty'), 'aria-label': `Umpire ${i + 1}, ${gradeShort(g.grade)} ${g.home.name}, ${fmtDay(date)}`,
       onchange: guard(async () => {
         const u = B.umpires.find(x => x.pid === sel.value);
@@ -432,7 +432,7 @@ export async function viewBoard(ctx, rid) {
           h('thead', {}, h('tr', {}, ['Grade', 'Fixture', 'Ground', 'Allocation', 'Umpires'].map(c => h('th', {}, c)))),
           h('tbody', {}, s.games.map(g => gameRow(g, busyMap, loads))))))),
       !sections.length && h('p', { class: 'muted' }, 'No grades selected yet. Press Select grades to choose the grades that need umpires.'),
-      h('p', { class: 'muted' }, '"busy" next to a name means they are already on another game that day. Names are in last-name order.'),
+      h('p', { class: 'muted' }, '"allocated" next to a name means they are already on another game that day. Names are in last-name order.'),
     ];
   }
 
@@ -464,6 +464,13 @@ export async function viewAvailabilityOverview(ctx, rid) {
   const ICON = { yes: ['✓', 'ok'], no: ['✗', 'no'], none: ['–', 'none'] };
   const counts = c => { const n = { yes: 0, no: 0, none: 0, pu: 0 }; active.forEach(u => { n[pickOf(u.pid, c.date, c.comp) ? 'pu' : availStatus(by, u, c.comp, c.date)]++; }); return n; };
   const emails = missing.map(u => u.email);
+  // Available first (on any day of the round, or a player umpire there), then not available, then no
+  // answer; by last name within each.
+  const rank = u => {
+    const s = cols.map(c => (pickOf(u.pid, c.date, c.comp) ? 'yes' : availStatus(by, u, c.comp, c.date)));
+    return s.includes('yes') ? 0 : s.includes('no') ? 1 : 2;
+  };
+  const ordered = [...active].sort((a, b) => rank(a) - rank(b) || compareMembers(a, b));
 
   return h('div', {},
     h('div', { class: 'row-between' }, h('h1', {}, roundHeading(round)), h('span', { class: 'muted' }, fmtRange(round.dates))),
@@ -472,7 +479,7 @@ export async function viewAvailabilityOverview(ctx, rid) {
       h('div', { class: 'summary' }, cols.map(c => { const n = counts(c); return h('span', { class: 'chip' }, `${colName(c)}: ${n.yes} available · ${n.no} not available · ${n.none} no reply${n.pu ? ` · ${n.pu} player umpire${n.pu === 1 ? '' : 's'}` : ''}`); })),
       h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Umpire'), cols.map(c => h('th', {}, colName(c))), h('th', {}, ''))),
-        h('tbody', {}, active.map(u => h('tr', {}, h('td', {}, profileLink(u)),
+        h('tbody', {}, ordered.map(u => h('tr', {}, h('td', {}, profileLink(u)),
           cols.map(c => {
             const p = pickOf(u.pid, c.date, c.comp);
             if (p) return h('td', { class: 'av pu', title: `Chose ${gradeShort(p.grade)}: ${p.label}` },

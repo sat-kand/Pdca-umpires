@@ -253,7 +253,7 @@ with sync_playwright() as p:
     print("Admin: manual allocation + warnings")
     first = page.locator("select.slot").first
     avoid_val = first.evaluate("s => { const o = s.querySelector('optgroup[label^=\"Unavailable\"] option'); return o ? o.value : null }")
-    check(avoid_val is not None, "slot dropdown offers an 'Unavailable or already busy' group")
+    check(avoid_val is not None, "slot dropdown offers an 'Unavailable or already allocated' group")
     first.select_option(value=avoid_val)
     page.wait_for_timeout(250)
     check(page.locator(".warn-icon").count() >= 1, "choosing an unavailable umpire shows a warning icon")
@@ -485,6 +485,9 @@ with sync_playwright() as p:
         page.goto(BASE + f"#/admin/round/{jr0}/availability")
         page.wait_for_selector("td.av")
         check(page.locator("td.av.ok, td.av.no").count() > 0, "a round with no grades selected still shows availability for its days")
+        ranks = page.locator("table.board tbody tr").evaluate_all("""l => l.map(tr => { const c = [...tr.querySelectorAll('td.av')].map(td => td.classList.contains('ok') || td.classList.contains('pu') ? 0 : td.classList.contains('no') ? 1 : 2);
+            return [Math.min(...c), tr.querySelector('td').innerText.trim().split(' ').slice(-1)[0].toLowerCase()]; })""")
+        check(ranks == sorted(ranks), "available first, then not available, then no answer; last-name order within each")
     else:
         check(False, "sample data has a round with no grades selected")
     page.goto(BASE + "#/admin")
