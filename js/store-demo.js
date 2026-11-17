@@ -25,9 +25,13 @@ export function createDemoStore() {
       db.users['admin@demo.test'] = [DEMO_ORG.id];
     }
   };
-  const save = () => localStorage.setItem(KEY, JSON.stringify(db));
+  // Another tab (say the officer in one and an umpire in another) may have saved since: always work
+  // from what is stored, so one tab never overwrites the other's changes with an old copy.
+  let lastRaw = null;
+  const fresh = () => { const raw = localStorage.getItem(KEY); if (raw !== lastRaw) { load(); lastRaw = raw; } };
+  const save = () => { lastRaw = JSON.stringify(db); localStorage.setItem(KEY, lastRaw); };
   const emit = () => listeners.forEach(cb => cb(db.session ? { email: db.session } : null));
-  const o = () => { if (!cur || !db.orgs[cur]) throw new Error('No association selected'); return db.orgs[cur]; };
+  const o = () => { fresh(); if (!cur || !db.orgs[cur]) throw new Error('No association selected'); return db.orgs[cur]; };
   const index = (email, id) => { const l = (db.users[email] ||= []); if (!l.includes(id)) l.push(id); };
 
   load();

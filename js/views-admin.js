@@ -22,7 +22,7 @@ function tabs(rid, active) {
   const t = [['', 'Assign'], ['/availability', 'Availability'], ['/report', 'Report & email']];
   return h('nav', { class: 'tabs noprint' }, t.map(([p, label]) =>
     h('a', { class: 'tab' + (active === p ? ' active' : ''), href: `#/admin/round/${rid}${p}` }, label)),
-  h('a', { class: 'tab right', href: '#/admin' }, '← All rounds'));
+  h('a', { class: 'tab right', href: '#/admin' }, '← Back to Allocate'));
 }
 
 // ---------------------------------------------------------------------------
