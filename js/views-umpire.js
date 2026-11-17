@@ -116,13 +116,15 @@ export async function viewMy(ctx) {
   // ---- appointments (only shown when there are some)
   const today = todayLocal();
   const mine = [];
-  for (const r of rounds.filter(r => r.published).slice(0, 4)) {
+  // Every published round that is not over yet (not just the latest few, which could miss the next game).
+  for (const r of rounds.filter(r => r.published && (r.end || r.start || '') >= today)) {
     for (const g of await store.listGames(r.id)) {
       if (g.removed) continue;
       for (const d of g.days) if (d.date >= today && allocFor(g, d.date).some(a => a && a.p === u.pid)) mine.push({ g, d, r });
     }
   }
-  mine.sort((a, b) => a.d.date.localeCompare(b.d.date) || gradeShort(a.g.grade).localeCompare(gradeShort(b.g.grade), undefined, { numeric: true }));
+  // Soonest first: by date, then start time, then grade.
+  mine.sort((a, b) => a.d.date.localeCompare(b.d.date) || (a.d.time || '').localeCompare(b.d.time || '') || gradeShort(a.g.grade).localeCompare(gradeShort(b.g.grade), undefined, { numeric: true }));
 
   const apptList = h('ul', { class: 'plain' });
   let repaintAvailability = () => {};                  // set once the availability buttons exist
@@ -174,7 +176,7 @@ export async function viewMy(ctx) {
       const isDeclined = !!said && !((r.publishedAt || '') > said.at);
       const btn = h('button', { class: 'btn small', type: 'button' }, "I can't do this");
       btn.onclick = () => decline(g, d, btn);
-      return h('li', { class: 'appt' + (isDeclined ? ' declined' : '') },
+      return h('li', { class: 'appt' + (isDeclined ? ' declined' : ''), 'data-date': d.date },
         h('div', { class: 'appt-date' }, h('strong', {}, fmtDay(d.date)), d.time && h('span', { class: 'muted' }, d.time),
           g.days.length > 1 && h('span', { class: 'chip' }, `Day ${d.day}`)),
         h('div', {}, h('span', { class: 'chip' }, compLabel(compKeyOf(g))), ' ', h('span', { class: 'chip grade' }, gradeShort(g.grade)), `${g.home.name} v ${g.away.name}`),

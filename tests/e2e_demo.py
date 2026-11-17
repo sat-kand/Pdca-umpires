@@ -649,6 +649,8 @@ with sync_playwright() as p:
     sign_in(page, appt["email"])
     page.wait_for_selector(".appt")
     check(page.locator(".appt").count() >= 1, "the umpire sees their appointments")
+    ds = page.locator(".appt").evaluate_all("l => l.map(e => e.dataset.date)")
+    check(ds == sorted(ds), f"appointments are soonest first ({', '.join(ds)})")
     row = page.locator(".appt").first
     check(row.locator("button:has-text(\"I can't do this\")").count() == 1, "each appointment has an 'I can't do this' button")
     appt_date = row.locator(".appt-date strong").inner_text()
