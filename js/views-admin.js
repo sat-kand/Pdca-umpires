@@ -241,7 +241,7 @@ export async function viewBoard(ctx, rid) {
     const GROUPS = multi
       ? [['chosen', 'Player umpire (chose this game)'], ['both', 'Available both days'], ['ok', 'Available this day only'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']]
       : [['chosen', 'Player umpire (chose this game)'], ['ok', 'Available'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already busy']];
-    const label = o => `${o.umpire.name}${o.load ? ` · ${o.load} game${o.load === 1 ? '' : 's'} so far` : ''}${o.elsewhere ? ' · player umpire elsewhere' : o.busy ? ' · busy' : ''}`;
+    const label = o => `${o.umpire.name}${o.elsewhere ? ' · player umpire elsewhere' : o.busy ? ' · busy' : ''}`;
     const sel = h('select', { class: 'slot' + (cur ? '' : ' empty'), 'aria-label': `Umpire ${i + 1}, ${gradeShort(g.grade)} ${g.home.name}, ${fmtDay(date)}`,
       onchange: guard(async () => {
         const u = B.umpires.find(x => x.pid === sel.value);
@@ -388,7 +388,7 @@ export async function viewBoard(ctx, rid) {
           h('thead', {}, h('tr', {}, ['Grade', 'Fixture', 'Ground', 'Allocation', 'Umpires'].map(c => h('th', {}, c)))),
           h('tbody', {}, s.games.map(g => gameRow(g, busyMap, loads))))))),
       !sections.length && h('p', { class: 'muted' }, 'No grades selected yet. Press Select grades to choose the grades that need umpires.'),
-      h('p', { class: 'muted' }, '"3 games so far" next to a name is how many games that umpire has been given this season, so the work can be shared fairly; "busy" means they are already on another game that day.'),
+      h('p', { class: 'muted' }, '"busy" next to a name means they are already on another game that day. Umpires with fewer games this season are listed first.'),
     ];
   }
 

@@ -98,13 +98,35 @@ def check(cond, msg):
         print("  ok:", msg)
 
 
-def sign_in(page, email):
+def sign_in(page, email, open_form=True):
     page.goto(BASE + "#/")
     page.wait_for_selector("#login-email, .nav")
     if page.locator("#login-email").count():
         page.fill("#login-email", email)
         page.click("button:has-text('Sign in')")
     expect(page.locator(".who")).to_be_visible()
+    if open_form:
+        unfold(page)
+
+
+def unfold(page):
+    """An umpire who has submitted sees a summary; most checks need the form, so open it."""
+    page.wait_for_timeout(300)
+    if page.locator(".my-summary:visible button:has-text('Edit availability')").count():
+        page.click(".my-summary button:has-text('Edit availability')")
+
+
+def save(page):
+    """Press Save; a successful save folds the form, so open it again for the checks that follow."""
+    page.click(".savebar button:has-text('Save')")
+    page.wait_for_timeout(400)
+    unfold(page)
+
+
+def reload(page):
+    page.reload()
+    page.wait_for_selector(".who, #login-email")
+    unfold(page)
 
 
 def sign_out(page):
@@ -139,7 +161,7 @@ with sync_playwright() as p:
     page.click("button:has-text('Load more')")
     check(page.locator("hr.set-break").count() == 1 and page.locator(".comp-tile").count() > 4, "Load more adds the next set below a divider")
     page.screenshot(path="/tmp/sets.png")
-    page.reload()
+    reload(page)
     page.wait_for_selector(".tile-round")
     sen_t = tile("Senior").inner_text()
     check(re.search(r"\d+/\d+ NOV", sen_t.upper()) and "ROUND" not in sen_t.upper(), "tile headline is the dates, not the round name")
@@ -368,10 +390,10 @@ with sync_playwright() as p:
     check(jun_first.locator("button.opt.no").get_attribute("class") == jun_before, "changing Senior leaves the Junior answer for the same day alone")
     check(page.locator(".comp-row:has-text('Senior') .chip").inner_text() == "Unsaved changes" and page.locator(".comp-row:has-text('Junior') .chip").inner_text() == "\u2713 Submitted",
           "only Senior shows unsaved changes; Junior is still Submitted")
-    page.click(".savebar button:has-text('Save')")
+    save(page)
     page.wait_for_selector(".comp-row:has-text('Senior') .chip:has-text('Submitted')")
     check(True, "one Save sends it and Senior returns to Submitted")
-    page.reload()
+    reload(page)
     page.wait_for_selector(".tile")
     sen = page.locator(".comp-section:has(h2:has-text('Senior'))")
     jun = page.locator(".comp-section:has(h2:has-text('Junior'))")
@@ -387,8 +409,8 @@ with sync_playwright() as p:
     sen.locator("button:has-text('Mark all available')").click()
     check(sen.locator("button.opt.yes.on").count() == 12, "'Mark all available' answers every Senior date")
     check(jun.locator("button.opt.yes.on").count() < jun.locator(".drow").count(), "...and leaves the other competitions alone")
-    page.click(".savebar button:has-text('Save')")
-    page.wait_for_selector(".chip:has-text('Submitted')")
+    save(page)
+    page.wait_for_selector(".comp-row .chip:has-text('Submitted')")
 
     print("Admin sees the season-wide answers")
     sign_out(page)
@@ -445,7 +467,7 @@ with sync_playwright() as p:
     c0.locator("button").click()
     page.wait_for_timeout(300)
     check("no" in c0.get_attribute("class"), "a second click makes it not available")
-    page.reload()
+    reload(page)
     page.wait_for_selector(".season-grid table")
     check("no" in page.locator(".season-grid tbody tr:has-text('H Murali') td.av").first.get_attribute("class"), "the override is saved")
     page.locator(".season-grid .datebtn").first.click()
@@ -489,7 +511,7 @@ with sync_playwright() as p:
     row.locator("input[aria-label=address]").fill("12 Pitch St, Parramatta")
     row.locator("input[aria-label=address]").blur()
     page.wait_for_timeout(300)
-    page.reload()
+    reload(page)
     page.wait_for_selector("table.members")
     row = page.locator("tr.needs")
     check(row.locator("input[type=date]").input_value() == "1990-04-21" and "Pitch St" in row.locator("input[aria-label=address]").input_value(), "date of birth and address are saved")
@@ -499,7 +521,7 @@ with sync_playwright() as p:
     page.locator("tr:has-text('newbie@demo.test') input").nth(2).fill("Newman")
     page.locator("tr:has-text('newbie@demo.test') input").nth(2).blur()
     page.wait_for_timeout(300)
-    page.reload()
+    reload(page)
     page.wait_for_selector("table.members")
     check(page.locator("tr:has-text('newbie@demo.test') input").nth(2).input_value() == "Newman", "an officer can correct a member's name")
     page.fill("textarea", "Pat, Example, pat@example.com, 0400 000 000, L3-7782\nbad line")
@@ -529,7 +551,7 @@ with sync_playwright() as p:
     page.locator(".daymonth select").nth(0).select_option("01")
     page.click("button:has-text('Save membership')")
     page.wait_for_selector(".toast:has-text('Membership saved')")
-    page.reload()
+    reload(page)
     page.wait_for_selector(".type-rows")
     check(page.locator(".type-row").count() == 4 and page.locator(".daymonth select").nth(0).input_value() == "01" and page.locator(".daymonth select").nth(1).input_value() == "09", "the renewal day and the new type are saved")
     page.locator(".type-row").last.locator("button:has-text('Remove')").click()
@@ -546,7 +568,7 @@ with sync_playwright() as p:
     check(sel.locator("option").all_inner_texts() == ["\u2014", "Ordinary member", "Junior member", "Life member"], "the dropdown offers the types set up in Settings")
     sel.select_option("Junior member")
     page.wait_for_timeout(300)
-    page.reload()
+    reload(page)
     page.wait_for_selector("table.members")
     row1 = page.locator("tr:has-text('umpire1@demo.test')")
     check(row1.locator("select").input_value() == "Junior member" and "$25" in row1.inner_text(), "the choice is saved and the type's fee is shown")
@@ -637,7 +659,7 @@ with sync_playwright() as p:
     check(len(now_mail) == before_mail + 1 and appt["name"] in now_mail[-1]["message"]["subject"], "the officer is emailed")
     sec = page.locator(f".comp-section:has(h2:has-text('Senior')) .drow:has-text('{appt_date}')").first
     check(sec.locator("button.opt.no.on").count() == 1, "their availability for that day is now 'Not available'")
-    page.reload()
+    reload(page)
     page.wait_for_selector(".appt")
     check(page.locator(".appt.declined").count() >= 1 and page.locator(f".comp-section:has(h2:has-text('Senior')) .drow:has-text('{appt_date}') button.opt.no.on").count() == 1,
           "it is still saved after a reload")
@@ -651,6 +673,24 @@ with sync_playwright() as p:
       }""", appt)
     check(not freed, "and the slot is free again")
     page.click(".dropouts button:has-text('Got it')")
+    # The officer puts them back on the game and publishes again: the appointment stands once more.
+    page.evaluate("""(a) => { const k = 'pdca-umpires-demo-v2'; const db = JSON.parse(localStorage.getItem(k)); const o = db.orgs.pdca;
+        const u = Object.values(o.umpires).find(x => x.email === a.email);
+        const g = o.games[a.roundId][a.gameId]; const arr = g.alloc[a.date] || []; const i = arr.findIndex(x => !x);
+        arr[i < 0 ? arr.length : i] = { p: u.pid, n: u.name }; g.alloc[a.date] = arr;
+        const av = Object.values(o.availability).find(x => x.email === a.email); av.days['senior:' + a.date] = 'yes';   // marked Available again
+        o.rounds[a.roundId].published = true; o.rounds[a.roundId].publishedAt = new Date(Date.now() + 1000).toISOString();
+        localStorage.setItem(k, JSON.stringify(db)); }""", appt)
+    page.reload()
+    page.wait_for_selector(".who")
+    sign_out(page)
+    sign_in(page, appt["email"])
+    page.wait_for_selector(".appt")
+    check(page.locator(".appt.declined").count() == 0 and page.locator(".appt button:has-text(\"I can't do this\")").count() >= 1,
+          "put back and published again: 'You said you can't do this' is gone and the appointment stands")
+    sign_out(page)
+    sign_in(page, "admin@demo.test")
+    page.wait_for_selector(".comp-tile")
 
     print("Umpire pulls out of a published game")
     info = page.evaluate("""(today) => {
@@ -672,7 +712,7 @@ with sync_playwright() as p:
     sign_in(page, info["email"])
     page.wait_for_selector(".comp-section")
     page.locator(f".comp-section:has(h2:has-text('Senior')) .drow:has-text('{label}')").first.locator("button.opt.no").click()
-    page.click(".savebar button:has-text('Save')")
+    save(page)
     page.wait_for_selector(".toast")
     check("appointments officer has been told" in page.locator(".toast").inner_text(), "the umpire is told their change affects a game they were given")
     mail = page.evaluate("() => Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.mail || {})")
@@ -703,7 +743,7 @@ with sync_playwright() as p:
     check(page.locator(".dropouts").count() == 1, "the banner is still there until the officer dismisses it")
     page.click(".dropouts button:has-text('Got it')")
     check(page.locator(".dropouts").count() == 0, "the banner can be dismissed")
-    page.reload()
+    reload(page)
     page.wait_for_selector(".comp-tile")
     check(page.locator(".dropouts").count() == 0, "and it does not come back: the withdrawal is handled")
 
@@ -797,11 +837,11 @@ with sync_playwright() as p:
     check(page.locator(".avail-body").is_hidden() and page.locator(".notice:has-text('Tick at least one competition')").count() == 0,
           "a player umpire only: no competitions ticked, no date list, and no nagging")
     days_before = page.evaluate("() => (Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.availability).find(a => a.email === 'umpire4@demo.test') || {}).days || {}")
-    page.click(".savebar button:has-text('Save')")
+    save(page)
     page.wait_for_selector(".toast:has-text('will see the games you chose')")
     days_after = page.evaluate("() => Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.availability).find(a => a.email === 'umpire4@demo.test').days")
     check(days_after == days_before, "choosing a game does not change their date answers, so the officer's Availability sheet is unaffected")
-    page.reload()
+    reload(page)
     page.wait_for_selector(".my-picks")
     check(not any(c.is_checked() for c in page.locator(".comp-pick input").all()) and page.locator(".mode:has-text('Choose my own games') input").is_checked(),
           "the choice of how they umpire is saved")
@@ -812,7 +852,7 @@ with sync_playwright() as p:
     check(not dialogs and page.locator(".player-card").is_hidden() and page.locator(".savebar button:has-text('Save')").is_disabled(),
           "unticking Player umpire asks nothing and saves nothing; it only hides the games")
     check(page.locator(".mode-row:has-text('Choose my own games') .chip").inner_text() == "\u2713 Submitted", "unticked, Player umpire still shows its status")
-    page.reload()
+    reload(page)
     page.wait_for_selector(".mode")
     page.locator(".mode:has-text('Choose my own games') input").check()
     page.wait_for_selector(".my-picks")
@@ -888,7 +928,7 @@ with sync_playwright() as p:
     page.evaluate("""() => { const k = 'pdca-umpires-demo-v2'; const db = JSON.parse(localStorage.getItem(k));
         const a = Object.values(db.orgs.pdca.availability).find(a => a.email === 'umpire5@demo.test');
         const key = Object.keys(a.days).filter(x => x.startsWith('t20:')).sort()[0]; delete a.days[key]; localStorage.setItem(k, JSON.stringify(db)); }""")
-    page.reload()
+    reload(page)
     page.wait_for_selector("#login-email")
     sign_in(page, "umpire5@demo.test")
     page.wait_for_selector(".comp-list")
@@ -905,7 +945,8 @@ with sync_playwright() as p:
     check(save_btn.is_disabled() and page.locator(".chip:visible:has-text('Unsaved changes')").count() == 0, "and is not a change: nothing to save")
     page.locator(".comp-pick:has-text('Senior') input").uncheck()
     check(page.locator(".notice:has-text('Tick at least one competition')").count() == 1, "with none ticked they are asked to tick one")
-    check(page.locator(".savebar").is_hidden(), "and there is no Save bar (no 'All dates answered' with nothing to answer)")
+    check("All dates answered" not in page.inner_text(".savebar") and page.locator(".savebar button:has-text('Save')").is_disabled(),
+          "nothing to answer: no 'All dates answered', Save greyed out, only Cancel to use")
     # Change a Junior date, then hide Junior: that change must not be sent.
     page.locator(".comp-pick:has-text('Junior') input").check()
     jun_btn = page.locator(".comp-section:has(h2:has-text('Junior')) .drow").first
@@ -923,7 +964,7 @@ with sync_playwright() as p:
     # Leave a Senior date blank (tap the chosen answer again): Save must refuse and point at it.
     blank_row = page.locator(".comp-section:has(h2:has-text('Senior')) .drow").nth(1)
     blank_row.locator("button.opt.on").click()
-    save_btn.click()
+    save(page)
     page.wait_for_selector(".toast:has-text('Answer every date')")
     check("Senior has 1 left" in page.locator(".toast").last.inner_text() and "Junior" not in page.locator(".toast").last.inner_text(),
           "a blank date stops the save, and only the competition being sent is checked (not the hidden Junior change)")
@@ -931,7 +972,7 @@ with sync_playwright() as p:
     check(page.evaluate(AV)["days"] == saved0["days"], "nothing was saved")
     blank_row.locator("button.opt.yes").click()
     check("missing" not in (blank_row.get_attribute("class") or ""), "answering it clears the highlight")
-    save_btn.click()
+    save(page)
     page.wait_for_selector(".toast")
     page.wait_for_timeout(300)
     saved1 = page.evaluate(AV)
@@ -942,7 +983,7 @@ with sync_playwright() as p:
     check(len(sen_changed) in (1, 2), "only the Senior changes were sent")
     check(save_btn.is_disabled() and page.locator(".comp-row:has-text('Senior') .chip").inner_text() == "\u2713 Submitted"
           and page.locator(".comp-row:has-text('Junior') .chip").inner_text() == "Unsaved changes", "after saving, Senior says Submitted and the unsent Junior change still shows")
-    page.reload()
+    reload(page)
     page.wait_for_selector(".comp-list")
     check([c.is_checked() for c in page.locator(".comp-pick input").all()] == [True, False, False] and page.locator(".comp-section:has(h2:has-text('Junior'))").is_hidden(),
           "which competitions are shown is remembered")
@@ -951,13 +992,13 @@ with sync_playwright() as p:
     page.locator(".comp-pick:has-text('T20') input").check()
     sen_row2 = page.locator(".comp-section:has(h2:has-text('Senior')) .drow").nth(2)
     sen_row2.locator("button.opt.no").click() if "on" not in (sen_row2.locator("button.opt.no").get_attribute("class") or "") else sen_row2.locator("button.opt.yes").click()
-    save_btn.click()
+    save(page)
     page.wait_for_selector(".toast:has-text('Answer every date')")
     check("T20 has 1 left" in page.locator(".toast").last.inner_text(), "editing Senior with T20 ticked: T20's blank date (not edited) still stops the save")
     t20_blank = page.locator(".comp-section:has(h2:has-text('T20')) .drow.missing")
     check(t20_blank.count() == 1, "and that T20 date is highlighted")
     t20_blank.locator("button.opt.yes").click()
-    save_btn.click()
+    save(page)
     page.wait_for_selector(".toast:has-text('saved')")
     t20_now = page.evaluate(AV)["days"]
     check(all(t20_now.get(k) for k in [x for x in t20_now] if k.startswith("t20:")) and page.locator(".comp-row:has-text('T20') .chip").inner_text() == "\u2713 Submitted",
@@ -1063,8 +1104,20 @@ with sync_playwright() as p:
     fp.wait_for_selector("form input")
     check(fp.locator(".notice:has-text('not in an association')").count() == 0 and fp.locator("form input").count() > 0, "the demo opens its built-in association")
     fp.click("button:has-text('Load sample data')")
+    fp.wait_for_selector(".my-summary")
+    summ = fp.inner_text(".my-summary")
+    check(fp.locator(".avail-form").is_hidden() and all(c in summ for c in ["Senior", "Junior", "T20"]) and "available" in summ and "Submitted" in summ,
+          "once submitted, the form folds into a short summary: each competition, how many dates available, Submitted")
+    fp.click(".my-summary button:has-text('Edit availability')")
     fp.wait_for_selector(".drow")
-    check(fp.locator(".comp-title").count() == 3 and fp.locator("button.opt.yes").count() > 10, "after Load sample data the umpire sees the date-by-date availability page")
+    check(fp.locator(".comp-title").count() == 3 and fp.locator("button.opt.yes").count() > 10, "Edit availability opens the date-by-date form")
+    r0 = fp.locator(".comp-section:visible .drow").first
+    was_yes = "on" in (r0.locator("button.opt.yes").get_attribute("class") or "")
+    r0.locator("button.opt.no" if was_yes else "button.opt.yes").click()
+    fp.click(".savebar button:has-text('Cancel')")
+    check(fp.locator(".my-summary").is_visible() and fp.locator(".avail-form").is_hidden(), "Cancel folds it away again")
+    fp.click(".my-summary button:has-text('Edit availability')")
+    check(("on" in (fp.locator(".comp-section:visible .drow").first.locator("button.opt.yes").get_attribute("class") or "")) == was_yes, "and puts back what was saved")
     fresh.close()
 
     print("Associations: settings, officers, join link")

@@ -104,7 +104,11 @@ export async function viewMy(ctx) {
   const regularChanged = () => modes.regular && modes.comps.some(k => keysFor(k).some(x => days[x] !== savedDays[x]));
   const pickSig = list => list.map(p => `${p.gameId}:${[...p.dates].sort().join('+')}`).sort().join('|');
   const picksChanged = () => puOn && modes.player && pickSig(picks) !== pickSig(savedPicks);
+  // Appointments they turned down, with when: a turn-down stands until the officer publishes the round again.
+  let declined = ((existing && existing.declined) || []).slice();
   const put = (d, p) => store.saveAvailability({
+    ...(existing || {}),                          // keeps what the officer marked (edited) and anything else not ours
+    declined,
     seasonId: season.id, email: u.email, name: u.name, days: d,
     modes: { ...modes, comps: [...modes.comps] }, picks: p, updatedAt: new Date().toISOString(),
   });
@@ -115,16 +119,18 @@ export async function viewMy(ctx) {
   for (const r of rounds.filter(r => r.published).slice(0, 4)) {
     for (const g of await store.listGames(r.id)) {
       if (g.removed) continue;
-      for (const d of g.days) if (d.date >= today && allocFor(g, d.date).some(a => a && a.p === u.pid)) mine.push({ g, d });
+      for (const d of g.days) if (d.date >= today && allocFor(g, d.date).some(a => a && a.p === u.pid)) mine.push({ g, d, r });
     }
   }
   mine.sort((a, b) => a.d.date.localeCompare(b.d.date) || gradeShort(a.g.grade).localeCompare(gradeShort(b.g.grade), undefined, { numeric: true }));
 
   const apptList = h('ul', { class: 'plain' });
   let repaintAvailability = () => {};                  // set once the availability buttons exist
+  let drawSummary = () => {};                          // set once the summary exists
 
   // Turning down an appointment is the same as saying "Not available" for that day: the slot is
   // freed and the appointments officer is told. Doing nothing means the umpire is standing.
+  const rOf = g => (mine.find(m => m.g === g) || {}).r || {};
   async function decline(g, d, btn) {
     if (!season) { toast('The season dates are not set up yet. Please tell the appointments officer.', 'err'); return; }
     const key = availKey(compKeyOf(g), d.date);
@@ -134,6 +140,7 @@ export async function viewMy(ctx) {
     const next = { ...savedDays, [key]: 'no' };
     // A game they chose as a player umpire is given back for that day too, so it leaves their
     // choices and the officer's board as well.
+    declined = [...declined.filter(x => !(x.gameId === g.id && x.date === d.date)), { roundId: rOf(g).id, gameId: g.id, date: d.date, at: new Date().toISOString() }];
     const nextPicks = savedPicks.map(p => (p.gameId === g.id ? { ...p, dates: p.dates.filter(x => x !== d.date) } : p)).filter(p => p.dates.length);
     try {
       await put(next, nextPicks);
@@ -155,20 +162,24 @@ export async function viewMy(ctx) {
     drawAppointments();
     repaintAvailability(key);
     drawStatus();
+    drawSummary();
   }
 
   function drawAppointments() {
-    setChildren(apptList, mine.map(({ g, d }) => {
+    setChildren(apptList, mine.map(({ g, d, r }) => {
       const link = mapsLink(g);
-      const declined = days[availKey(compKeyOf(g), d.date)] === 'no';
+      // Turned down, and the officer has not published the round again since (if they have, and the
+      // umpire is still on the game, the officer has put them back on it).
+      const said = declined.find(x => x.gameId === g.id && x.date === d.date);
+      const isDeclined = !!said && !((r.publishedAt || '') > said.at);
       const btn = h('button', { class: 'btn small', type: 'button' }, "I can't do this");
       btn.onclick = () => decline(g, d, btn);
-      return h('li', { class: 'appt' + (declined ? ' declined' : '') },
+      return h('li', { class: 'appt' + (isDeclined ? ' declined' : '') },
         h('div', { class: 'appt-date' }, h('strong', {}, fmtDay(d.date)), d.time && h('span', { class: 'muted' }, d.time),
           g.days.length > 1 && h('span', { class: 'chip' }, `Day ${d.day}`)),
         h('div', {}, h('span', { class: 'chip' }, compLabel(compKeyOf(g))), ' ', h('span', { class: 'chip grade' }, gradeShort(g.grade)), `${g.home.name} v ${g.away.name}`),
         h('div', { class: 'muted' }, link ? h('a', { href: link, target: '_blank', rel: 'noopener' }, g.ground || 'Ground TBC') : (g.ground || 'Ground TBC')),
-        h('div', { class: 'appt-action' }, declined
+        h('div', { class: 'appt-action' }, isDeclined
           ? h('span', { class: 'chip warn' }, "You said you can't do this")
           : btn));
     }));
@@ -321,7 +332,10 @@ export async function viewMy(ctx) {
   }
   const hint = h('span', { class: 'muted' });
   const saveBtn = h('button', { class: 'btn primary', type: 'button' }, 'Save');
-  const savebar = h('div', { class: 'savebar' }, hint, saveBtn);
+  const cancelBtn = h('button', { class: 'btn', type: 'button' }, 'Cancel');
+  const savebar = h('div', { class: 'savebar' }, hint, h('span', { class: 'savebar-btns' }, cancelBtn, saveBtn));
+  let savedModes = structuredClone(modes);
+  const hasSubmitted = () => Object.keys(savedDays).some(x => compsOffered.includes(x.slice(0, x.indexOf(':')))) || savedPicks.length > 0;
   drawStatus = () => {
     const regDirty = regularChanged(), plDirty = picksChanged();
     // ticked = this part will be sent by Save; an untouched change in an unticked part says so
@@ -337,7 +351,8 @@ export async function viewMy(ctx) {
     const left = comps.filter(c => modes.comps.includes(c.comp)).flatMap(keysOf).filter(d => !days[d]).length;
     const regularOn = modes.regular && modes.comps.some(k => compsOffered.includes(k));
     const playerOn = puOn && modes.player;
-    savebar.hidden = !regularOn && !playerOn;            // nothing chosen: nothing to save
+    savebar.hidden = !regularOn && !playerOn && !hasSubmitted();   // nothing chosen: nothing to save
+    cancelBtn.hidden = !hasSubmitted();
     saveBtn.disabled = !regDirty && !plDirty;            // nothing ticked has changed since the last save
     const parts = [];
     if (regularOn) parts.push(left ? `${left} date${left > 1 ? 's' : ''} not answered yet` : 'All dates answered');
@@ -401,7 +416,10 @@ export async function viewMy(ctx) {
     await put(next, nextPicks);
     savedDays = next;
     savedPicks = nextPicks;
+    savedModes = structuredClone(modes);
     drawStatus();
+    drawSummary();
+    setEditing(false);
     // Pulling out of a game that is already published: free the slot and tell the appointments officer.
     const w = await recordWithdrawal(store, { umpire: u, before, after: next });
     if (mine.length) drawAppointments();
@@ -414,8 +432,50 @@ export async function viewMy(ctx) {
   setChildren(card,
     availIntro,
     sections.length ? sections : h('p', { class: 'muted' }, 'No upcoming dates.'));
+  // ---- once submitted, the form folds away into a short summary, leaving room for the appointments.
+  // Edit availability opens it again; Cancel puts back what was saved.
+  const puTitle = (pu.title || '').trim() || 'Player umpire';
+  const summaryCard = h('section', { class: 'card my-summary' });
+  const formWrap = h('div', { class: 'avail-form' }, modeCard, availCard, playerCard, savebar);
+  function setEditing(on) {
+    summaryCard.hidden = on;
+    formWrap.hidden = !on;
+    if (on && formWrap.scrollIntoView) formWrap.scrollIntoView({ block: 'start' });
+  }
+  drawSummary = () => {
+    const items = ALL_COMPS.filter(k => compsOffered.includes(k)).map(k => {
+      const keys = comps.filter(c => c.comp === k).flatMap(keysOf);
+      const yes = keys.filter(x => savedDays[x] === 'yes').length, no = keys.filter(x => savedDays[x] === 'no').length;
+      const sent = Object.keys(savedDays).some(x => x.startsWith(k + ':'));
+      return h('li', { class: 'row-between' },
+        h('span', {}, h('strong', {}, compLabel(k)), sent && h('span', { class: 'muted' }, ` \u00b7 ${yes} available \u00b7 ${no} not available`)),
+        h('span', { class: 'chip ' + (sent ? 'ok' : 'muted-chip') }, sent ? '\u2713 Submitted' : 'Not submitted'));
+    });
+    const n = savedPicks.length;
+    setChildren(summaryCard,
+      h('div', { class: 'row-between' }, h('h2', {}, 'My availability'),
+        h('button', { class: 'btn', type: 'button', onclick: () => setEditing(true) }, 'Edit availability')),
+      h('ul', { class: 'plain summary-list' }, items,
+        puOn && n > 0 && h('li', {},
+          h('div', { class: 'row-between' }, h('strong', {}, puTitle), h('span', { class: 'chip ok' }, `${n} game${n === 1 ? '' : 's'} chosen`)),
+          h('ul', { class: 'plain muted small' }, savedPicks.map(p => h('li', {}, `${p.dates.map(fmtDay).join(' & ')} \u00b7 ${gradeShort(p.grade)} \u00b7 ${p.label}`))))));
+  };
+  cancelBtn.onclick = () => {
+    for (const k of Object.keys(days)) delete days[k];
+    Object.assign(days, savedDays);
+    Object.keys(buttons).forEach(paint);
+    Object.values(rowEl).forEach(el => el.classList.remove('missing'));
+    picks = savedPicks.map(p => ({ ...p, dates: [...p.dates] }));
+    Object.assign(modes, structuredClone(savedModes));
+    drawModes();
+    drawStatus();
+    setEditing(false);
+  };
+
   drawModes();
   drawStatus();
-  root.append(modeCard, availCard, playerCard, savebar);
+  drawSummary();
+  root.append(summaryCard, formWrap);
+  setEditing(!hasSubmitted());
   return root;
 }

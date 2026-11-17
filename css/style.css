@@ -258,3 +258,10 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; }
 .drow.missing { background: #fdecea; border-radius: 8px; box-shadow: inset 3px 0 0 var(--red, #b3261e); padding-left: .5rem; }
 .mode-head { margin: .6rem 0 .3rem; font-size: 1rem; }
 td.av.pu { font-weight: 400; background: #f5f1fb; } td.av.pu .chip.pu { margin-left: 0; }
+.avail-form[hidden], .my-summary[hidden] { display: none; }
+.avail-form > .savebar { margin: 0 0 1rem; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 -4px 14px rgba(0,0,0,.06); }
+.savebar-btns { display: flex; gap: .5rem; }
+.savebar .btn[hidden] { display: none; }
+.summary-list > li { padding: .45rem 0; border-bottom: 1px solid var(--line); }
+.summary-list > li:last-child { border-bottom: 0; }
+.summary-list ul { margin-top: .3rem; }
