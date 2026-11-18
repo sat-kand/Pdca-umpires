@@ -388,3 +388,13 @@ test('startSummary: Saturday and Sunday starts are separate lines, each with its
     { date: '2026-11-22', n: 1, type: 'Two Day', later: ['2026-11-29'] },
   ]);
 });
+
+test('a grade set to None is never on the board, even if its games were given places before', async () => {
+  const { setGroups, isPicked, slotCount, groupNeedsUmpires } = await import('../js/logic.js');
+  const { PDCA, usePdcaGroups } = await import('./pdca-groups.mjs');
+  setGroups({ ...PDCA, gradeGroups: { 'U11 - 1': 'junior', 'U12 Gold': 'junior', 'T20 Mens': 't20' }, gradeUmpires: { 'U11 - 1': 0, 'U12 Gold': 1, 'T20 Mens': 0 } });
+  const g = grade => ({ grade, slots: 1, days: [{ date: '2026-11-29' }] });
+  assert.deepEqual([isPicked(g('U11 - 1')), slotCount(g('U11 - 1')), isPicked(g('U12 Gold')), slotCount(g('U12 Gold'))], [false, 0, true, 1]);
+  assert.deepEqual([groupNeedsUmpires('junior'), groupNeedsUmpires('t20'), groupNeedsUmpires('senior')], [true, false, true]);
+  usePdcaGroups();
+});

@@ -3,7 +3,7 @@
 import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
 import { recordWithdrawal } from './withdrawals.js';
 import { PLAYER_UMPIRE_COMPS } from './player-umpire.js';
-import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS } from './logic.js';
+import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS, groupNeedsUmpires } from './logic.js';
 
 export function viewLogin(ctx) {
   const { store } = ctx;
@@ -252,7 +252,7 @@ export async function viewMy(ctx) {
     if (!puOn || !modes.player) { setChildren(playerBody); return; }
     if (!lists) {
       setChildren(playerBody, h('p', { class: 'muted' }, 'Loading the fixtures\u2026'));
-      try { lists = (await store.listFixtureLists()).filter(l => PLAYER_UMPIRE_COMPS.includes(l.comp) && (l.end || '') >= today && (l.games || []).length).sort((a, b) => (a.start || '').localeCompare(b.start || '')); }
+      try { lists = (await store.listFixtureLists()).filter(l => PLAYER_UMPIRE_COMPS.includes(l.comp) && groupNeedsUmpires(l.comp) && (l.end || '') >= today && (l.games || []).length).sort((a, b) => (a.start || '').localeCompare(b.start || '')); }
       catch (e) { console.error(e); lists = []; }
     }
     const order = COMPS.map(c => c.key);
@@ -334,7 +334,7 @@ export async function viewMy(ctx) {
   }
 
   // ---- availability
-  const comps = season ? upcomingDates(season.calendar, today) : [];
+  const comps = season ? upcomingDates(season.calendar, today).filter(c => groupNeedsUmpires(c.comp)) : [];   // not groups that need no umpires
   const compsOffered = comps.map(c => c.comp);
   const sectionEl = {};
   const availIntro = h('p', { class: 'muted' });
@@ -529,7 +529,7 @@ async function otherOrgCards(ctx, email, today) {
       const comps = season ? upcomingDates(season.calendar, today) : [];
       const saved = (avail && avail.days) || {};
       const ticked = (avail && avail.modes && avail.modes.comps) || [];
-      const items = groups.filter(g => comps.some(c => c.comp === g.key)).map(g => {
+      const items = groups.filter(g => comps.some(c => c.comp === g.key) && groupNeedsUmpires(g.key, org.gradeGroups, org.gradeUmpires)).map(g => {
         const keys = comps.filter(c => c.comp === g.key).flatMap(c => c.dates.map(d => availKey(g.key, d)));
         const sent = Object.keys(saved).some(x => x.startsWith(g.key + ':'));
         return summaryRow(g.name, sent, keys.filter(x => saved[x] === 'yes').length, keys.filter(x => saved[x] === 'no').length,

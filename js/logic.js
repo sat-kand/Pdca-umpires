@@ -53,6 +53,13 @@ export function compKeyOf(x) {
 }
 export const groupOrder = key => { const i = COMPS.findIndex(c => c.key === key); return i < 0 ? 99 : i; };
 
+// Whether a group needs umpires at all: false when every one of its grades is set to None. Such a
+// group gets no Allocate tile and is not offered to members for availability.
+export function groupNeedsUmpires(key, gradeGroups = GRADE_GROUP, gradeUmpires = GRADE_UMPIRES) {
+  const grades = Object.keys(gradeGroups || {}).filter(g => gradeGroups[g] === key);
+  return !grades.length || grades.some(g => (gradeUmpires || {})[g] !== 0);
+}
+
 // Umpires a grade needs, as the association set it (undefined when not set).
 export const umpiresForGrade = grade => (grade in GRADE_UMPIRES ? GRADE_UMPIRES[grade] : undefined);
 
@@ -241,9 +248,10 @@ export function compareGames(a, b) {
 // ---------- allocation state ----------------------------------------------
 
 // A game is "picked" when the officer has chosen its grade for umpires (slots > 0).
-export const isPicked = game => (game.slots || 0) > 0;
+// A grade the association set to None needs no umpires, whatever slots its games were given before.
+export const isPicked = game => (game.slots || 0) > 0 && umpiresForGrade(game.grade) !== 0;
 
-export function slotCount(game) { return game.removed ? 0 : (game.slots || 0); }
+export function slotCount(game) { return game.removed || umpiresForGrade(game.grade) === 0 ? 0 : (game.slots || 0); }
 
 // What umpires see is what was last published, not the officer's work since. Publishing stores a copy
 // of the allocation on the round; rounds published before that existed fall back to the live board.

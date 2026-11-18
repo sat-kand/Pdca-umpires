@@ -98,6 +98,7 @@ async function render() {
   const join = /^\/join\/([^/]+)$/.exec(path);          // the link an association sends its umpires
   if (join) { if (S.user) await chooseOrg(decodeURIComponent(join[1])); else { localStorage.setItem(ORG_KEY, decodeURIComponent(join[1])); localStorage.setItem(JOIN_KEY, '1'); go('/'); } return; }
   if (S.user && S.org && S.isAdmin && path === '/') { go('/admin'); return; }
+  shownPath = null;                                    // the spinner's scroll position is not anyone's
   setChildren(main, spinner());
   let view;
   try {
@@ -124,7 +125,31 @@ async function render() {
   }
   if (id !== renderId) return; // a newer navigation superseded this one
   setChildren(main, view);
-  window.scrollTo(0, 0);
+  restoreScroll(path);
+}
+
+// Coming back to a page (Back, a back link, a menu link) returns to where it was left. Kept in memory
+// only, so a refresh or a new browser starts at the top.
+const scrollAt = new Map();
+let shownPath = null;
+window.addEventListener('scroll', () => { if (shownPath) scrollAt.set(shownPath, window.scrollY); }, { passive: true });
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+let userScrolled = false;                             // the person scrolled themselves: stop restoring
+for (const ev of ['wheel', 'touchstart', 'keydown', 'mousedown']) window.addEventListener(ev, () => { userScrolled = true; }, { passive: true });
+function restoreScroll(path) {
+  const y = scrollAt.get(path) || 0;
+  shownPath = path;
+  userScrolled = false;
+  window.scrollTo(0, y);
+  if (Math.abs(window.scrollY - y) < 2) return;
+  // A page that fills in after it is shown (fixtures loading, say): try again once it is long enough.
+  let tries = 0;
+  const again = () => {
+    if (shownPath !== path || userScrolled || tries++ > 30) return;
+    window.scrollTo(0, y);
+    if (Math.abs(window.scrollY - y) >= 2) setTimeout(again, 100);
+  };
+  setTimeout(again, 100);
 }
 
 async function boot() {

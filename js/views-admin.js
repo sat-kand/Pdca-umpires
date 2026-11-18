@@ -4,7 +4,7 @@ import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './u
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
   slotOptions, recount, summarise, formatSummary, publishState, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
-  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot, umpiresForGrade, suggestUmpires, firstGroup,
+  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot, umpiresForGrade, suggestUmpires, firstGroup, groupNeedsUmpires,
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
@@ -155,13 +155,14 @@ export async function viewAdminHome(ctx) {
     return w === now ? 'This week' : w === addDays(now, 7) ? 'Next week' : w < now ? 'Started last week' : `Week of ${fmtDay(w)}`;
   };
   // Second days of two-day games that started in an earlier week, shown under the week they fall in.
-  const continuing = week => upcomingRounds(state.rounds, today)
+  const continuing = week => upcomingRounds(state.rounds, today).filter(r => groupNeedsUmpires(r.comp))
     .filter(r => weekOf(r.start, startDay) < week && (r.dates || []).some(d => d >= week && d <= addDays(week, 6)))
     .map(r => h('li', {}, h('a', { href: `#/admin/round/${r.id}` }, `${compLabel(r.comp)}: two-day games from ${fmtDay(r.start)}`),
       ` continue ${(r.dates || []).filter(d => d >= week && d <= addDays(week, 6)).map(fmtDay).join(' & ')} (allocated previous week)`));
 
   function draw() {
-    const shown = visibleRounds(state.rounds, today, state.more, startDay);
+    // Groups whose grades are all set to None need no umpires: no tile.
+    const shown = visibleRounds(state.rounds.filter(r => groupNeedsUmpires(r.comp)), today, state.more, startDay);
     setChildren(wrap,
       h('div', { class: 'row-between' }, h('h1', {}, 'Allocate'), state.syncing && h('span', { class: 'muted' }, 'Updating fixtures from Play Cricket…')),
       state.error && h('p', { class: 'notice warn' }, state.error, ' ', h('button', { class: 'link', type: 'button', onclick: () => sync(true) }, 'Try again')),
@@ -181,7 +182,7 @@ export async function viewAdminHome(ctx) {
         h('div', { class: 'week-head' }, h('h2', {}, weekName(set.week)), h('span', { class: 'muted' }, `${fmtDay(set.week)} – ${fmtDay(addDays(set.week, 6))}`)),
         (c => c.length > 0 && h('ul', { class: 'plain continuing muted' }, c))(continuing(set.week)),
         h('div', { class: 'cards' }, set.map(r => tile(r, set.week))))),
-      COMPS.some(c => !currentRound(state.rounds, c.key, today)) && h('div', { class: 'cards' }, COMPS.filter(c => !currentRound(state.rounds, c.key, today)).map(empty)),
+      (e => e.length > 0 && h('div', { class: 'cards' }, e.map(empty)))(COMPS.filter(c => groupNeedsUmpires(c.key) && !currentRound(state.rounds, c.key, today))),
       shown.hasMore && h('div', { class: 'load-more' }, h('button', { class: 'btn', type: 'button', onclick: () => { state.more = ++homeWeeks.more; draw(); } }, 'Load next week')));
   }
 
@@ -549,7 +550,7 @@ export async function viewSeasonAvailability(ctx) {
   // rest are marked: they still appear, because their answers came in with the season's import.
   let people = umpires.slice().sort((a, b) => Number(b.active !== false) - Number(a.active !== false) || compareMembers(a, b));
   const members = () => people.filter(u => u.active !== false);
-  const comps = COMPS.filter(c => season.calendar.some(e => (e.comp || firstGroup()) === c.key));
+  const comps = COMPS.filter(c => groupNeedsUmpires(c.key) && season.calendar.some(e => (e.comp || firstGroup()) === c.key));
   const wrap = h('div');
   const ui = { comp: comps[0].key, past: false, q: '', on: null };       // on = show only umpires available on this date
   const ICON = { yes: '\u2713', no: '\u2717', none: '' };
