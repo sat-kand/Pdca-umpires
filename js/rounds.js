@@ -7,7 +7,7 @@ import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures, mergeFixtures }
 import { buildCalendar, compKeyOf, summarise, COMPS, groupOrder } from './logic.js';
 
 // Bump when the information saved on each round changes shape, so stored rounds are rebuilt on the next visit.
-export const SCHEMA = 5;
+export const SCHEMA = 6;   // 6: rounds by calendar week and group
 export const STALE_MS = 12 * 60 * 60 * 1000;   // refetch the fixtures at most twice a day on its own
 
 export const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
