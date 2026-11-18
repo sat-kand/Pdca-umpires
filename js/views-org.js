@@ -138,7 +138,11 @@ export async function viewOrgSettings(ctx) {
     return saveButton(h('form', { class: 'card', onsubmit: busy(saveBtn, async e => {
       e.preventDefault();
       saved.add('playerUmpire');
-      await store.saveOrg({ playerUmpire: { ...p, enabled: on.checked, groups: groupBoxes.filter(([, b]) => b.checked).map(([k]) => k), title: title.value.trim(), description: text.value.trim() }, updatedAt: new Date().toISOString() });
+      const groups = groupBoxes.filter(([, b]) => b.checked).map(([k]) => k);
+      // Switched on, or given a group it did not have: new to members who already answered.
+      const added = on.checked && groups.length && (!p.enabled || !(p.groups || []).length || groups.some(k => !(p.groups || []).includes(k)));
+      await store.saveOrg({ playerUmpire: { ...p, enabled: on.checked, groups, title: title.value.trim(), description: text.value.trim(),
+        ...(added ? { addedAt: new Date().toISOString() } : {}) }, updatedAt: new Date().toISOString() });
       await ctx.refreshUser();
       toast('Saved', 'ok');
       await draw();

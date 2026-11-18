@@ -31,6 +31,6 @@ export const DEMO_ORG = {
   playCricketId: 'ee7d89d9-6732-ec11-981f-501ac52e1666',
   plan: 'trial',
   notifyEmail: 'admin@demo.test',
-  playerUmpire: { enabled: true, groups: ['senior'], description: 'Pick any Senior round, grade or fixture you want to umpire.' },
+  playerUmpire: { description: 'Pick any Senior round, grade or fixture you want to umpire.' },
   membership: { renewalDay: '06-30', types: [{ name: 'Ordinary member', fee: 60 }, { name: 'Junior member', fee: 25 }, { name: 'Life member', fee: 0 }] },
 };

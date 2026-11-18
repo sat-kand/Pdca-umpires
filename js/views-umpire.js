@@ -106,6 +106,8 @@ export async function viewMy(ctx) {
   // A group the association added after this member last saved, which they have not answered yet.
   let lastSaved = existing;                     // seen as of their last save: a group added after it is new to them
   const isNewGroup = k => isNewFor(COMPS.find(c => c.key === k), lastSaved);
+  // Player umpiring, switched on (or given another group) after they last saved, with no games chosen.
+  const isNewPlayer = () => isNewFor({ key: '\u0000', addedAt: pu.addedAt }, lastSaved) && !savedPicks.length;
   let picks = savedPicks.map(p => ({ ...p, dates: [...p.dates] }));
 
   const keysFor = comp => [...new Set([...Object.keys(days), ...Object.keys(savedDays)].filter(x => x.startsWith(comp + ':')))];
@@ -354,14 +356,14 @@ export async function viewMy(ctx) {
     // ticked = this part will be sent by Save; an untouched change in an unticked part says so
     const paintChip = (c, ticked, changed, has, fresh = false) => {
       c.className = 'chip ' + (changed ? 'warn' : has ? 'ok' : fresh ? 'new' : 'muted-chip');
-      c.textContent = changed ? 'Unsaved changes' : has ? '\u2713 Submitted' : fresh ? 'New group added' : 'Not submitted';
+      c.textContent = changed ? 'Unsaved changes' : has ? '\u2713 Submitted' : fresh ? 'Newly Added' : 'Not submitted';
     };
     for (const k of ALL_COMPS) {
       paintChip(statusChips[k], modes.regular && modes.comps.includes(k),
         keysFor(k).some(x => days[x] !== savedDays[x]), Object.keys(savedDays).some(x => x.startsWith(k + ':')),
         isNewGroup(k) && !modes.comps.includes(k));       // once they tick it to see its dates, it is Not submitted like the rest
     }
-    paintChip(statusChips.player, modes.player, pickSig(picks) !== pickSig(savedPicks), savedPicks.length > 0);
+    paintChip(statusChips.player, modes.player, pickSig(picks) !== pickSig(savedPicks), savedPicks.length > 0, isNewPlayer() && !modes.player);
     const left = comps.filter(c => modes.comps.includes(c.comp)).flatMap(keysOf).filter(d => !days[d]).length;
     const regularOn = modes.regular && modes.comps.some(k => compsOffered.includes(k));
     const playerOn = puOn && modes.player;
@@ -472,7 +474,7 @@ export async function viewMy(ctx) {
         // Shown like the competitions, chosen games or not, so every part's status is in one place.
         puOn && h('li', {},
           h('div', { class: 'row-between' }, h('span', {}, h('strong', {}, puTitle), n > 0 && h('span', { class: 'muted' }, ` \u00b7 ${n} game${n === 1 ? '' : 's'} chosen`)),
-            h('span', { class: 'chip ' + (n ? 'ok' : 'muted-chip') }, n ? '\u2713 Submitted' : 'Not submitted')),
+            (fresh => h('span', { class: 'chip ' + (n ? 'ok' : fresh ? 'new' : 'muted-chip') }, n ? '\u2713 Submitted' : fresh ? 'Newly Added' : 'Not submitted'))(isNewPlayer() && !savedModes.player)),
           n > 0 && h('ul', { class: 'plain muted small' }, savedPicks.map(p => h('li', {}, `${p.dates.map(fmtDay).join(' & ')} \u00b7 ${gradeShort(p.grade)} \u00b7 ${p.label}`))))));
   };
   cancelBtn.onclick = () => {
@@ -508,7 +510,7 @@ function isNewFor(group, avail) {
 function summaryRow(label, sent, yes, no, fresh) {
   return h('li', { class: 'row-between' },
     h('span', {}, h('strong', {}, label), sent && h('span', { class: 'muted' }, ` \u00b7 ${yes} available \u00b7 ${no} not available`)),
-    h('span', { class: 'chip ' + (sent ? 'ok' : fresh ? 'new' : 'muted-chip') }, sent ? '\u2713 Submitted' : fresh ? 'New group added' : 'Not submitted'));
+    h('span', { class: 'chip ' + (sent ? 'ok' : fresh ? 'new' : 'muted-chip') }, sent ? '\u2713 Submitted' : fresh ? 'Newly Added' : 'Not submitted'));
 }
 
 // Summary cards for every other association this member belongs to, read with their member access there.
@@ -542,7 +544,8 @@ async function otherOrgCards(ctx, email, today) {
           : h('ul', { class: 'plain summary-list' }, items.length ? items : h('li', { class: 'muted' }, 'No upcoming dates.'),
             pu.enabled && (pu.groups || []).length > 0 && h('li', { class: 'row-between' },
               h('span', {}, h('strong', {}, (pu.title || '').trim() || 'Player umpire'), nPicks > 0 && h('span', { class: 'muted' }, ` \u00b7 ${nPicks} game${nPicks === 1 ? '' : 's'} chosen`)),
-              h('span', { class: 'chip ' + (nPicks ? 'ok' : 'muted-chip') }, nPicks ? '\u2713 Submitted' : 'Not submitted')))));
+              (fresh => h('span', { class: 'chip ' + (nPicks ? 'ok' : fresh ? 'new' : 'muted-chip') }, nPicks ? '\u2713 Submitted' : fresh ? 'Newly Added' : 'Not submitted'))(
+                !nPicks && isNewFor({ key: '\u0000', addedAt: pu.addedAt }, avail) && !(avail && avail.modes && avail.modes.player))))));
     } catch (e) { console.warn('association', m.orgId, e); }
   }
   return cards;
