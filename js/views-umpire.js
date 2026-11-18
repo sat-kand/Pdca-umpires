@@ -165,7 +165,7 @@ export async function viewMy(ctx) {
         drawPlayer();
       }
       await recordWithdrawal(store, { umpire: u, before, after: next, also: [{ comp: compKeyOf(g), date: d.date }] });
-      toast('The appointments officer has been told, and you are marked Not available for that day.', 'warn');
+      toast('You are marked Not available for that day.', 'warn');
     } catch (e) {
       console.error(e);
       btn.disabled = false;
@@ -443,7 +443,7 @@ export async function viewMy(ctx) {
     // Pulling out of a game that is already published: free the slot and tell the appointments officer.
     const w = await recordWithdrawal(store, { umpire: u, before, after: next });
     if (mine.length) drawAppointments();
-    if (w) toast(`Saved. You were down for ${w.games.length} game${w.games.length === 1 ? '' : 's'} on those dates \u2014 the appointments officer has been told.`, 'warn');
+    if (w) toast(`Saved. You were down for ${w.games.length} game${w.games.length === 1 ? '' : 's'} on those dates.`, 'warn');
     else toast(puOn && modes.player && nextPicks.length ? 'Saved. The appointments officer will see the games you chose.' : 'Availability saved');
   });
   saveBtn.onclick = async () => { await saveOnce(); drawStatus(); };   // busy() re-enables the button; put it back to how it should be

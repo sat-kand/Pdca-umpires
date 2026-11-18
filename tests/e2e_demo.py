@@ -787,7 +787,7 @@ with sync_playwright() as p:
     page.locator(f".comp-section:has(h2:has-text('Senior')) .drow:has-text('{label}')").first.locator("button.opt.no").click()
     save(page)
     page.wait_for_selector(".toast")
-    check("appointments officer has been told" in page.locator(".toast").inner_text(), "the umpire is told their change affects a game they were given")
+    check("You were down for" in page.locator(".toast").inner_text() and "has been told" not in page.locator(".toast").inner_text(), "the umpire is told their change affects a game they were given")
     mail = page.evaluate("() => Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.mail || {})")
     check(len(mail) >= 1 and mail[-1]["to"] == "admin@demo.test" and info["name"] in mail[-1]["message"]["subject"], f"an email to the officer is queued ({len(mail)})")
     check(label.split(", ")[1] in mail[-1]["message"]["text"], "the email lists the date and game")
