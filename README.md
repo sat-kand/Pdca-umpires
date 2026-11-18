@@ -118,7 +118,9 @@ python3 tests/e2e_demo.py  # browser test of the whole flow in demo mode (needs 
 
 The **Members** list shows only name, status, member since and membership type, with buttons to draft an email (addresses in BCC) to all active or all inactive members. Personal details — email, mobile, date of birth, address, accreditation number and **accreditation provider** (filled in by the member) — are on each profile.
 
-Members open **their own profile** by tapping their name at the top: their personal details once (with **Edit my details**), then a card for **each association they belong to** — membership type and fee, status, games umpired, pull-outs, fulfilment rate and past appointments there. **Member since** is editable by the member for each association (lists loaded from a file may not have it); left alone, it stays the date the association approved them. Availability and upcoming games stay on their home page.
+Signing up asks only for a first and last name; everything else (mobile, date of birth, address, accreditation) is added later with **Edit my details**.
+
+Members open **their own profile** by tapping their name at the top: their personal details once (with **Edit my details**), then a card for **each association they belong to** — membership type, status, games umpired, pull-outs, fulfilment rate and past appointments there. **Member since** is editable by the member for each association (lists loaded from a file may not have it); left alone, it stays the date the association approved them. Availability and upcoming games stay on their home page.
 
 **Past allocations:** a finished round stays changeable on its Assign board for 4 days after its last game (for an umpire replaced on the morning, say), marked *Can change until …* in Past allocations. After that it is a record: Availability and Report only.
 

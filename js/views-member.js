@@ -312,7 +312,6 @@ async function membershipSection(org, view, u, today) {
   const gamesUmpired = new Set(past.map(a => a.g.id)).size;
   const pulls = ((avail && avail.declined) || []).map(x => ({ ...x, g: gameById.get(x.gameId) })).sort((a, b) => b.date.localeCompare(a.date));
   const rate = appts.length + pulls.length ? appts.length / (appts.length + pulls.length) : null;
-  const fee = feeFor(org, u.membership);
   const status = u.active ? ['Active', 'ok'] : u.deactivated ? ['Inactive', 'muted-chip'] : ['Waiting for approval', 'warn'];
 
   // When they became a member there: theirs to correct (a list loaded from a file may not have it).
@@ -329,7 +328,7 @@ async function membershipSection(org, view, u, today) {
 
   return h('section', { class: 'card assoc-card' },
     h('div', { class: 'row-between' }, h('h2', {}, org.name || org.id), h('span', { class: 'chip ' + status[1] }, status[0])),
-    kv('Membership type', u.membership ? `${u.membership}${fee ? ` · ${money(fee)}` : ''}` : '—'),
+    kv('Membership type', u.membership || '\u2014'),
     kv('Member since', since),
     h('div', { class: 'stats' },
       stat(String(gamesUmpired), gamesUmpired === 1 ? 'game umpired' : 'games umpired'),

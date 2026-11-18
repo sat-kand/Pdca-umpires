@@ -37,29 +37,28 @@ export async function viewProfile(ctx) {
   const phone = h('input', { type: 'tel', value: existing?.phone || '', placeholder: 'Optional', autocomplete: 'tel' });
   const accreditation = h('input', { value: existing?.accreditation || '', placeholder: 'Optional' });
   const provider = h('input', { value: existing?.accreditationProvider || '', placeholder: 'For example, Cricket NSW', list: 'acc-providers' });
-  const btn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
+  // Signing up asks only for what is needed (a name); everything else is added later from the profile.
+  const btn = h('button', { class: 'btn primary', type: 'submit' }, existing ? 'Save' : 'Continue');
   return h('form', { class: 'card narrow', onsubmit: busy(btn, async e => {
     e.preventDefault();
-    await store.saveUmpire({
-      pid: existing?.pid || newPid(), email: S.user.email,
-      firstName: first.value.trim(), lastName: last.value.trim(), name: fullName(first.value, last.value),
-      dob: dob.value, address: address.value.trim(), phone: phone.value.trim(), accreditation: accreditation.value.trim(), accreditationProvider: provider.value.trim(),
-      active: existing ? existing.active : S.isAdmin,
-      updatedAt: new Date().toISOString(),
-    });
+    const names = { firstName: first.value.trim(), lastName: last.value.trim(), name: fullName(first.value, last.value) };
+    await store.saveUmpire(existing
+      ? { ...names, pid: existing.pid, email: S.user.email, dob: dob.value, address: address.value.trim(), phone: phone.value.trim(),
+          accreditation: accreditation.value.trim(), accreditationProvider: provider.value.trim(), active: existing.active, updatedAt: new Date().toISOString() }
+      : { ...names, pid: newPid(), email: S.user.email, active: S.isAdmin, updatedAt: new Date().toISOString() });
     await refreshUser();
     toast('Details saved');
     go(existing ? '/profile' : S.isAdmin ? '/my' : '/');
   }) },
-  h('h1', {}, existing ? 'Your details' : 'Welcome — tell us who you are'),
-  !existing && h('p', { class: 'muted' }, 'This is a one-off step. The appointments officer will approve your account before you can be allocated.'),
+  h('h1', {}, existing ? 'Your details' : 'Welcome'),
+  !existing && h('p', { class: 'muted' }, 'What is your name? You can add the rest later from your profile.'),
   h('div', { class: 'two-up' }, h('label', {}, 'First name', first), h('label', {}, 'Last name', last)),
-  h('label', {}, 'Date of birth', dob),
+  existing && [h('label', {}, 'Date of birth', dob),
   h('label', {}, 'Address', address),
   h('label', {}, 'Mobile', phone),
   h('div', { class: 'two-up' }, h('label', {}, 'Umpire accreditation number', accreditation), h('label', {}, 'Accreditation provider', provider)),
   h('datalist', { id: 'acc-providers' }, ['Cricket NSW', 'Cricket Australia', 'NSW Cricket Umpires & Scorers Association'].map(v => h('option', { value: v }))),
-  h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to your appointments officers.'),
+  h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to your appointments officers.')],
   h('p', {}, btn, ' ', existing && h('a', { class: 'btn', href: '#/profile' }, 'Cancel')));
 }
 
