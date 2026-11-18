@@ -377,7 +377,21 @@ export function summarise(games) {
   for (const g of basis) counts.set(g.roundName || '', (counts.get(g.roundName || '') || 0) + 1);
   const title = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], undefined, { numeric: true }))[0];
   const other = [...new Set(basis.filter(g => g.roundName && title && g.roundName !== title[0]).map(g => `${gradeShort(g.grade)}: ${g.roundName}`))].join(' · ');
-  return { stats: recount(games), picked: new Set(picked.map(g => g.grade)).size, formats: formatSummary(basis), ...(title && title[0] ? { title: title[0] } : {}), other };
+  return { stats: recount(games), picked: new Set(picked.map(g => g.grade)).size, formats: formatSummary(basis), starts: startSummary(basis), ...(title && title[0] ? { title: title[0] } : {}), other };
+}
+
+// When games start and, for games of more than one day, when their other days are: one line per start
+// day, format and later days, e.g. { date: '2026-11-21', n: 6, type: 'Two Day', later: ['2026-11-28'] }.
+export function startSummary(games) {
+  const by = new Map();
+  for (const g of games) {
+    const ds = (g.days || []).map(d => d.date).sort();
+    if (!ds.length) continue;
+    const k = [ds[0], g.matchType || '', ds.slice(1).join(',')].join('|');
+    if (!by.has(k)) by.set(k, { date: ds[0], n: 0, type: g.matchType || '', later: ds.slice(1) });
+    by.get(k).n++;
+  }
+  return [...by.values()].sort((a, b) => a.date.localeCompare(b.date) || (a.later[0] || '').localeCompare(b.later[0] || '') || a.type.localeCompare(b.type));
 }
 
 // Sum of appointments per umpire across stats from other rounds + this one.

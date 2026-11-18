@@ -133,8 +133,14 @@ export async function viewAdminHome(ctx) {
     return h('div', { class: 'card comp-tile' },
       h('a', { class: 'tile-body', href: `#/admin/round/${r.id}` },
         h('h2', {}, c.label),
-        h('div', { class: 'tile-round' }, here.map(d => fmtDay(d)).join(' & ')),
-        h('div', { class: 'muted' }, r.formats || '', later.length ? ` \u00b7 continues ${later.map(fmtDay).join(' & ')}` : ''),
+        Array.isArray(r.starts) && r.starts.length
+          // One line per start day, so games on Saturday and on Sunday are not read as one two-day game.
+          ? h('ul', { class: 'plain tile-starts' }, r.starts.map(s => h('li', {},
+            h('strong', { class: 'tile-round' }, fmtDay(s.date)), ' ',
+            h('span', { class: 'muted' }, `${s.n} ${s.type ? s.type + ' ' : ''}game${s.n === 1 ? '' : 's'}`
+              + (s.later.length ? `, ${s.later.length === 1 ? 'day 2' : 'then'} ${s.later.map(d => fmtDay(d).replace(/ /g, '\u00a0')).join(' & ')}` : '')))))
+          : [h('div', { class: 'tile-round' }, here.map(d => fmtDay(d)).join(' & ')),
+            h('div', { class: 'muted' }, r.formats || '', later.length ? ` \u00b7 continues ${later.map(fmtDay).join(' & ')}` : '')],
         h('div', { class: 'tile-stats' },
           picked
             ? [h('span', { class: 'chip ' + (st.needed && st.filled >= st.needed ? 'ok' : 'warn') }, `${st.filled} / ${st.needed} filled`), ' ',

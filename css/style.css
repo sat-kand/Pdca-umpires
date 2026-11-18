@@ -125,10 +125,13 @@ td.av { text-align: center; font-weight: 700; } td.av.ok { color: var(--green); 
 }
 
 /* availability: one section per competition */
-.comp-section + .comp-section { margin-top: 28px; }
-.comp-head { align-items: baseline; margin: 4px 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--green); }
-.comp-title { margin: 0; font-size: 1.15rem; color: var(--green); }
-.comp-head .link { font-size: .9rem; }
+/* Each group is its own panel: a solid header band and a tinted body, with clear space between groups. */
+.comp-section { border: 2px solid var(--green); border-radius: var(--radius); background: var(--green-l); overflow: hidden; }
+.comp-section + .comp-section { margin-top: 36px; }
+.comp-head { align-items: center; margin: 0; padding: 10px 14px; background: var(--green); }
+.comp-title { margin: 0; font-size: 1.15rem; color: #fff; }
+.comp-head .link { font-size: .9rem; color: #fff; }
+.comp-section > :not(.comp-head) { margin: 12px; }
 
 .dnote { display: block; font-weight: 400; color: var(--muted, #666); font-size: .8rem; line-height: 1.25; margin-top: 2px; }
 
@@ -139,6 +142,9 @@ td.av { text-align: center; font-weight: 700; } td.av.ok { color: var(--green); 
 .tile-body { display: block; text-decoration: none; color: inherit; padding: .25rem 0 .1rem; }
 .tile-body:hover .tile-round { color: var(--green); }
 .tile-round { font-size: 1.25rem; font-weight: 600; }
+.tile-starts { margin: .25rem 0 .5rem; }
+.tile-starts li { margin: .15rem 0; padding: 0; border: 0; }
+.tile-starts .tile-round { font-size: 1.05rem; }
 .tile-stats { margin-top: .5rem; display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; }
 .btn.small { padding: .25rem .7rem; font-size: .85rem; }
 
