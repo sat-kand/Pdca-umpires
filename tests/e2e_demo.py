@@ -857,7 +857,7 @@ with sync_playwright() as p:
     pu_form = page.locator("form:has(h2:has-text('Player umpires'))")
     boxes = pu_form.locator("label.inline:has(input[type=checkbox])").all_inner_texts()
     check([x.strip() for x in boxes][1:] == ["Senior", "T20", "Junior"] and pu_form.locator("label:has-text('Senior') input").is_checked()
-          and not pu_form.locator("label:has-text('Junior') input").is_checked(), f"the officer picks which groups player umpires choose from; the first group to start with ({boxes})")
+          and not pu_form.locator("label:has-text('Junior') input").is_checked(), f"the officer picks which groups player umpires choose from ({boxes})")
     check(pu_form.locator("input[type=checkbox]").first.is_checked() and "Senior round" in pu_form.locator("textarea").input_value(),
           "Settings has a Player umpires switch and the text members see")
     pu_form.locator("input[type=checkbox]").first.uncheck()
@@ -866,8 +866,9 @@ with sync_playwright() as p:
     sign_out(page)
     sign_in(page, "umpire4@demo.test")
     page.wait_for_selector(".comp-list")
-    check(page.locator(".mode").count() == 0 and page.locator("h2:has-text('Full umpire')").count() == 1 and page.locator(".player-card").is_hidden(),
-          "switched off: only Full umpire, with no tick box")
+    check(page.locator(".mode").count() == 0 and page.locator(".avail-form h2:has-text('Parramatta District Cricket Association')").count() == 1
+          and page.locator("text=Full umpire").count() == 0 and page.locator(".player-card").is_hidden(),
+          "switched off: the card is headed with the association's name, with no Full umpire wording and no tick box")
     body = page.inner_text("body")
     check("The appointments officer gives me games" not in body and "Tick one or both" not in body and "false" not in body, "the removed lines are gone, and no stray 'false'")
     sign_out(page)
@@ -900,18 +901,18 @@ with sync_playwright() as p:
     sign_out(page)
     sign_in(page, "umpire4@demo.test")
     page.wait_for_selector(".mode")
-    check(page.locator(".mode-row strong").all_inner_texts() == ["Choose my own games"] and page.locator("h3.mode-head").inner_text() == "Full umpire"
-          and page.locator(".mode:has-text('Full umpire')").count() == 0, "Full umpire is a heading with no tick box; the officer's own name for player umpiring")
+    check(page.locator(".mode-row strong").all_inner_texts() == ["Choose my own games"] and page.locator("text=Full umpire").count() == 0
+          and page.locator("text=How I will umpire").count() == 0, "no Full umpire or How I will umpire wording; the officer's own name for player umpiring")
     player = page.locator(".mode:has-text('Choose my own games') input")
     check(not player.is_checked(), "choosing games is a second option, off by default")
     check("Pick any Senior game you would like to umpire." in page.inner_text(".mode:has-text('Choose my own games')"), "members see the officer's own wording")
-    card = ".card:has(h2:has-text('How I will umpire'))"
-    check(page.locator(f"{card} h3.mode-head").count() == 1 and page.locator(f"{card} .mode").count() == 1,
-          "Full umpire and player umpiring sit together under How I will umpire")
+    card = ".card:has(h2:has-text('Parramatta District Cricket Association'))"
+    check(page.locator(f"{card} .comp-pick").count() == 3 and page.locator(f"{card} .mode").count() == 1,
+          "the groups and player umpiring sit together under the association's name")
     player.check()
     page.wait_for_selector(".pick-list")
     order = page.evaluate("() => { const a = document.querySelector('.avail-body'), p = document.querySelector('.player-card'); return !!(a.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING); }")
-    check(order, "the availability form sits straight under Full umpire, before the player-umpire games")
+    check(order, "the availability form comes before the player-umpire games")
     opts = page.locator(".chooser-pick select").first.locator("option").all_inner_texts()
     check(page.locator(".chooser-pick select[aria-label=Competition]").count() == 0 and "Senior" in page.inner_text(".chooser h3"), "only Senior games can be chosen: no competition dropdown")
     check(page.locator(".pick-list .chip.grade").filter(has_text=re.compile(r"^U\d")).count() == 0 and not any("T20" in o for o in opts), "no Junior or T20 fixtures are offered")
@@ -1094,7 +1095,7 @@ with sync_playwright() as p:
     AV = "() => Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.availability).find(a => a.email === 'umpire5@demo.test')"
     saved0 = page.evaluate(AV)
     check([c.is_checked() for c in page.locator(".comp-pick input").all()] == [True, True, True] and page.locator(".comp-pick").all_inner_texts() == ["Senior", "T20", "Junior"],
-          "under Full umpire: Senior, T20 and Junior, all ticked for someone who answers in all three")
+          "Senior, T20 and Junior, all ticked for someone who answers in all three")
     save_btn = page.locator(".savebar button:has-text('Save')")
     check(save_btn.is_disabled(), "nothing changed yet: Save is greyed out")
     page.locator(".comp-pick:has-text('Junior') input").uncheck()
@@ -1103,7 +1104,7 @@ with sync_playwright() as p:
           and page.locator(".comp-section:has(h2:has-text('Senior'))").is_visible(), "unticking only hides those dates")
     check(save_btn.is_disabled() and page.locator(".chip:visible:has-text('Unsaved changes')").count() == 0, "and is not a change: nothing to save")
     page.locator(".comp-pick:has-text('Senior') input").uncheck()
-    check(page.locator(".notice:has-text('Tick at least one competition')").count() == 1, "with none ticked they are asked to tick one")
+    check(page.locator(".notice:has-text('Tick at least one group')").count() == 1, "with none ticked they are asked to tick one")
     check("All dates answered" not in page.inner_text(".savebar") and page.locator(".savebar button:has-text('Save')").is_disabled(),
           "nothing to answer: no 'All dates answered', Save greyed out, only Cancel to use")
     # Change a Junior date, then hide Junior: that change must not be sent.
@@ -1510,6 +1511,42 @@ with sync_playwright() as p:
     names = page.locator(".comp-tile h2").all_inner_texts()
     check("Seniors" not in names and "Women" not in names, f"tiles of groups that are gone are no longer shown ({names})")
 
+
+    print("A group added after members answered; other associations")
+    sign_out(page)
+    sign_in(page, "admin@demo.test")
+    page.goto(BASE + "#/admin/settings")
+    page.wait_for_selector(".groups-card")
+    gc = page.locator(".groups-card")
+    gc.locator("button:has-text('Add group')").click()
+    gc.locator(".group-list input").last.fill("Night Cricket")
+    gc.locator("table.grades-table tbody tr").first.locator("select").first.select_option(label="Night Cricket")
+    gc.locator("button:has-text('Save')").click()
+    page.wait_for_selector(".groups-card button[type=submit]:has-text('Saved')")
+    page.goto(BASE + "#/admin")
+    page.wait_for_selector(".comp-tile h2:has-text('Night Cricket')")
+    page.evaluate("""() => { const k = 'pdca-umpires-demo-v2', db = JSON.parse(localStorage.getItem(k));
+      const x = JSON.parse(JSON.stringify(db.orgs.pdca)); x.org.id = 'second'; x.org.name = 'Second Association';
+      db.orgs.second = x; localStorage.setItem(k, JSON.stringify(db)); }""")
+    sign_out(page)
+    sign_in(page, "umpire4@demo.test")
+    page.goto(BASE + "#/my")
+    page.wait_for_selector(".my-summary")
+    mine = page.locator(".my-summary").first
+    check("Parramatta District Cricket Association" in mine.inner_text() and "My availability" in mine.inner_text(), "the summary says which association it is for")
+    check(mine.locator("li:has-text('Night Cricket') .chip").inner_text() == "New group added", "a group added after they answered shows as New group added")
+    page.wait_for_selector(".other-org")
+    other = page.locator(".other-org")
+    check(other.count() == 1 and "Second Association" in other.inner_text() and other.locator("button:has-text('Open')").count() == 1,
+          "their other association has its own summary card, with Open")
+    mine.locator("button:has-text('Edit availability')").click()
+    row = page.locator(".comp-row:has-text('Night Cricket')")
+    check(not row.locator("input").is_checked() and row.locator(".chip").inner_text() == "New group added", "in the form it is unticked and tagged New group added")
+    row.locator("input").check()
+    check(row.locator(".chip").inner_text() == "Not submitted", "once ticked to see its dates, it reads Not submitted like the others")
+    other.locator("button:has-text('Open')").click()
+    page.wait_for_selector(".my-summary h2:has-text('Second Association'), .avail-form h2:has-text('Second Association')")
+    check(True, "Open switches to that association")
 
     browser.close()
 

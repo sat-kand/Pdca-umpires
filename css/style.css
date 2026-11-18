@@ -260,6 +260,8 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; }
 .comp-row { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
 .comp-row .comp-pick { min-width: 6.5rem; }
 .chip.muted-chip { background: #f1f3f1; color: var(--muted); }
+.chip.new { background: #e3ecfb; color: #1d4f9c; font-weight: 600; }
+.other-orgs .my-summary { margin-top: 16px; }
 .comp-row .comp-pick { margin: 0; }
 .drow.missing { background: #fdecea; border-radius: 8px; box-shadow: inset 3px 0 0 var(--red, #b3261e); padding-left: .5rem; }
 .mode-head { margin: .6rem 0 .3rem; font-size: 1rem; }

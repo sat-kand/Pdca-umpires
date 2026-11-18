@@ -172,7 +172,8 @@ export async function ensureGroups(store, games, comps = []) {
     const s = sug.groups.find(g => g.key === sug.compGroup[comp]) || sug.groups[0];
     const same = groups.find(g => g.name === s.name);
     if (same) gradeGroups[grade] = same.key;
-    else { groups.push({ ...s }); gradeGroups[grade] = s.key; }
+    // A group added once the association already had groups is new to members who already answered.
+    else { groups.push({ ...s, ...((org.groups || []).length ? { addedAt: new Date().toISOString() } : {}) }); gradeGroups[grade] = s.key; }
   }
   for (const gr of Object.keys(gradeGroups)) if (!gradeComp.has(gr)) delete gradeGroups[gr];
   for (const gr of Object.keys(gradeUmpires)) if (!gradeComp.has(gr)) delete gradeUmpires[gr];

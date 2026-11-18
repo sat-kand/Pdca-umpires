@@ -88,10 +88,12 @@ export async function viewMy(ctx) {
 
   // How this member umpires: give their availability for the officer to allocate, choose games
   // themselves (player umpire), or both. Their chosen games are saved with their availability.
+  // Player umpiring is never ticked for them: only by their own choice (or games they already chose).
   const modes = { regular: true, player: !!(existing && (existing.picks || []).length), ...((existing && existing.modes) || {}) };
   // Player umpiring is switched on, and described, by the appointments officer in Settings.
   const pu = (store.org && store.org.playerUmpire) || {};
-  const puOn = !!pu.enabled;
+  const orgName = (store.org && store.org.name) || 'Availability';
+  const puOn = !!pu.enabled && PLAYER_UMPIRE_COMPS.length > 0;    // on, with at least one group to choose from
   modes.regular = true;                          // Full umpire is a heading; each competition is ticked on its own
   // Which competitions they give availability for. Before they have said, the ones they have
   // answered in, or all of them for someone new.
@@ -101,6 +103,9 @@ export async function viewMy(ctx) {
     modes.comps = answered.length ? answered : [...ALL_COMPS];
   }
   let savedPicks = ((existing && existing.picks) || []).filter(p => PLAYER_UMPIRE_COMPS.includes(p.comp));
+  // A group the association added after this member last saved, which they have not answered yet.
+  let lastSaved = existing;                     // seen as of their last save: a group added after it is new to them
+  const isNewGroup = k => isNewFor(COMPS.find(c => c.key === k), lastSaved);
   let picks = savedPicks.map(p => ({ ...p, dates: [...p.dates] }));
 
   const keysFor = comp => [...new Set([...Object.keys(days), ...Object.keys(savedDays)].filter(x => x.startsWith(comp + ':')))];
@@ -315,10 +320,9 @@ export async function viewMy(ctx) {
 
   function drawModes() {
     setChildren(modeCard,
-      puOn ? h('h2', {}, 'How I will umpire') : h('h2', {}, 'Full umpire'),
-      puOn && h('h3', { class: 'mode-head' }, 'Full umpire'),
+      h('h2', {}, orgName),
       h('div', { class: 'comp-list' + (puOn ? '' : ' flush') }, ALL_COMPS.filter(k => compsOffered.includes(k)).map(compBox)),
-      !modes.comps.some(k => compsOffered.includes(k)) && !(puOn && modes.player) && h('p', { class: 'notice warn' }, 'Tick at least one competition.'),
+      !modes.comps.some(k => compsOffered.includes(k)) && !(puOn && modes.player) && h('p', { class: 'notice warn' }, 'Tick at least one group.'),
       puOn && modeBox('player', (pu.title || '').trim() || 'Player umpire', (pu.description || '').trim()));
     availCard.hidden = !modes.regular || !modes.comps.some(k => compsOffered.includes(k));
     for (const [k, el] of Object.entries(sectionEl)) el.hidden = !modes.comps.includes(k);
@@ -348,13 +352,14 @@ export async function viewMy(ctx) {
   drawStatus = () => {
     const regDirty = regularChanged(), plDirty = picksChanged();
     // ticked = this part will be sent by Save; an untouched change in an unticked part says so
-    const paintChip = (c, ticked, changed, has) => {
-      c.className = 'chip ' + (changed ? 'warn' : has ? 'ok' : 'muted-chip');
-      c.textContent = changed ? 'Unsaved changes' : has ? '\u2713 Submitted' : 'Not submitted';
+    const paintChip = (c, ticked, changed, has, fresh = false) => {
+      c.className = 'chip ' + (changed ? 'warn' : has ? 'ok' : fresh ? 'new' : 'muted-chip');
+      c.textContent = changed ? 'Unsaved changes' : has ? '\u2713 Submitted' : fresh ? 'New group added' : 'Not submitted';
     };
     for (const k of ALL_COMPS) {
       paintChip(statusChips[k], modes.regular && modes.comps.includes(k),
-        keysFor(k).some(x => days[x] !== savedDays[x]), Object.keys(savedDays).some(x => x.startsWith(k + ':')));
+        keysFor(k).some(x => days[x] !== savedDays[x]), Object.keys(savedDays).some(x => x.startsWith(k + ':')),
+        isNewGroup(k) && !modes.comps.includes(k));       // once they tick it to see its dates, it is Not submitted like the rest
     }
     paintChip(statusChips.player, modes.player, pickSig(picks) !== pickSig(savedPicks), savedPicks.length > 0);
     const left = comps.filter(c => modes.comps.includes(c.comp)).flatMap(keysOf).filter(d => !days[d]).length;
@@ -426,6 +431,7 @@ export async function viewMy(ctx) {
     savedDays = next;
     savedPicks = nextPicks;
     savedModes = structuredClone(modes);
+    lastSaved = { days: next, updatedAt: new Date().toISOString() };
     drawStatus();
     drawSummary();
     setEditing(false);
@@ -456,13 +462,11 @@ export async function viewMy(ctx) {
       const keys = comps.filter(c => c.comp === k).flatMap(keysOf);
       const yes = keys.filter(x => savedDays[x] === 'yes').length, no = keys.filter(x => savedDays[x] === 'no').length;
       const sent = Object.keys(savedDays).some(x => x.startsWith(k + ':'));
-      return h('li', { class: 'row-between' },
-        h('span', {}, h('strong', {}, compLabel(k)), sent && h('span', { class: 'muted' }, ` \u00b7 ${yes} available \u00b7 ${no} not available`)),
-        h('span', { class: 'chip ' + (sent ? 'ok' : 'muted-chip') }, sent ? '\u2713 Submitted' : 'Not submitted'));
+      return summaryRow(compLabel(k), sent, yes, no, !sent && isNewGroup(k) && !savedModes.comps.includes(k));
     });
     const n = savedPicks.length;
     setChildren(summaryCard,
-      h('div', { class: 'row-between' }, h('h2', {}, 'My availability'),
+      h('div', { class: 'row-between' }, h('div', {}, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, orgName)),
         h('button', { class: 'btn', type: 'button', onclick: () => setEditing(true) }, 'Edit availability')),
       h('ul', { class: 'plain summary-list' }, items,
         // Shown like the competitions, chosen games or not, so every part's status is in one place.
@@ -488,5 +492,58 @@ export async function viewMy(ctx) {
   drawSummary();
   root.append(summaryCard, formWrap);
   setEditing(!hasSubmitted());
+  // The member's other associations: a summary card each, opened to edit there.
+  const others = h('div', { class: 'other-orgs' });
+  root.append(others);
+  otherOrgCards(ctx, u.email, today).then(cards => setChildren(others, cards)).catch(e => console.warn('other associations', e));
   return root;
+}
+
+// A group the association added after the member last saved, and that they have not answered.
+function isNewFor(group, avail) {
+  if (!group || !group.addedAt || !avail || !avail.updatedAt) return false;
+  return avail.updatedAt < group.addedAt && !Object.keys(avail.days || {}).some(x => x.startsWith(group.key + ':'));
+}
+
+function summaryRow(label, sent, yes, no, fresh) {
+  return h('li', { class: 'row-between' },
+    h('span', {}, h('strong', {}, label), sent && h('span', { class: 'muted' }, ` \u00b7 ${yes} available \u00b7 ${no} not available`)),
+    h('span', { class: 'chip ' + (sent ? 'ok' : fresh ? 'new' : 'muted-chip') }, sent ? '\u2713 Submitted' : fresh ? 'New group added' : 'Not submitted'));
+}
+
+// Summary cards for every other association this member belongs to, read with their member access there.
+async function otherOrgCards(ctx, email, today) {
+  const { store } = ctx;
+  if (!store.listMemberships || !store.memberView) return [];
+  const ms = (await store.listMemberships(email)).filter(m => m.orgId !== (store.org && store.org.id) && m.active !== false);
+  const cards = [];
+  for (const m of ms) {
+    try {
+      const view = store.memberView(m.orgId);
+      const [org, season] = await Promise.all([view.getOrg ? view.getOrg() : null, view.getSeason()]);
+      if (!org) continue;
+      const avail = season ? await view.getAvailability(season.id, email) : null;
+      const groups = (org.groups && org.groups.length) ? org.groups : [{ key: 'all', name: 'All grades' }];
+      const comps = season ? upcomingDates(season.calendar, today) : [];
+      const saved = (avail && avail.days) || {};
+      const ticked = (avail && avail.modes && avail.modes.comps) || [];
+      const items = groups.filter(g => comps.some(c => c.comp === g.key)).map(g => {
+        const keys = comps.filter(c => c.comp === g.key).flatMap(c => c.dates.map(d => availKey(g.key, d)));
+        const sent = Object.keys(saved).some(x => x.startsWith(g.key + ':'));
+        return summaryRow(g.name, sent, keys.filter(x => saved[x] === 'yes').length, keys.filter(x => saved[x] === 'no').length,
+          !sent && isNewFor(g, avail) && !ticked.includes(g.key));
+      });
+      const pu = org.playerUmpire || {};
+      const nPicks = ((avail && avail.picks) || []).filter(p => (p.dates || []).some(d => d >= today)).length;
+      cards.push(h('section', { class: 'card my-summary other-org' },
+        h('div', { class: 'row-between' }, h('div', {}, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, org.name || m.orgName || m.orgId)),
+          h('button', { class: 'btn', type: 'button', onclick: () => ctx.chooseOrg(m.orgId) }, 'Open')),
+        !season ? h('p', { class: 'muted' }, 'The season dates have not been set up yet.')
+          : h('ul', { class: 'plain summary-list' }, items.length ? items : h('li', { class: 'muted' }, 'No upcoming dates.'),
+            pu.enabled && (pu.groups || []).length > 0 && h('li', { class: 'row-between' },
+              h('span', {}, h('strong', {}, (pu.title || '').trim() || 'Player umpire'), nPicks > 0 && h('span', { class: 'muted' }, ` \u00b7 ${nPicks} game${nPicks === 1 ? '' : 's'} chosen`)),
+              h('span', { class: 'chip ' + (nPicks ? 'ok' : 'muted-chip') }, nPicks ? '\u2713 Submitted' : 'Not submitted')))));
+    } catch (e) { console.warn('association', m.orgId, e); }
+  }
+  return cards;
 }

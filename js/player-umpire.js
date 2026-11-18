@@ -10,12 +10,12 @@
 
 import { fmtDay, gradeShort, summarise } from './logic.js';
 
-// The groups whose games player umpires may choose: the association's choice (org.playerUmpire.groups),
-// else its first group.
+// The groups whose games player umpires may choose: the association's choice (org.playerUmpire.groups);
+// none until it has ticked some.
 export const PLAYER_UMPIRE_COMPS = [];
 export function setPlayerUmpireGroups(org, groupKeys) {
   const wanted = (org && org.playerUmpire && Array.isArray(org.playerUmpire.groups) && org.playerUmpire.groups.length)
-    ? org.playerUmpire.groups : groupKeys.slice(0, 1);
+    ? org.playerUmpire.groups : [];
   PLAYER_UMPIRE_COMPS.splice(0, PLAYER_UMPIRE_COMPS.length, ...wanted.filter(k => groupKeys.includes(k)));
 }
 

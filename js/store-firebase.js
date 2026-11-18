@@ -100,6 +100,7 @@ export async function createFirebaseStore(cfg) {
         getUmpire: email => getOne(...Q('umpires', email)),
         saveUmpire: u => fs.setDoc(fs.doc(db, ...Q('umpires', u.email)), clean(u), { merge: true }),
         getSeason: () => getOne(...Q('config', 'season')),
+        getOrg: () => getOne('orgs', id),
         async listRounds() {
           const s = await fs.getDocs(fs.query(fs.collection(db, ...Q('rounds')), fs.where('published', '==', true)));
           return s.docs.map(d => d.data());

@@ -37,7 +37,7 @@ export function guessGroup(compName) {
 
 export function setGroups(org) {
   const list = (org && Array.isArray(org.groups) && org.groups.length) ? org.groups : DEFAULT_GROUPS;
-  COMPS.splice(0, COMPS.length, ...list.map(g => ({ key: g.key, label: g.name })));
+  COMPS.splice(0, COMPS.length, ...list.map(g => ({ key: g.key, label: g.name, ...(g.addedAt ? { addedAt: g.addedAt } : {}) })));
   GRADE_GROUP = { ...((org && org.gradeGroups) || {}) };
   GRADE_UMPIRES = { ...((org && org.gradeUmpires) || {}) };
   ORG_NAME = (org && org.name) || '';

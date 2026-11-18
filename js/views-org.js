@@ -131,7 +131,7 @@ export async function viewOrgSettings(ctx) {
     const p = org.playerUmpire || {};
     const on = h('input', { type: 'checkbox', checked: !!p.enabled });
     const text = h('textarea', { rows: 2, placeholder: 'e.g. Pick any round, grade or fixture you want to umpire.' }, p.description || '');
-    const chosen = (Array.isArray(p.groups) && p.groups.length ? p.groups : COMPS.slice(0, 1).map(c => c.key));
+    const chosen = Array.isArray(p.groups) ? p.groups : [];             // none until the officer ticks some
     const groupBoxes = COMPS.map(c => [c.key, h('input', { type: 'checkbox', checked: chosen.includes(c.key) })]);
     const title = h('input', { value: p.title || '', placeholder: 'Player umpire', 'aria-label': 'Name for player umpiring' });
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
@@ -183,7 +183,9 @@ export async function viewOrgSettings(ctx) {
       const sug = suggestGroups([...new Set(seen.values())].filter(Boolean), org.name || '',
         ui.groups);
       if (!sug.groups.length) return;
-      ui.groups = sug.groups.map(g => ({ ...g }));
+      const before = new Map(ui.groups.map(g => [g.key, g]));
+      const now = new Date().toISOString();
+      ui.groups = sug.groups.map(g => ({ ...g, ...(before.has(g.key) ? (before.get(g.key).addedAt ? { addedAt: before.get(g.key).addedAt } : {}) : { addedAt: now }) }));
       ui.gradeGroups = Object.fromEntries(grades.map(gr => [gr, sug.compGroup[seen.get(gr)] || ui.groups[0].key]));
       ui.groups = ui.groups.filter(g => Object.values(ui.gradeGroups).includes(g.key));
       ui.gradeUmpires = {};
@@ -202,7 +204,7 @@ export async function viewOrgSettings(ctx) {
           } }),
           h('span', { class: 'muted small' }, `${grades.filter(gr => groupOf(gr) === g.key).length} grades`),
           ui.groups.length > 1 && !used(g.key) && h('button', { class: 'link', type: 'button', onclick: () => { ui.groups.splice(i, 1); draw2(); } }, 'Remove')))),
-        h('button', { class: 'btn small', type: 'button', onclick: () => { ui.groups.push({ key: 'g' + Date.now().toString(36), name: 'New group' }); draw2(); } }, 'Add group'),
+        h('button', { class: 'btn small', type: 'button', onclick: () => { ui.groups.push({ key: 'g' + Date.now().toString(36), name: 'New group', addedAt: new Date().toISOString() }); draw2(); } }, 'Add group'),
         h('h3', {}, 'Grades'),
         !grades.length ? h('p', { class: 'muted' }, 'Grades appear here once fixtures have been loaded on Allocate.')
           : h('div', { class: 'table-wrap' }, h('table', { class: 'board grades-table' },
@@ -221,7 +223,7 @@ export async function viewOrgSettings(ctx) {
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
     return saveButton(h('form', { class: 'card groups-card', onsubmit: busy(saveBtn, async e => {
       e.preventDefault();
-      const groups = ui.groups.map(g => ({ key: g.key, name: (g.name || '').trim() || 'Group' }));
+      const groups = ui.groups.map(g => ({ key: g.key, name: (g.name || '').trim() || 'Group', ...(g.addedAt ? { addedAt: g.addedAt } : {}) }));
       const gradeGroups = Object.fromEntries(grades.map(gr => [gr, groupOf(gr)]));
       const gradeUmpires = Object.fromEntries(grades.map(gr => [gr, umpOf(gr)]));
       await store.saveOrg({ groups, gradeGroups, gradeUmpires, updatedAt: new Date().toISOString() });

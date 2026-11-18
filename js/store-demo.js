@@ -71,6 +71,7 @@ export function createDemoStore() {
         async getUmpire(email) { return clone(x().umpires[email]) || null; },
         async saveUmpire(u) { x().umpires[u.email] = { ...(x().umpires[u.email] || {}), ...clone(u) }; save(); },
         async getSeason() { return clone(x().season) || null; },
+        async getOrg() { return clone(x().org) || null; },
         async listRounds() { return Object.values(clone(x().rounds)).filter(r => r.published); },
         async listGames(rid) { return Object.values(clone(x().games[rid] || {})); },
         async getAvailability(seasonId, email) { return clone(x().availability[`${seasonId}__${email}`]) || null; },
