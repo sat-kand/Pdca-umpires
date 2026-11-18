@@ -390,7 +390,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".tile")
     check(page.locator("nav .nav-link").count() == 0, "umpire header has no officer navigation, only their name menu")
     check(page.locator("h2:has-text('My appointments')").count() == 1, "published appointments show on the same page")
-    check(page.locator("li.appt a[href*='maps']").count() >= 1, "appointment links to a map")
+    check(page.locator("li.appt-game a[href*='maps']").count() >= 1, "appointment links to a map")
     titles = page.locator(".comp-title").all_inner_texts()
     check(titles == ["Senior", "T20", "Junior"], f"one section per group, in the association's order: {titles}")
     sen = page.locator(".comp-section:has(h2:has-text('Senior'))")
@@ -720,6 +720,9 @@ with sync_playwright() as p:
     sign_in(page, appt["email"])
     page.wait_for_selector(".appt")
     check(page.locator(".appt").count() >= 1, "the umpire sees their appointments")
+    multi = page.locator(".appt-game:has(.appt + .appt)")
+    check(multi.count() == 0 or (multi.first.locator(".appt").count() == 2 and multi.first.locator(".chip.grade").count() == 1),
+          "a two-day game is one card with a row per day")
     ds = page.locator(".appt").evaluate_all("l => l.map(e => e.dataset.date)")
     check(ds == sorted(ds), f"appointments are soonest first ({', '.join(ds)})")
     row = page.locator(".appt").first
@@ -788,6 +791,10 @@ with sync_playwright() as p:
     save(page)
     page.wait_for_selector(".toast")
     check("You were down for" in page.locator(".toast").inner_text() and "has been told" not in page.locator(".toast").inner_text(), "the umpire is told their change affects a game they were given")
+    check(page.locator(f".appt[data-date='{info['date']}']").count() == 0, "that day leaves My appointments straight away")
+    reload(page)
+    page.wait_for_timeout(800)
+    check(page.locator(f".appt[data-date='{info['date']}']").count() == 0, "and stays off after a reload, until the officer publishes again")
     mail = page.evaluate("() => Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.mail || {})")
     check(len(mail) >= 1 and mail[-1]["to"] == "admin@demo.test" and info["name"] in mail[-1]["message"]["subject"], f"an email to the officer is queued ({len(mail)})")
     check(label.split(", ")[1] in mail[-1]["message"]["text"], "the email lists the date and game")
@@ -1030,7 +1037,7 @@ with sync_playwright() as p:
     sign_in(page, "umpire4@demo.test")
     page.wait_for_selector(".appt")
     pu_fixture = game_text.split(" ", 1)[1]
-    prow = page.locator(".appt").filter(has_text=pu_fixture).first
+    prow = page.locator(".appt-game").filter(has_text=pu_fixture).first.locator(".appt").first
     prow.locator("button:has-text(\"I can't do this\")").click()
     page.wait_for_selector(".appt.declined")
     av4 = page.evaluate("() => Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.availability).find(a => a.email === 'umpire4@demo.test')")
@@ -1060,7 +1067,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".who, #login-email")
     if page.locator(".who").count(): sign_out(page)
     sign_in(page, "umpire4@demo.test")
-    check(page.locator(".appt").filter(has_text=pu_fixture).count() == 0, "the game they gave back is no longer listed under My appointments")
+    check(page.locator(".appt-game").filter(has_text=pu_fixture).count() == 0, "the game they gave back is no longer listed under My appointments")
     page.locator(".mode:has-text('Choose my own games') input").check()
     page.wait_for_selector(".chooser-pick select[aria-label=Round]")
     rsel = page.locator(".chooser-pick select[aria-label=Round]")

@@ -178,32 +178,38 @@ export async function viewMy(ctx) {
     drawSummary();
   }
 
+  // One card per game: a two-day game's days sit together, each with its own "I can't do this".
   function drawAppointments() {
-    setChildren(apptList, mine.map(({ g, d, r }) => {
+    const byGame = new Map();
+    for (const a of mine) { if (!byGame.has(a.g.id)) byGame.set(a.g.id, []); byGame.get(a.g.id).push(a); }
+    setChildren(apptList, [...byGame.values()].map(days => {
+      const { g } = days[0];
       const link = mapsLink(g);
-      // Turned down, and the officer has not published the round again since (if they have, and the
-      // umpire is still on the game, the officer has put them back on it).
-      const said = declined.find(x => x.gameId === g.id && x.date === d.date);
-      const isDeclined = !!said && !((r.publishedAt || '') > said.at);
-      const btn = h('button', { class: 'btn small', type: 'button' }, "I can't do this");
-      btn.onclick = () => decline(g, d, btn);
-      return h('li', { class: 'appt' + (isDeclined ? ' declined' : ''), 'data-date': d.date },
-        h('div', { class: 'appt-date' }, h('strong', {}, fmtDay(d.date)), d.time && h('span', { class: 'muted' }, d.time),
-          g.days.length > 1 && h('span', { class: 'chip' }, `Day ${d.day}`)),
+      return h('li', { class: 'appt-game' },
         h('div', {}, h('span', { class: 'chip' }, compLabel(compKeyOf(g))), ' ', h('span', { class: 'chip grade' }, gradeShort(g.grade)), `${g.home.name} v ${g.away.name}`),
         h('div', { class: 'muted' }, link ? h('a', { href: link, target: '_blank', rel: 'noopener' }, g.ground || 'Ground TBC') : (g.ground || 'Ground TBC')),
-        h('div', { class: 'appt-action' }, isDeclined
-          ? h('span', { class: 'chip warn' }, "You said you can't do this")
-          : btn));
+        h('div', { class: 'appt-days' }, days.map(({ d, r }) => {
+          // Turned down, and the officer has not published the round again since (if they have, and the
+          // umpire is still on the game, the officer has put them back on it).
+          const said = declined.find(x => x.gameId === g.id && x.date === d.date);
+          const isDeclined = !!said && !((r.publishedAt || '') > said.at);
+          const btn = h('button', { class: 'btn small', type: 'button' }, "I can't do this");
+          btn.onclick = () => decline(g, d, btn);
+          return h('div', { class: 'appt row-between' + (isDeclined ? ' declined' : ''), 'data-date': d.date },
+            h('div', { class: 'appt-date' }, h('strong', {}, fmtDay(d.date)), d.time && h('span', { class: 'muted' }, d.time),
+              g.days.length > 1 && h('span', { class: 'chip' }, `Day ${d.day}`)),
+            h('div', { class: 'appt-action' }, isDeclined ? h('span', { class: 'chip warn' }, "You said you can't do this") : btn));
+        })));
     }));
   }
 
   // Games they have said they can't do are not listed any more (the officer decides, and publishes).
+  let apptCard = null;
   const gaveBack = ({ g, d, r }) => { const x = declined.find(y => y.gameId === g.id && y.date === d.date); return !!x && !((r.publishedAt || '') > x.at); };
   for (let i = mine.length - 1; i >= 0; i--) if (gaveBack(mine[i])) mine.splice(i, 1);
   if (mine.length) {
     drawAppointments();
-    root.append(h('section', { class: 'card' }, h('h2', {}, 'My appointments'),
+    root.append(apptCard = h('section', { class: 'card' }, h('h2', {}, 'My appointments'),
       apptList));
   }
 
@@ -442,6 +448,16 @@ export async function viewMy(ctx) {
     setEditing(false);
     // Pulling out of a game that is already published: free the slot and tell the appointments officer.
     const w = await recordWithdrawal(store, { umpire: u, before, after: next });
+    if (w) {
+      // Pulled out of published games by changing their availability: like "I can't do this", those
+      // days leave My appointments until the officer publishes again.
+      const at = new Date().toISOString();
+      declined = [...declined.filter(x => !w.games.some(y => y.gameId === x.gameId && y.date === x.date)),
+        ...w.games.map(y => ({ roundId: y.roundId, gameId: y.gameId, comp: y.comp, date: y.date, at }))];
+      await put(next, nextPicks);
+      for (let i = mine.length - 1; i >= 0; i--) if (gaveBack(mine[i])) mine.splice(i, 1);
+      if (!mine.length) apptCard && apptCard.remove();
+    }
     if (mine.length) drawAppointments();
     if (w) toast(`Saved. You were down for ${w.games.length} game${w.games.length === 1 ? '' : 's'} on those dates.`, 'warn');
     else toast(puOn && modes.player && nextPicks.length ? 'Saved. The appointments officer will see the games you chose.' : 'Availability saved');
