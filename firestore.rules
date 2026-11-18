@@ -138,12 +138,13 @@ service cloud.firestore {
 
         // Officers set only what the association decides: active, membership type, member since.
         // A member's own details (name, date of birth, address, mobile, accreditation) are theirs alone.
-        // Umpires may edit their own details but never `active`, `pid` or `email`.
+        // Umpires may edit their own details, and when they became a member (an association that loaded
+        // its members from a file may not have it), but never `active`, `pid` or `email`.
         allow update: if signedIn() && orgOpen(orgId) && (
           (isOrgAdmin(orgId) && onlyChanges(['active', 'deactivated', 'membership', 'memberSince', 'updatedAt'])) || (
             id == me()
             && request.resource.data.email == me()
-            && onlyChanges(['name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider', 'updatedAt'])
+            && onlyChanges(['name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider', 'memberSince', 'updatedAt'])
           ));
       }
 

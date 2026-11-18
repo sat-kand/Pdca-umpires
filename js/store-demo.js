@@ -62,6 +62,20 @@ export function createDemoStore() {
     async removeAdmin(email) { o().admins = o().admins.filter(e => e !== email); save(); },
     async isAdmin(email) { return !!cur && o().admins.includes(email); },
 
+    // A member's own view of one of their associations (any of them, not just the one open now):
+    // their record there, its season, and its published rounds and games.
+    memberView(id) {
+      const x = () => { fresh(); if (!db.orgs[id]) throw new Error('No such association'); return db.orgs[id]; };
+      return {
+        org: clone(db.orgs[id] && db.orgs[id].org),
+        async getUmpire(email) { return clone(x().umpires[email]) || null; },
+        async saveUmpire(u) { x().umpires[u.email] = { ...(x().umpires[u.email] || {}), ...clone(u) }; save(); },
+        async getSeason() { return clone(x().season) || null; },
+        async listRounds() { return Object.values(clone(x().rounds)).filter(r => r.published); },
+        async listGames(rid) { return Object.values(clone(x().games[rid] || {})); },
+        async getAvailability(seasonId, email) { return clone(x().availability[`${seasonId}__${email}`]) || null; },
+      };
+    },
     async getUmpire(email) { return clone(o().umpires[email]) || null; },
     async saveUmpire(u) { o().umpires[u.email] = { ...(o().umpires[u.email] || {}), ...clone(u) }; index(u.email, cur); save(); },
     async deleteUmpire(email) { delete o().umpires[email]; save(); },

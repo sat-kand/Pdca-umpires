@@ -1,4 +1,4 @@
-import { viewMember } from './views-member.js';
+import { viewMember, viewMyProfile } from './views-member.js';
 import { CONFIG, DEMO_ORG } from './config.js';
 import { h, setChildren, spinner, toast } from './ui.js';
 import { createDemoStore } from './store-demo.js';
@@ -50,7 +50,7 @@ const ctx = { get store() { return S.store; }, S, go, refreshUser: () => loadUse
 const ROUTES = [
   [/^\/$/, () => viewMy(ctx)],
   [/^\/my$/, () => viewMy(ctx)],
-  [/^\/profile$/, () => (S.umpire ? viewMember(ctx, S.umpire.pid, { self: true }) : viewProfile(ctx))],
+  [/^\/profile$/, () => (S.umpire ? viewMyProfile(ctx) : viewProfile(ctx))],
   [/^\/profile\/edit$/, () => viewProfile(ctx)],
   [/^\/admin$/, () => viewAdminHome(ctx), true],
   [/^\/admin\/availability$/, () => viewSeasonAvailability(ctx), true],

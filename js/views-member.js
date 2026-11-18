@@ -253,3 +253,94 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
         h('span', { class: 'chip ' + (m.active ? 'ok' : 'muted-chip') }, m.active ? 'Active' : 'Past'))))
         : h('p', { class: 'muted' }, 'No other memberships on record.')));
 }
+
+// ---------------------------------------------------------------------------------------------
+// A member's own profile. Personal details are theirs and the same everywhere; everything about a
+// membership (type, status, member since, games, pull-outs, fulfilment) belongs to one association,
+// so it is shown per association. Availability and upcoming games are on their home page instead.
+export async function viewMyProfile(ctx) {
+  const { store, S } = ctx;
+  const me = S.umpire;
+  const today = todayLocal();
+  const n = nameParts(me);
+  const row = (label, value) => h('div', { class: 'kv' }, h('span', { class: 'muted' }, label), h('span', {}, value || '—'));
+
+  // Every association they are a member of (not just the one open now).
+  const orgs = store.listMyOrgs ? await store.listMyOrgs(S.user.email) : [store.org];
+  const list = orgs.length ? orgs : [store.org];
+  const sections = await Promise.all(list.map(async org => {
+    const view = store.memberView ? store.memberView(org.id) : store;
+    try {
+      const u = await view.getUmpire(S.user.email);
+      if (!u) return null;                                             // an officer there, not a member
+      return await membershipSection(org, view, u, today);
+    } catch (e) { console.error('membership', org.id, e); return null; }
+  }));
+
+  return h('div', { class: 'member-profile' },
+    h('div', { class: 'row-between' },
+      h('h1', {}, me.name || `${n.firstName} ${n.lastName}`),
+      h('span', { class: 'row-gap' }, h('a', { class: 'btn primary', href: '#/profile/edit' }, 'Edit my details'), ' ', h('a', { class: 'btn', href: '#/' }, '← Home'))),
+    h('section', { class: 'card' }, h('h2', {}, 'My details'),
+      row('First name', n.firstName), row('Last name', n.lastName), row('Email', me.email), row('Mobile', me.phone),
+      row('Date of birth', fmtLong(me.dob)), row('Address', me.address),
+      row('Accreditation no.', me.accreditation), row('Accreditation provider', me.accreditationProvider),
+      h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to the appointments officers of your associations.')),
+    h('h2', { class: 'section-head' }, 'My associations'),
+    sections.filter(Boolean),
+    !sections.some(Boolean) && h('p', { class: 'muted' }, 'No memberships yet.'));
+}
+
+async function membershipSection(org, view, u, today) {
+  const season = await view.getSeason();
+  const [avail, rounds] = await Promise.all([season ? view.getAvailability(season.id, u.email) : null, view.listRounds()]);
+  // Published games they were given there.
+  const appts = [];
+  const gameById = new Map();
+  for (const r of rounds.filter(r => r.published)) {
+    for (const g of await view.listGames(r.id)) {
+      gameById.set(g.id, g);
+      if (g.removed) continue;
+      for (const d of g.days) {
+        const a = publishedAllocFor(r, g, d.date).find(x => x && x.p === u.pid);
+        if (a) appts.push({ r, g, d, pu: !!a.pu });
+      }
+    }
+  }
+  appts.sort((a, b) => b.d.date.localeCompare(a.d.date));
+  const past = appts.filter(a => a.d.date < today);
+  const gamesUmpired = new Set(past.map(a => a.g.id)).size;
+  const pulls = ((avail && avail.declined) || []).map(x => ({ ...x, g: gameById.get(x.gameId) })).sort((a, b) => b.date.localeCompare(a.date));
+  const rate = appts.length + pulls.length ? appts.length / (appts.length + pulls.length) : null;
+  const fee = feeFor(org, u.membership);
+  const status = u.active ? ['Active', 'ok'] : u.deactivated ? ['Inactive', 'muted-chip'] : ['Waiting for approval', 'warn'];
+
+  // When they became a member there: theirs to correct (a list loaded from a file may not have it).
+  const since = h('input', { type: 'date', value: u.memberSince || '', 'aria-label': `Member since, ${org.name || org.id}`, max: today });
+  since.onchange = busy(since, async () => {
+    await view.saveUmpire({ ...u, memberSince: since.value, updatedAt: new Date().toISOString() });
+    u.memberSince = since.value;
+    toast('Saved', 'ok');
+  });
+
+  const stat = (big, label) => h('div', { class: 'stat' }, h('strong', {}, big), h('span', { class: 'muted' }, label));
+  const kv = (label, ...v) => h('div', { class: 'kv' }, h('span', { class: 'muted' }, label), h('span', {}, ...v));
+  const gameText = a => `${gradeShort(a.g.grade)}: ${a.g.home.name} v ${a.g.away.name}${a.g.days.length > 1 ? ` · Day ${a.d.day}` : ''}`;
+
+  return h('section', { class: 'card assoc-card' },
+    h('div', { class: 'row-between' }, h('h2', {}, org.name || org.id), h('span', { class: 'chip ' + status[1] }, status[0])),
+    kv('Membership type', u.membership ? `${u.membership}${fee ? ` · ${money(fee)}` : ''}` : '—'),
+    kv('Member since', since),
+    h('div', { class: 'stats' },
+      stat(String(gamesUmpired), gamesUmpired === 1 ? 'game umpired' : 'games umpired'),
+      stat(String(pulls.length), pulls.length === 1 ? 'pull-out' : 'pull-outs'),
+      stat(rate === null ? '—' : pct(rate), 'fulfilment rate')),
+    h('details', {},
+      h('summary', {}, `Past appointments (${past.length})`),
+      past.length ? h('ul', { class: 'plain appt-list' }, past.map(a => h('li', { class: 'row-between' },
+        h('span', {}, h('strong', {}, fmtDay(a.d.date)), ' ', gameText(a)), a.pu && h('span', { class: 'chip pu' }, 'Player umpire'))))
+        : h('p', { class: 'muted' }, 'None yet.')),
+    pulls.length > 0 && h('details', {},
+      h('summary', {}, `Games I said I couldn't do (${pulls.length})`),
+      h('ul', { class: 'plain appt-list' }, pulls.map(p => h('li', {}, h('strong', {}, fmtDay(p.date)), ' ', p.g ? `${gradeShort(p.g.grade)}: ${p.g.home.name} v ${p.g.away.name}` : '')))));
+}

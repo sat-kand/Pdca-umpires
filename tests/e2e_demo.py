@@ -1356,11 +1356,19 @@ with sync_playwright() as p:
     page.click(".who-name")
     page.wait_for_selector(".member-profile")
     me = page.inner_text(".member-profile")
-    check("D Everton" in page.inner_text(".member-profile h1") and "Member since" in me and "Accreditation provider" in me and "Other associations" in me
-          and page.locator(".member-profile .status-box button, .member-profile select").count() == 0,
-          "clicking their name opens their own profile: details, membership and other associations, read-only")
-    check(page.locator(".member-profile .date-btn:not([disabled])").count() == 0 and page.locator(".member-profile a[href='#/']").count() >= 1,
-          "their availability is shown, changed from My availability")
+    check("D Everton" in page.inner_text(".member-profile h1") and "Accreditation provider" in me and "My associations" in me
+          and page.locator(".member-profile .assoc-card").count() >= 1 and "Parramatta" in page.inner_text(".assoc-card h2"),
+          "clicking their name opens their own profile: their details once, then each association they belong to")
+    card = page.locator(".member-profile .assoc-card").first
+    check(all(t in card.inner_text() for t in ["Membership type", "Member since", "umpired", "pull-out", "fulfilment rate", "Past appointments"]),
+          "membership type, status, member since, games, pull-outs, fulfilment and past appointments are per association")
+    check(page.locator(".member-profile h2:has-text('Availability'), .member-profile h2:has-text('Upcoming')").count() == 0,
+          "availability and upcoming games are left to their home page")
+    card.locator("input[type=date]").fill("2015-02-01")
+    card.locator("input[type=date]").dispatch_event("change")
+    page.wait_for_timeout(300)
+    check(page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['umpire2@demo.test'].memberSince") == "2015-02-01",
+          "they can correct when they became a member of that association")
     page.click("a:has-text('Edit my details')")
     page.wait_for_selector("form input")
     page.locator("label:has-text('Accreditation provider') input").fill("Cricket NSW")

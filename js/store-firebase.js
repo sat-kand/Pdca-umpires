@@ -92,6 +92,22 @@ export async function createFirebaseStore(cfg) {
     async isAdmin(email) { return !!org && !!(await getOne(...P('admins', email))); },
 
     // ----- umpires -----
+    // A member's own view of one of their associations (any of them, not just the one open now):
+    // their record there, its season, and its published rounds and games (what the rules let members read).
+    memberView(id) {
+      const Q = (...p) => ['orgs', id, ...p];
+      return {
+        getUmpire: email => getOne(...Q('umpires', email)),
+        saveUmpire: u => fs.setDoc(fs.doc(db, ...Q('umpires', u.email)), clean(u), { merge: true }),
+        getSeason: () => getOne(...Q('config', 'season')),
+        async listRounds() {
+          const s = await fs.getDocs(fs.query(fs.collection(db, ...Q('rounds')), fs.where('published', '==', true)));
+          return s.docs.map(d => d.data());
+        },
+        async listGames(rid) { const s = await fs.getDocs(fs.collection(db, ...Q('rounds', rid, 'games'))); return s.docs.map(d => d.data()); },
+        getAvailability: (seasonId, email) => getOne(...Q('availability', `${seasonId}__${email}`)),
+      };
+    },
     getUmpire: email => getOne(...P('umpires', email)),
     saveUmpire: u => fs.setDoc(fs.doc(db, ...P('umpires', u.email)), clean(u), { merge: true }),
     deleteUmpire: email => fs.deleteDoc(fs.doc(db, ...P('umpires', email))),
