@@ -141,7 +141,7 @@ service cloud.firestore {
         // Umpires may edit their own details, and when they became a member (an association that loaded
         // its members from a file may not have it), but never `active`, `pid` or `email`.
         allow update: if signedIn() && orgOpen(orgId) && (
-          (isOrgAdmin(orgId) && onlyChanges(['active', 'deactivated', 'approved', 'nonMember', 'membership', 'memberSince', 'updatedAt'])) || (
+          (isOrgAdmin(orgId) && onlyChanges(['active', 'deactivated', 'approved', 'nonMember', 'rejected', 'suspended', 'membership', 'memberSince', 'updatedAt'])) || (
             id == me()
             && request.resource.data.email == me()
             && onlyChanges(['name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider', 'memberSince', 'wantsToUmpire', 'updatedAt'])

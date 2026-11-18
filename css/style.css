@@ -344,8 +344,9 @@ a.member-link:hover { text-decoration-color: currentColor; }
   /* Members: the Active tick beside the name, the rest under the name. */
   table.members tr { grid-template-columns: auto 1fr; align-items: center; }
   table.members td:nth-child(n+3) { grid-column: 2; }
-  table.members td:nth-child(4)::before { content: 'Member since '; color: var(--muted); font-size: .85rem; }
-  table.members td:nth-child(5)::before { content: 'Membership'; display: block; color: var(--muted); font-size: .78rem; margin-bottom: .15rem; }
+  table.members td:nth-child(3)::before { content: 'Umpiring '; } table.members td:nth-child(4)::before { content: 'Membership '; }
+  table.members td:nth-child(3)::before, table.members td:nth-child(4)::before { color: var(--muted); font-size: .8rem; }
+  table.members td:nth-child(5):not(:empty)::before { content: 'Membership type'; display: block; color: var(--muted); font-size: .78rem; margin-bottom: .15rem; }
 
   /* Membership types: the name on its own line, fee and Remove under it. */
   .type-row { flex-wrap: wrap; } .type-row input:first-child { flex: 1 1 100%; max-width: none; }
@@ -366,3 +367,14 @@ a.member-link:hover { text-decoration-color: currentColor; }
 .import-step textarea { width: 100%; }
 .import-preview li { padding: .3rem 0; border-bottom: 1px solid var(--line); gap: .5rem; flex-wrap: wrap; }
 .import-step .import-card { border: 0; padding: 0; box-shadow: none; }
+
+/* Members list: search and show, bulk actions on ticked rows, tags you click to change. */
+.member-tools { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .6rem; }
+.member-tools .member-search { flex: 1 1 14rem; margin: 0; }
+.member-tools select { flex: 0 1 auto; margin: 0; }
+.bulk-bar { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; padding: .5rem .6rem; margin-bottom: .6rem; background: var(--green-l); border-radius: var(--radius); }
+button.tagbtn { border: 0; cursor: pointer; font: inherit; font-size: .85rem; }
+button.tagbtn:hover { outline: 2px solid currentColor; outline-offset: 1px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.status-box { display: grid; gap: .4rem; }
+.status-line { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }

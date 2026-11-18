@@ -53,6 +53,6 @@ test('the old one-line format still works', () => {
 });
 
 test('member status: applied, active, inactive, not a member', () => {
-  assert.deepEqual([{}, { active: true }, { deactivated: true }, { approved: true }, { nonMember: true }, { wantsToUmpire: false }].map(memberStatus),
-    ['applied', 'active', 'inactive', 'inactive', 'nonmember', 'applied']);
+  assert.deepEqual([{}, { active: true }, { deactivated: true }, { approved: true }, { nonMember: true }, { wantsToUmpire: false }, { approved: true, suspended: true }, { rejected: true }].map(memberStatus),
+    ['applied', 'active', 'inactive', 'inactive', 'nonmember', 'applied', 'suspended', 'rejected']);
 });

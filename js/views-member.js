@@ -5,7 +5,7 @@
 // (association, type, active or not, since when), never another association's availability or games.
 
 import { h, toast, setChildren, busy, todayLocal } from './ui.js';
-import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey, firstGroup, byGame, gameCount, memberStatus, STATUS_LABEL, STATUS_CHIP } from './logic.js';
+import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey, firstGroup, byGame, gameCount, memberStatus, STATUS_LABEL, STATUS_CHIP, membershipOf, MEMBERSHIP_LABEL, MEMBERSHIP_CHIP, MEMBER_CHANGE } from './logic.js';
 import { feeFor, money, membershipTypes } from './views-org.js';
 
 // What other associations may see of this membership. Written whenever an officer saves or opens a member.
@@ -157,10 +157,10 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
   drawType();
 
   // Membership status: approve or turn down someone who has just registered; otherwise active or inactive.
-  const statusBox = h('span', { class: 'status-box' });
+  const statusBox = h('div', { class: 'status-box' });
   const saveStatus = async (patch, msg) => {
     Object.assign(u, patch);
-    if (u.active && !u.memberSince) { u.memberSince = today; sinceInput.value = today; }
+    if (membershipOf(u) === 'member' && !u.memberSince) { u.memberSince = today; sinceInput.value = today; }
     await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
     if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error(e));
     drawStatus();
@@ -168,23 +168,25 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
   };
   function drawStatus() {
     const btn = (label, cls, fn) => { const b = h('button', { type: 'button', class: `btn small ${cls}` }, label); b.onclick = busy(b, fn); return b; };
-    const st = memberStatus(u), pending = st === 'applied';
+    const m = membershipOf(u);
+    const set = (kind, msg) => saveStatus(MEMBER_CHANGE[kind](u), msg);
     setChildren(statusBox,
-      h('span', { class: 'chip ' + STATUS_CHIP[st] }, STATUS_LABEL[st]), ' ',
-      pending && h('span', { class: 'muted small' }, u.wantsToUmpire === false ? 'Wants to be a member only ' : u.wantsToUmpire ? 'Wants to umpire ' : ''),
-      st === 'inactive' && u.wantsToUmpire && h('span', { class: 'chip pu' }, 'Asked to umpire'), ' ',
-      pending
-        ? [btn('Approve as umpire', 'primary', () => saveStatus({ active: true, deactivated: false, approved: true }, 'Approved as an umpire')), ' ',
-           btn('Approve as member only', '', () => saveStatus({ active: false, deactivated: true, approved: true }, 'Approved as a member')), ' ',
-           btn('Reject', 'danger', async () => {
-             if (!confirm(`Turn down ${u.name}? Their registration is removed.`)) return;
-             await store.deleteUmpire(u.email);
-             toast('Registration turned down', 'ok');
-             location.hash = '#/admin/members';
-           })]
-        : u.active
-          ? btn('Make inactive', '', () => saveStatus({ active: false, deactivated: true, approved: true }, 'Now inactive'))
-          : btn(st === 'nonmember' ? 'Make a member (active)' : 'Make active', 'primary', () => saveStatus({ active: true, deactivated: false, approved: true, nonMember: false }, 'Now active')));
+      // Membership: waiting for approval, member, suspended or rejected.
+      h('div', { class: 'status-line' }, h('span', { class: 'muted' }, 'Membership '),
+        h('span', { class: 'chip ' + MEMBERSHIP_CHIP[m] }, MEMBERSHIP_LABEL[m]), ' ',
+        m === 'applied' && h('span', { class: 'muted small' }, u.wantsToUmpire === false ? 'Wants to be a member only ' : 'Wants to umpire '),
+        m === 'applied' && [btn('Approve as umpire', u.wantsToUmpire === false ? '' : 'primary', () => saveStatus({ ...MEMBER_CHANGE.approve(u), active: true, deactivated: false }, 'Approved as an umpire')), ' ',
+          btn('Approve as member only', u.wantsToUmpire === false ? 'primary' : '', () => saveStatus({ ...MEMBER_CHANGE.approve(u), active: false, deactivated: true }, 'Approved as a member')), ' ',
+          btn('Reject', 'danger', () => set('reject', 'Application rejected'))],
+        m === 'member' && btn('Suspend', 'danger', () => set('suspend', 'Membership suspended')),
+        m === 'suspended' && btn('Lift suspension', 'primary', () => set('unsuspend', 'Suspension lifted')),
+        (m === 'rejected' || m === 'nonmember') && btn('Approve as member', 'primary', () => set('approve', 'Approved'))),
+      // Umpiring: only members can be active.
+      m === 'member' && h('div', { class: 'status-line' }, h('span', { class: 'muted' }, 'Umpiring '),
+        h('span', { class: 'chip ' + (u.active ? 'ok' : 'muted-chip') }, u.active ? 'Active umpire' : 'Inactive member'), ' ',
+        !u.active && u.wantsToUmpire && h('span', { class: 'chip pu' }, 'Asked to umpire'), ' ',
+        u.active ? btn('Make inactive member', '', () => set('inactive', 'Now an inactive member'))
+          : btn('Make active umpire', 'primary', () => set('active', 'Now an active umpire'))));
   }
   drawStatus();
 

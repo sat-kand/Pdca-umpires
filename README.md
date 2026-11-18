@@ -23,12 +23,12 @@ It is a static site (no build step) that runs on **GitHub Pages**, with **Fireba
 
 The **Members** page is the association's list of people. Where someone stands:
 
-- **Waiting for approval** — they applied through Third Umpire (the join link in Settings), saying whether they want to umpire or be a **member only**. The officer approves them **as an umpire** (Active) or **as a member only** (Inactive), or turns them down. Applicants who want to umpire can already give their availability.
+- **Waiting for approval** — they applied through Third Umpire (the join link in Settings), saying whether they want to umpire or be a **member only**. The officer approves them (as an umpire or as a member only) or rejects them; rejected applications are kept under *Rejected*. Applicants who want to umpire can already give their availability.
 - **Active** — an approved member who umpires: gives availability and is appointed.
 - **Inactive** — an approved member who does not umpire. They are kept for the association's communications (*Email inactive members*) and are not asked for availability. They can tap *I'd like to umpire*, which shows as *Asked to umpire* for the officer.
 - **Not a member** — someone whose availability came in with a spreadsheet but who is not on the membership list.
 
-The list has tabs for Active, Inactive and All members. Ticking **Active** moves a member between Active and Inactive. Members keep their own details (name, date of birth, address, mobile, accreditation); officers set approval, Active, membership type and member since.
+The list shows each member's **Umpiring** (Active umpire or Inactive member) and **Membership** (Waiting for approval, Member, Suspended or Rejected), with search and a *Show* filter. People waiting for approval are always at the top, then everyone by last name. Click an Umpiring tag to switch it, or **Approve** to make an applicant a Member (Active or Inactive as they asked). Tick rows to change several at once: make active umpires, make inactive members, approve or reject. Everything can also be done on the member's profile, which is the only place to **Suspend** a member (or lift it); a suspended member does not umpire. Member since is on the profile. Members keep their own details (name, date of birth, address, mobile, accreditation); officers set membership, umpiring, membership type and member since.
 
 ### Moving an association to Third Umpire
 

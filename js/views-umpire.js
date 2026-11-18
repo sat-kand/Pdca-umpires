@@ -81,6 +81,12 @@ export async function viewMy(ctx) {
   const root = h('div', { class: 'narrow-page' });
   // Members who do not umpire have no availability to give; applicants who want to umpire can start.
   const status = memberStatus(u);
+  if (status === 'suspended' || status === 'rejected') {
+    root.append(h('section', { class: 'card' }, h('h2', {}, (store.org && store.org.name) || 'Membership'),
+      h('p', {}, status === 'suspended' ? 'Your membership is suspended at the moment. Contact the association if that is not right.' : 'Your application was not approved. Contact the association if you have questions.')));
+    root.append(...(await otherOrgCards(ctx, u.email, todayLocal())));
+    return root;
+  }
   if (status === 'inactive' || status === 'nonmember' || (status === 'applied' && u.wantsToUmpire === false)) {
     const ask = h('button', { class: 'btn primary', type: 'button' }, "I'd like to umpire");
     ask.onclick = busy(ask, async () => {

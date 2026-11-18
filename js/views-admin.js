@@ -4,7 +4,7 @@ import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './u
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
   slotOptions, recount, summarise, formatSummary, publishState, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
-  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot, umpiresForGrade, suggestUmpires, firstGroup, groupNeedsUmpires, memberStatus, STATUS_LABEL, STATUS_CHIP,
+  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot, umpiresForGrade, suggestUmpires, firstGroup, groupNeedsUmpires, memberStatus, STATUS_LABEL, STATUS_CHIP, membershipOf, MEMBERSHIP_LABEL, MEMBERSHIP_CHIP, MEMBER_CHANGE,
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
@@ -20,7 +20,7 @@ import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSy
 // A finished round can still be changed for this many days after its last game (an umpire replaced on
 // the morning, say). After that it is a record: Availability and Report only, no Assign board.
 const EDIT_DAYS_AFTER = 4;
-const homeMembers = { filter: 'active', importOpen: false, comp: '', avail: { importOpen: true } };   // kept while the page is open
+const homeMembers = { filter: 'all', q: '', picked: new Set(), importOpen: false, comp: '', avail: { importOpen: true } };   // kept while the page is open
 const editableUntil = r => addDays(r.end || r.start || '', EDIT_DAYS_AFTER);
 const isLocked = (r, today = todayLocal()) => !!(r && (r.end || r.start)) && editableUntil(r) < today;
 
@@ -794,9 +794,8 @@ export async function viewUmpires(ctx) {
     if (redraw) draw();
   })();
   const text = v => (v ? v : h('span', { class: 'muted' }, '—'));
-  const sinceText = u => (u.memberSince ? new Date(`${u.memberSince}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
   const types = membershipTypes(store.org);
-  const membershipCell = u => {
+  const membershipTypeCell = u => {
     if (!types.length) return h('a', { class: 'muted', href: '#/admin/settings' }, 'Set up types');
     const sel = h('select', { class: 'in-sm', 'aria-label': 'membership', onchange: e => save(u, { membership: e.target.value }) },
       h('option', { value: '' }, '—'), types.map(t => h('option', { value: t.name, selected: u.membership === t.name }, t.name)));
@@ -814,28 +813,6 @@ export async function viewUmpires(ctx) {
       location.href = `mailto:?subject=${encodeURIComponent(subject)}`;
     } else location.href = url;
   } }, `${label} (${list.length})`);
-
-  // Applications through the app: approve as an umpire (active) or as a member only (inactive), or turn down.
-  function applicationsCard(list) {
-    if (!list.length) return null;
-    const btn = (label, cls, fn) => { const b = h('button', { type: 'button', class: `btn small ${cls}` }, label); b.onclick = busy(b, guard(fn)); return b; };
-    return h('section', { class: 'card applications' },
-      h('h2', {}, `Applications (${list.length})`),
-      h('p', { class: 'muted' }, 'People who asked to join through Third Umpire. Approve them as an umpire (Active) or as a member who does not umpire (Inactive).'),
-      h('ul', { class: 'plain' }, list.map(u => h('li', { class: 'application', 'data-pid': u.pid },
-        h('div', {}, profileLink(u), ' ', h('span', { class: 'muted small' }, u.email)),
-        h('div', { class: 'muted small' }, u.wantsToUmpire === false ? 'Wants to be a member only' : u.wantsToUmpire ? 'Wants to umpire' : 'Applied'),
-        h('div', { class: 'app-actions' },
-          btn('Approve as umpire', u.wantsToUmpire === false ? '' : 'primary', () => save(u, { active: true, deactivated: false, approved: true }, true)),
-          btn('Approve as member only', u.wantsToUmpire === false ? 'primary' : '', () => save(u, { active: false, deactivated: true, approved: true }, true)),
-          btn('Turn down', 'danger', async () => {
-            if (!confirm(`Turn down ${u.name}? Their application is removed.`)) return;
-            await store.deleteUmpire(u.email);
-            members = members.filter(x => x.email !== u.email);
-            toast('Application turned down', 'ok');
-            draw();
-          }))))));
-  }
 
   // Bringing in the lists an association already keeps: its membership file, then one availability
   // file per group. Both can be repeated; nothing a member typed themselves is overwritten.
@@ -906,32 +883,84 @@ export async function viewUmpires(ctx) {
       holder);
   }
 
+  // The list: waiting for approval first, then everyone else, by last name. One click on a tag changes
+  // it; ticked rows can be changed together. Suspending is done on the member's profile.
+  const FILTERS = [['all', 'All'], ['active', 'Active umpires'], ['inactive', 'Inactive members'], ['applied', 'Waiting for approval'],
+    ['suspended', 'Suspended'], ['rejected', 'Rejected'], ['nonmember', 'Not members']];
+  const inFilter = u => { const st = memberStatus(u); return ui.filter === 'all' ? !['rejected', 'nonmember'].includes(st) : st === ui.filter; };
+  const change = (list, kind) => guard(async () => {
+    for (const u of list) {
+      Object.assign(u, MEMBER_CHANGE[kind](u));
+      if (membershipOf(u) === 'member' && !u.memberSince) u.memberSince = todayLocal();     // approved (or added) today
+      await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
+      if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error('membership link', e));
+    }
+    ui.picked.clear();
+    draw();
+  })();
+  // What a bulk action can be applied to.
+  const CAN = {
+    active: u => ['member', 'applied'].includes(membershipOf(u)) && !u.active,
+    inactive: u => ['member', 'applied'].includes(membershipOf(u)) && (u.active || membershipOf(u) === 'applied'),
+    approve: u => ['applied', 'rejected', 'nonmember'].includes(membershipOf(u)),
+    reject: u => membershipOf(u) === 'applied',
+  };
+
   const draw = () => {
     const by = s2 => members.filter(u => memberStatus(u) === s2);
-    const applied = by('applied'), active = by('active'), inactive = by('inactive'), nonmembers = by('nonmember');
-    const FILTERS = [['active', 'Active', active], ['inactive', 'Inactive', inactive], ['all', 'All members', [...active, ...inactive]]];
-    if (nonmembers.length) FILTERS.push(['nonmember', 'Not members', nonmembers]);
-    if (!FILTERS.some(f => f[0] === ui.filter)) ui.filter = 'active';
-    const shown = FILTERS.find(f => f[0] === ui.filter)[2].slice().sort(compareMembers);
-    const COLS = ['Active', 'Name', 'Status', 'Member since', 'Membership'];
+    const active = by('active'), inactive = by('inactive');
+    const counts = Object.fromEntries(FILTERS.map(([k]) => [k, k === 'all' ? members.filter(u => !['rejected', 'nonmember'].includes(memberStatus(u))).length : by(k).length]));
+    const filters = FILTERS.filter(([k]) => k === 'all' || k === 'active' || k === 'inactive' || counts[k] > 0);
+    if (!filters.some(f => f[0] === ui.filter)) ui.filter = 'all';
+    const q = ui.q.trim().toLowerCase();
+    const shown = members.filter(u => inFilter(u) && (!q || `${u.name} ${u.email}`.toLowerCase().includes(q)))
+      .sort((a, b) => Number(membershipOf(b) === 'applied') - Number(membershipOf(a) === 'applied') || compareMembers(a, b));
+    for (const pid of [...ui.picked]) if (!shown.some(u => u.pid === pid)) ui.picked.delete(pid);
+    const picked = shown.filter(u => ui.picked.has(u.pid));
+
+    // Umpiring: click to switch between Active umpire and Inactive member (members only).
+    const umpiringCell = u => {
+      const m = membershipOf(u);
+      if (m === 'applied') return h('span', { class: 'muted small' }, u.wantsToUmpire === false ? 'Wants: member only' : 'Wants to umpire');
+      if (m !== 'member') return h('span', { class: 'muted' }, '—');
+      return h('button', { type: 'button', class: 'chip tagbtn ' + (u.active ? 'ok' : 'muted-chip'), title: u.active ? 'Click to make them an Inactive member' : 'Click to make them an Active umpire',
+        onclick: () => change([u], u.active ? 'inactive' : 'active') }, u.active ? 'Active umpire' : 'Inactive member',
+        !u.active && u.wantsToUmpire ? h('span', { class: 'sr' }, ' (asked to umpire)') : null);
+    };
+    // Membership: Approve for someone waiting; otherwise where they stand.
+    const membershipCell = u => {
+      const m = membershipOf(u);
+      if (m === 'applied') return h('button', { type: 'button', class: 'btn small primary', onclick: () => change([u], 'approve') }, 'Approve');
+      return h('span', { class: 'chip ' + MEMBERSHIP_CHIP[m] }, MEMBERSHIP_LABEL[m]);
+    };
+    const all = h('input', { type: 'checkbox', 'aria-label': 'Select all shown', checked: shown.length > 0 && picked.length === shown.length,
+      onchange: e => { for (const u of shown) e.target.checked ? ui.picked.add(u.pid) : ui.picked.delete(u.pid); draw(); } });
+    const bulk = (kind, label, cls = '') => { const n = picked.filter(CAN[kind]).length;
+      return h('button', { type: 'button', class: `btn small ${cls}`, disabled: !n, onclick: () => change(picked.filter(CAN[kind]), kind) }, `${label}${n ? ` (${n})` : ''}`); };
+    const search = h('input', { type: 'search', class: 'member-search', placeholder: 'Search by name or email', value: ui.q, 'aria-label': 'Search members' });
+    search.oninput = () => { ui.q = search.value; draw(); const s2 = wrap.querySelector('.member-search'); if (s2) { s2.focus(); s2.setSelectionRange(s2.value.length, s2.value.length); } };
+    const COLS = [all, 'Name', 'Umpiring', 'Membership', 'Membership type'];
     setChildren(wrap,
       h('div', { class: 'row-between' }, h('h1', {}, 'Members'), h('a', { class: 'btn', href: '#/admin' }, '← Allocate')),
-      h('p', { class: 'muted' }, 'Active members umpire: they give their availability and are appointed. Inactive members are members who do not umpire; they are kept for your communications.'),
+      h('p', { class: 'muted' }, 'Active umpires give their availability and are appointed. Inactive members are members who do not umpire; they are kept for your communications. Click a tag to change it.'),
       h('p', { class: 'member-mail' }, emailBtn('Email active members', active), ' ', emailBtn('Email inactive members', inactive)),
-      applicationsCard(applied),
       h('section', { class: 'card' },
-        h('nav', { class: 'tabs member-filter' }, FILTERS.map(([k, label, list]) =>
-          h('button', { type: 'button', class: 'tab' + (ui.filter === k ? ' active' : ''), onclick: () => { ui.filter = k; draw(); } }, `${label} (${list.length})`))),
+        h('div', { class: 'member-tools' }, search,
+          h('select', { 'aria-label': 'Show', onchange: e => { ui.filter = e.target.value; draw(); } },
+            filters.map(([k, label]) => h('option', { value: k, selected: ui.filter === k }, `${label} (${counts[k]})`)))),
+        picked.length > 0 && h('div', { class: 'bulk-bar' }, h('strong', {}, `${picked.length} selected`),
+          bulk('active', 'Make active umpires'), bulk('inactive', 'Make inactive members'), bulk('approve', 'Approve', 'primary'), bulk('reject', 'Reject', 'danger'),
+          h('button', { type: 'button', class: 'link', onclick: () => { ui.picked.clear(); draw(); } }, 'Clear')),
         shown.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'board members' },        // stacks into cards on a phone
           h('thead', {}, h('tr', {}, COLS.map(c => h('th', {}, c)))),
-          h('tbody', {}, shown.map(u => { const st = memberStatus(u); return h('tr', { class: st === 'active' ? '' : 'inactive', 'data-pid': u.pid },
-            h('td', {}, st === 'nonmember' ? '' : h('input', { type: 'checkbox', checked: !!u.active, 'aria-label': 'Active',
-              onchange: e => save(u, { active: e.target.checked, deactivated: !e.target.checked, approved: true }, true) })),
-            h('td', {}, profileLink(u), u.wantsToUmpire && st === 'inactive' ? h('span', { class: 'chip pu tag' }, 'Asked to umpire') : null),
-            h('td', {}, h('span', { class: 'chip ' + STATUS_CHIP[st] }, STATUS_LABEL[st])),
-            h('td', {}, text(sinceText(u))),
-            h('td', {}, st === 'nonmember' ? '' : membershipCell(u))); }))))
-          : h('p', { class: 'muted' }, members.length ? 'No one here.' : 'No members yet. Bring in your membership list below, or send people the link from Settings so they can apply.')),
+          h('tbody', {}, shown.map(u => { const st = memberStatus(u); return h('tr', { class: st === 'applied' ? 'needs' : st === 'active' ? '' : 'inactive', 'data-pid': u.pid },
+            h('td', {}, h('input', { type: 'checkbox', 'aria-label': 'Select', checked: ui.picked.has(u.pid),
+              onchange: e => { e.target.checked ? ui.picked.add(u.pid) : ui.picked.delete(u.pid); draw(); } })),
+            h('td', {}, profileLink(u), !u.active && u.wantsToUmpire && membershipOf(u) === 'member' ? h('span', { class: 'chip pu tag' }, 'Asked to umpire') : null),
+            h('td', {}, umpiringCell(u)),
+            h('td', {}, membershipCell(u)),
+            h('td', {}, ['member', 'suspended'].includes(membershipOf(u)) ? membershipTypeCell(u) : '')); }))))
+          : h('p', { class: 'muted' }, members.length ? 'No one matches.' : 'No members yet. Bring in your membership list below, or send people the link from Settings so they can apply.')),
       renewalText(store.org) && h('p', { class: 'muted' }, `Membership renews ${renewalText(store.org)}. Types and fees are set in Settings.`),
       h('details', { class: 'card import-card', open: ui.importOpen || !members.length, ontoggle: e => { ui.importOpen = e.currentTarget.open; } },
         h('summary', {}, 'Bring in your existing lists'),

@@ -249,20 +249,39 @@ export function compareGames(a, b) {
 
 // A game is "picked" when the officer has chosen its grade for umpires (slots > 0).
 // A grade the association set to None needs no umpires, whatever slots its games were given before.
-// Where someone stands with the association:
-//   applied   - asked to join (through the app), not yet approved
-//   active    - an approved member who umpires: gives availability and is appointed
-//   inactive  - an approved member who does not umpire: kept for the association's communications
-//   nonmember - not a member at all; only their availability came in with a spreadsheet
-export function memberStatus(u) {
+// Where someone stands with the association, in two parts.
+// Membership:  applied (asked to join, waiting for approval) / member / suspended / rejected, and
+//              nonmember for someone whose availability came in with a spreadsheet only.
+// Umpiring:    an Active umpire gives availability and is appointed; an Inactive member does not umpire
+//              and is kept for the association's communications. Only members can be active.
+export function membershipOf(u) {
   if (!u) return 'applied';
-  if (u.active) return 'active';
-  if (u.nonMember) return 'nonmember';
-  if (u.deactivated || u.approved) return 'inactive';
+  if (u.rejected) return 'rejected';
+  if (u.suspended) return 'suspended';
+  if (u.nonMember && !u.approved) return 'nonmember';
+  if (u.approved || u.active || u.deactivated) return 'member';
   return 'applied';
 }
-export const STATUS_LABEL = { applied: 'Waiting for approval', active: 'Active', inactive: 'Inactive', nonmember: 'Not a member' };
-export const STATUS_CHIP = { applied: 'warn', active: 'ok', inactive: 'muted-chip', nonmember: 'muted-chip' };
+export const MEMBERSHIP_LABEL = { applied: 'Waiting for approval', member: 'Member', suspended: 'Suspended', rejected: 'Rejected', nonmember: 'Not a member' };
+export const MEMBERSHIP_CHIP = { applied: 'warn', member: 'ok', suspended: 'no', rejected: 'muted-chip', nonmember: 'muted-chip' };
+// One word for both parts, used where only one status fits: active / inactive / applied / suspended /
+// rejected / nonmember.
+export function memberStatus(u) {
+  const m = membershipOf(u);
+  if (m !== 'member') return m;
+  return u.active ? 'active' : 'inactive';
+}
+export const STATUS_LABEL = { applied: 'Waiting for approval', active: 'Active umpire', inactive: 'Inactive member', nonmember: 'Not a member', suspended: 'Suspended', rejected: 'Rejected' };
+export const STATUS_CHIP = { applied: 'warn', active: 'ok', inactive: 'muted-chip', nonmember: 'muted-chip', suspended: 'no', rejected: 'muted-chip' };
+// What each change sets. Suspending or rejecting also stops them umpiring.
+export const MEMBER_CHANGE = {
+  approve: u => ({ approved: true, rejected: false, suspended: false, nonMember: false, active: u.wantsToUmpire !== false, deactivated: u.wantsToUmpire === false }),
+  reject: () => ({ rejected: true, approved: false, active: false, deactivated: false }),
+  suspend: () => ({ suspended: true, active: false, deactivated: true }),
+  unsuspend: () => ({ suspended: false, approved: true }),
+  active: () => ({ approved: true, rejected: false, suspended: false, nonMember: false, active: true, deactivated: false }),
+  inactive: () => ({ approved: true, rejected: false, suspended: false, nonMember: false, active: false, deactivated: true }),
+};
 
 // Entries (appointments, pull-outs) by game: a two-day game counts once. Each item has gameId or g.id;
 // the first entry of a game is kept, with every date of that game in `dates`.
