@@ -941,7 +941,7 @@ export async function viewUmpires(ctx) {
     search.oninput = () => { ui.q = search.value; draw(); const s2 = wrap.querySelector('.member-search'); if (s2) { s2.focus(); s2.setSelectionRange(s2.value.length, s2.value.length); } };
     const COLS = [all, 'Name', 'Umpiring', 'Membership', 'Membership type'];
     setChildren(wrap,
-      h('div', { class: 'row-between' }, h('h1', {}, 'Members'), h('a', { class: 'btn', href: '#/admin' }, '← Allocate')),
+      h('h1', {}, 'Members'),
       h('p', { class: 'muted' }, 'Active umpires give their availability and are appointed. Inactive members are members who do not umpire; they are kept for your communications. Click a tag to change it.'),
       h('p', { class: 'member-mail' }, emailBtn('Email active members', active), ' ', emailBtn('Email inactive members', inactive)),
       h('section', { class: 'card' },

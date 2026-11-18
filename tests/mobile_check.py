@@ -1,4 +1,4 @@
-"""Phone-size check of every page in demo mode (headless Chrome, 390 x 844).
+"""Phone-size check of every page in demo mode (headless Chrome, 390 x 844; WIDTH=1366 for a laptop).
 
 Run:  python3 tests/mobile_check.py [outdir]
 For each page it saves a full-page screenshot and reports anything that does not fit:
@@ -59,7 +59,7 @@ def main():
     problems = {}
     with sync_playwright() as p:
         b = p.chromium.launch(executable_path=CHROME, headless=True, args=["--no-sandbox"])
-        page = b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True).new_page()
+        page = b.new_context(viewport={"width": int(os.environ.get("WIDTH", 390)), "height": 844}, device_scale_factor=2 if int(os.environ.get("WIDTH", 390)) < 600 else 1, is_mobile=int(os.environ.get("WIDTH", 390)) < 600, has_touch=int(os.environ.get("WIDTH", 390)) < 600).new_page()
         page.on("dialog", lambda d: d.accept())
         page.route("https://grassrootsapiproxy.cricket.com.au/**", lambda r: r.abort())
 

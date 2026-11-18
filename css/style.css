@@ -370,11 +370,16 @@ a.member-link:hover { text-decoration-color: currentColor; }
 
 /* Members list: search and show, bulk actions on ticked rows, tags you click to change. */
 .member-tools { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .6rem; }
-.member-tools .member-search { flex: 1 1 14rem; margin: 0; }
-.member-tools select { flex: 0 1 auto; margin: 0; }
+.member-tools { align-items: center; }
+.member-tools .member-search { flex: 0 1 22rem; width: auto; margin: 0; }
+.member-tools select { flex: 0 0 auto; width: auto; margin: 0; }
+@media (max-width: 640px) { .member-tools .member-search { flex: 1 1 100%; } }
+.status-box { display: contents; }
 .bulk-bar { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; padding: .5rem .6rem; margin-bottom: .6rem; background: var(--green-l); border-radius: var(--radius); }
 button.tagbtn { border: 0; cursor: pointer; font: inherit; font-size: .85rem; }
 button.tagbtn:hover { outline: 2px solid currentColor; outline-offset: 1px; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-.status-box { display: grid; gap: .4rem; }
 .status-line { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+/* Short pickers stay short on wide screens. */
+.member-profile .kv select, table.members .member-type select { max-width: 16rem; }
+@media (max-width: 640px) { table.members .member-type select { max-width: none; } }

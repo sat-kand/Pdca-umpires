@@ -172,21 +172,21 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
     const set = (kind, msg) => saveStatus(MEMBER_CHANGE[kind](u), msg);
     setChildren(statusBox,
       // Membership: waiting for approval, member, suspended or rejected.
-      h('div', { class: 'status-line' }, h('span', { class: 'muted' }, 'Membership '),
-        h('span', { class: 'chip ' + MEMBERSHIP_CHIP[m] }, MEMBERSHIP_LABEL[m]), ' ',
-        m === 'applied' && h('span', { class: 'muted small' }, u.wantsToUmpire === false ? 'Wants to be a member only ' : 'Wants to umpire '),
+      h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Membership'), h('div', { class: 'status-line' },
+        h('span', { class: 'chip ' + MEMBERSHIP_CHIP[m] }, MEMBERSHIP_LABEL[m]),
+        m === 'applied' && h('span', { class: 'muted small' }, u.wantsToUmpire === false ? 'Wants to be a member only' : 'Wants to umpire'),
         m === 'applied' && [btn('Approve as umpire', u.wantsToUmpire === false ? '' : 'primary', () => saveStatus({ ...MEMBER_CHANGE.approve(u), active: true, deactivated: false }, 'Approved as an umpire')), ' ',
           btn('Approve as member only', u.wantsToUmpire === false ? 'primary' : '', () => saveStatus({ ...MEMBER_CHANGE.approve(u), active: false, deactivated: true }, 'Approved as a member')), ' ',
           btn('Reject', 'danger', () => set('reject', 'Application rejected'))],
         m === 'member' && btn('Suspend', 'danger', () => set('suspend', 'Membership suspended')),
         m === 'suspended' && btn('Lift suspension', 'primary', () => set('unsuspend', 'Suspension lifted')),
-        (m === 'rejected' || m === 'nonmember') && btn('Approve as member', 'primary', () => set('approve', 'Approved'))),
+        (m === 'rejected' || m === 'nonmember') && btn('Approve as member', 'primary', () => set('approve', 'Approved')))),
       // Umpiring: only members can be active.
-      m === 'member' && h('div', { class: 'status-line' }, h('span', { class: 'muted' }, 'Umpiring '),
-        h('span', { class: 'chip ' + (u.active ? 'ok' : 'muted-chip') }, u.active ? 'Active umpire' : 'Inactive member'), ' ',
-        !u.active && u.wantsToUmpire && h('span', { class: 'chip pu' }, 'Asked to umpire'), ' ',
+      m === 'member' && h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Umpiring'), h('div', { class: 'status-line' },
+        h('span', { class: 'chip ' + (u.active ? 'ok' : 'muted-chip') }, u.active ? 'Active umpire' : 'Inactive member'),
+        !u.active && u.wantsToUmpire && h('span', { class: 'chip pu' }, 'Asked to umpire'),
         u.active ? btn('Make inactive member', '', () => set('inactive', 'Now an inactive member'))
-          : btn('Make active umpire', 'primary', () => set('active', 'Now an active umpire'))));
+          : btn('Make active umpire', 'primary', () => set('active', 'Now an active umpire')))));
   }
   drawStatus();
 
@@ -223,7 +223,7 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
            row('Member since', fmtLong(u.memberSince)),
            h('p', { class: 'muted small' }, 'Your appointments officer sets your status, membership type and member since. Your date of birth, address and mobile are only visible to them.')]
         : [h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Membership type'), typeBox),
-           h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Status'), statusBox),
+           statusBox,
            h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Member since'),
              h('span', {}, sinceInput, !u.memberSince && since ? h('span', { class: 'muted small' }, ` first game here ${fmtLong(since)}`) : null)),
            h('p', { class: 'muted small' }, 'Members keep their own details up to date. You set their status, membership type and member since.')]),
