@@ -351,3 +351,26 @@ test('player umpires elsewhere come after allocated umpires and before unavailab
   const rows = slotOptions({ game, date: '2026-11-21', slotIndex: 0, umpires, availByEmail, busy, loads: {}, claimOf }).filter(r => r.group === 'avoid');
   assert.deepEqual(rows.map(r => r.umpire.pid), ['z', 'm', 'a']);
 });
+
+test('group names are suggested from each association\'s own competition names', async () => {
+  const { suggestGroups } = await import('../js/logic.js');
+  const names = (org, comps) => suggestGroups(comps, org).groups.map(g => g.name);
+  assert.deepEqual(names('Parramatta District Cricket Association', ['PDCA Junior Competition', 'PDCA Senior Competition', 'PDCA Sunday T20']), ['Senior', 'Junior', 'Sunday T20']);
+  assert.deepEqual(names('Sydney Shires Competition', ["Frank Gray Shield (U24's)", 'Sydney Shires Competition']), ['Frank Gray', 'Shires']);
+  assert.deepEqual(names('Blacktown City District Cricket Association', ["BCDCA - GIRL'S LEAGUE", 'BCDCA - Senior Competition', 'BCDCA - White Ball Cricket', 'U9 Futures - Season 4']),
+    ['Senior', "Girl's League", 'White Ball', 'U9 Futures']);
+  assert.deepEqual(names('NSW Premier Cricket', ["NSW  Premier Cricket (Women's)", "NSW Premier Cricket (Men's)"]), ["Premier (Women's)", "Premier (Men's)"]);
+  assert.deepEqual(names('Nepean District Cricket Association', ['Nepean District Cricket Association - Seniors', 'NDCA T20 COMPETITION']), ['Seniors', 'T20']);
+  assert.deepEqual(names('Inner West Harbour Junior Cricket Association', ['IWHJCA Cricket Blast Competitions', 'IWHJCA Junior Competition']), ['Junior', 'Blast']);
+  // PDCA keeps the keys its availability is saved under
+  assert.deepEqual(suggestGroups(['PDCA Senior Competition', 'PDCA Junior Competition', 'PDCA Sunday T20'], 'Parramatta District Cricket Association').groups.map(g => g.key), ['senior', 'junior', 't20']);
+});
+
+test('U24 is not junior; under-19 and younger are', async () => {
+  const { guessGroup, suggestUmpires } = await import('../js/logic.js');
+  assert.equal(guessGroup("Frank Gray Shield (U24's)"), 'senior');
+  assert.equal(suggestUmpires("Frank Gray Shield (U24's)"), 1);
+  assert.equal(suggestUmpires('U10 - 1'), 0);
+  assert.equal(guessGroup('U17 Division 1'), 'junior');
+  assert.equal(suggestUmpires('U15 - 2'), 1);
+});

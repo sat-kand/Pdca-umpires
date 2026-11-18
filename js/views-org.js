@@ -61,6 +61,18 @@ export async function viewOrgSettings(ctx) {
   const { store, S } = ctx;
   const wrap = h('div');
   const draw = async () => setChildren(wrap, await build());
+  // Save buttons are greyed out until something changes, and read "Saved" after saving.
+  const saved = new Set();
+  const saveButton = (form, btn, key) => {
+    const label = btn.textContent;
+    btn.disabled = true;
+    if (saved.has(key)) btn.textContent = 'Saved';
+    const changed = () => { btn.disabled = false; btn.textContent = label; };
+    form.addEventListener('input', changed);
+    form.addEventListener('change', changed);
+    form.addEventListener('click', e => { if (e.target.closest('button[type=button]')) changed(); });   // Add / Remove
+    return form;
+  };
 
   // Membership: when it falls due, and the types an association offers, each with its own fee.
   function membershipCard() {
@@ -92,13 +104,14 @@ export async function viewOrgSettings(ctx) {
       h('button', { class: 'link', type: 'button', onclick: () => { rows.splice(i, 1); if (!rows.length) rows.push({ name: '', fee: '' }); drawRows(); } }, 'Remove'))));
     drawRows();
 
-    return h('form', { class: 'card', onsubmit: busy(saveBtn, async e => {
+    return saveButton(h('form', { class: 'card', onsubmit: busy(saveBtn, async e => {
       e.preventDefault();
       const types = rows.filter(t => (t.name || '').trim()).map(t => ({ name: t.name.trim(), fee: t.fee === '' || t.fee == null ? 0 : Number(t.fee) }));
       if (types.some(t => Number.isNaN(t.fee))) { toast('A fee is not a number', 'err'); return; }
       const renewalDay = dayPick.value && monthPick.value ? `${monthPick.value}-${dayPick.value}` : '';
       if ((dayPick.value || monthPick.value) && !renewalDay) { toast('Choose both a day and a month for the renewal date', 'err'); return; }
       await store.saveOrg({ membership: { renewalDay, types }, updatedAt: new Date().toISOString() });
+      saved.add('membership');
       await ctx.refreshUser();
       toast('Membership saved', 'ok');
       await draw();
@@ -109,7 +122,7 @@ export async function viewOrgSettings(ctx) {
     h('p', { class: 'muted small' }, 'Membership types and their fees. Members are given one of these on the Members page.'),
     list,
     h('p', {}, h('button', { class: 'btn small', type: 'button', onclick: () => { rows.push({ name: '', fee: '' }); drawRows(); } }, 'Add type')),
-    saveBtn);
+    saveBtn), saveBtn, 'membership');
   }
 
   // Player umpires: whether members may choose their own (Senior) games, and the line they see about it.
@@ -120,8 +133,9 @@ export async function viewOrgSettings(ctx) {
     const text = h('textarea', { rows: 2, placeholder: 'e.g. Pick any Senior round, grade or fixture you want to umpire.' }, p.description || '');
     const title = h('input', { value: p.title || '', placeholder: 'Player umpire', 'aria-label': 'Name for player umpiring' });
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
-    return h('form', { class: 'card', onsubmit: busy(saveBtn, async e => {
+    return saveButton(h('form', { class: 'card', onsubmit: busy(saveBtn, async e => {
       e.preventDefault();
+      saved.add('playerUmpire');
       await store.saveOrg({ playerUmpire: { ...p, enabled: on.checked, title: title.value.trim(), description: text.value.trim() }, updatedAt: new Date().toISOString() });
       await ctx.refreshUser();
       toast('Saved', 'ok');
@@ -132,7 +146,7 @@ export async function viewOrgSettings(ctx) {
     h('p', { class: 'muted small' }, 'When this is off, members only see "Full umpire". Games already chosen stay where they are.'),
     h('label', {}, 'What it is called (leave empty for "Player umpire")', title),
     h('label', {}, 'What members are told (leave empty to show nothing)', text),
-    saveBtn);
+    saveBtn), saveBtn, 'playerUmpire');
   }
 
   // Groups and grades: which grades are allocated together (Allocate tiles, availability, reports), and
@@ -144,7 +158,7 @@ export async function viewOrgSettings(ctx) {
     const seen = new Map();
     for (const l of lists) for (const g of l.games || []) if (!seen.has(g.grade)) seen.set(g.grade, g.comp || '');
     for (const gr of Object.keys(org.gradeGroups || {})) if (!seen.has(gr)) seen.set(gr, '');
-    const grades = [...seen.keys()].sort(compareGrades);
+    let grades = [...seen.keys()];
     const ui = {
       groups: ((org.groups && org.groups.length) ? org.groups : DEFAULT_GROUPS).map(g => ({ ...g })),
       gradeGroups: { ...(org.gradeGroups || {}) },
@@ -153,6 +167,12 @@ export async function viewOrgSettings(ctx) {
     const groupOf = gr => ui.gradeGroups[gr] && ui.groups.some(g => g.key === ui.gradeGroups[gr]) ? ui.gradeGroups[gr]
       : (ui.groups.some(g => g.key === guessGroup(seen.get(gr))) ? guessGroup(seen.get(gr)) : ui.groups[0].key);
     const umpOf = gr => (gr in ui.gradeUmpires ? ui.gradeUmpires[gr] : suggestUmpires(gr, seen.get(gr)));
+    // Groups with no grades (left from another association's fixtures, say) are not kept.
+    if (grades.length) ui.groups = ui.groups.filter(g => grades.some(gr => groupOf(gr) === g.key)).concat([]);
+    if (!ui.groups.length) ui.groups = DEFAULT_GROUPS.map(g => ({ ...g }));
+    // Grades in their group's order, then by competition, then oldest / highest grade first.
+    const gi = k => ui.groups.findIndex(g => g.key === k);
+    grades = grades.sort((a, b) => gi(groupOf(a)) - gi(groupOf(b)) || (seen.get(a) || '').localeCompare(seen.get(b) || '') || compareGrades(a, b));
     const box = h('div');
     const draw2 = () => {
       const used = k => grades.some(gr => groupOf(gr) === k);
@@ -182,12 +202,13 @@ export async function viewOrgSettings(ctx) {
     };
     draw2();
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
-    return h('form', { class: 'card groups-card', onsubmit: busy(saveBtn, async e => {
+    return saveButton(h('form', { class: 'card groups-card', onsubmit: busy(saveBtn, async e => {
       e.preventDefault();
       const groups = ui.groups.map(g => ({ key: g.key, name: (g.name || '').trim() || 'Group' }));
       const gradeGroups = Object.fromEntries(grades.map(gr => [gr, groupOf(gr)]));
       const gradeUmpires = Object.fromEntries(grades.map(gr => [gr, umpOf(gr)]));
       await store.saveOrg({ groups, gradeGroups, gradeUmpires, updatedAt: new Date().toISOString() });
+      saved.add('groups');
       applyOrg(store.org);
       // Rebuild the weeks on the next visit to Allocate, with games in their new groups.
       const season = await store.getSeason();
@@ -199,7 +220,7 @@ export async function viewOrgSettings(ctx) {
     h('p', { class: 'muted' }, 'A group is a set of grades you allocate together, such as Seniors, Juniors or Friday Girls. Each has its own tile on Allocate, and members give their availability per group. Grades set to "None" never need umpires and are left off the board.'),
     box,
     h('p', { class: 'muted small' }, 'Moving a grade to another group moves its upcoming games there. Members\' availability is kept per group, so check it after moving grades.'),
-    saveBtn);
+    saveBtn), saveBtn, 'groups');
   }
 
   async function build() {
@@ -215,13 +236,22 @@ export async function viewOrgSettings(ctx) {
 
     return [
       h('h1', {}, 'Settings'),
-      h('form', { class: 'card', onsubmit: busy(save, async e => {
+      saveButton(h('form', { class: 'card', onsubmit: busy(save, async e => {
         e.preventDefault();
         const playCricketId = playCricketIdFrom(pc.value);
         if (pc.value.trim() && !playCricketId) { toast('That does not look like a Play Cricket link.', 'err'); return; }
+        const moved = playCricketId !== (store.org.playCricketId || '');
         await store.saveOrg({ name: name.value.trim(), playCricketId, notifyEmail: (notify.value || '').trim().toLowerCase(), updatedAt: new Date().toISOString() });
+        if (moved) {
+          // Another association's fixtures: load them the next time Allocate opens; their groups are
+          // suggested then, and groups left with no grades are removed.
+          const season = await store.getSeason();
+          if (season) await store.saveSeason({ ...season, updatedAt: '1970-01-01T00:00:00.000Z' });
+        }
+        saved.add('assoc');
         await ctx.refreshUser(); ctx.redrawHeader();
-        toast('Saved', 'ok');
+        toast(moved ? 'Saved. Allocate will load the fixtures from the new link.' : 'Saved', 'ok');
+        await draw();
       }) },
       h('h2', {}, 'Association'),
       h('label', {}, 'Name', name),
@@ -229,7 +259,7 @@ export async function viewOrgSettings(ctx) {
       h('p', { class: 'muted small' }, 'Fixtures are read from this page.'),
       h('label', {}, 'Send alerts to', notify),
       h('p', { class: 'muted small' }, 'Where to email when an umpire pulls out of a published game.'),
-      save),
+      save), save, 'assoc'),
 
       await groupsCard(),
       membershipCard(),

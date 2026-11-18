@@ -1456,6 +1456,7 @@ with sync_playwright() as p:
     page.goto(BASE + "#/admin/settings")
     page.wait_for_selector(".groups-card")
     gc = page.locator(".groups-card")
+    check(gc.locator("button[type=submit]").is_disabled(), "Save is greyed out until something changes")
     check([i.input_value() for i in gc.locator(".group-list input").all()] == ["Senior", "Junior", "T20"], "PDCA starts with its three groups: Senior, Junior, T20")
     check(gc.locator("table.grades-table tbody tr").count() > 5, "every grade is listed with its group and umpires needed")
     u10 = gc.locator("tr:has-text('U10')").first
@@ -1468,6 +1469,8 @@ with sync_playwright() as p:
         women.locator("select").first.select_option(label="Women")
     gc.locator("button:has-text('Save')").click()
     page.wait_for_selector(".toast:has-text('regroup')")
+    page.wait_for_selector(".groups-card button[type=submit]:has-text('Saved')")
+    check(page.locator(".groups-card button[type=submit]").is_disabled(), "after saving it reads Saved and stays greyed out until the next change")
     org = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org")
     check([g["name"] for g in org["groups"]] == ["Seniors", "Junior", "T20", "Women"] and (not women.count() or org["gradeGroups"].get("Senior Women") == org["groups"][3]["key"]),
           "groups can be renamed and added, and a grade moved to another group")

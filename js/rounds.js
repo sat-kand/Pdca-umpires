@@ -4,7 +4,8 @@
 
 import { CONFIG } from './config.js';
 import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures, mergeFixtures } from './fixtures.js';
-import { buildCalendar, compKeyOf, summarise, COMPS, groupOrder } from './logic.js';
+import { buildCalendar, compKeyOf, summarise, COMPS, groupOrder, suggestGroups, suggestUmpires } from './logic.js';
+import { applyOrg } from './org-setup.js';
 
 // Bump when the information saved on each round changes shape, so stored rounds are rebuilt on the next visit.
 export const SCHEMA = 7;   // 6: rounds by calendar week and group; 7: every week of the season
@@ -147,8 +148,49 @@ export async function syncFromPlayCricket(store, { today, fetchFn, onProgress } 
   return saveSeasonAndRounds(store, { season: { id: cur.id, name: cur.name }, games, comps, today });
 }
 
+// Keep the association's groups in step with its fixtures. The first time, groups are suggested from
+// its competitions' own names ("Shires", "Frank Gray", ...). Later, a grade that is new gets the group
+// its competition suggests (an existing group of that name, or a new one), grades no longer in the
+// fixtures are dropped, and groups left with no grades are removed. The officer's choices stand.
+export async function ensureGroups(store, games, comps = []) {
+  const org = store.org;
+  if (!org || !store.saveOrg || !games.length) return false;
+  const gradeComp = new Map();
+  for (const g of games) if (!gradeComp.has(g.grade)) gradeComp.set(g.grade, g.comp || '');
+  const compNames = [...new Set([...comps.map(c => c.name), ...gradeComp.values()])].filter(Boolean);
+  let groups = (org.groups || []).map(g => ({ ...g }));
+  const gradeGroups = { ...(org.gradeGroups || {}) };
+  const gradeUmpires = { ...(org.gradeUmpires || {}) };
+  const sug = suggestGroups(compNames, org.name || '', groups);
+  // A competition the officer already placed: its new grades join the group its other grades are in.
+  const placed = {};
+  for (const [grade, comp] of gradeComp) if (gradeGroups[grade] && groups.some(g => g.key === gradeGroups[grade])) placed[comp] ||= gradeGroups[grade];
+  for (const [grade, comp] of gradeComp) {
+    if (!(grade in gradeUmpires)) gradeUmpires[grade] = suggestUmpires(grade, comp);
+    if (gradeGroups[grade] && groups.some(g => g.key === gradeGroups[grade])) continue;
+    if (placed[comp]) { gradeGroups[grade] = placed[comp]; continue; }
+    const s = sug.groups.find(g => g.key === sug.compGroup[comp]) || sug.groups[0];
+    const same = groups.find(g => g.name === s.name);
+    if (same) gradeGroups[grade] = same.key;
+    else { groups.push({ ...s }); gradeGroups[grade] = s.key; }
+  }
+  for (const gr of Object.keys(gradeGroups)) if (!gradeComp.has(gr)) delete gradeGroups[gr];
+  for (const gr of Object.keys(gradeUmpires)) if (!gradeComp.has(gr)) delete gradeUmpires[gr];
+  groups = groups.filter(g => Object.values(gradeGroups).includes(g.key));
+  // Groups the officer had keep their order; new ones follow in the suggested order (Senior, Junior, T20 first).
+  const had = (org.groups || []).map(g => g.key);
+  const rank = g => (had.includes(g.key) ? had.indexOf(g.key) : 1000 + sug.groups.findIndex(x => x.key === g.key));
+  groups.sort((a, b) => rank(a) - rank(b));
+  const same = JSON.stringify([org.groups, org.gradeGroups, org.gradeUmpires]) === JSON.stringify([groups, gradeGroups, gradeUmpires]);
+  if (same) return false;
+  await store.saveOrg({ groups, gradeGroups, gradeUmpires, updatedAt: new Date().toISOString() });
+  applyOrg(store.org);
+  return true;
+}
+
 // Shared with the demo: turn a season's games into the calendar plus one next round per competition.
 export async function saveSeasonAndRounds(store, { season, games, comps = [], today, source = undefined }) {
+  await ensureGroups(store, games, comps);
   await store.saveSeason({ ...season, calendar: buildCalendar(games), schema: SCHEMA, updatedAt: new Date().toISOString() });
   const settings = await store.getSettings();
   const existing = await store.listRounds();

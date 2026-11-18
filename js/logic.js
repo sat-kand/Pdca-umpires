@@ -31,8 +31,10 @@ let GRADE_GROUP = {};           // grade name -> group key
 let GRADE_UMPIRES = {};         // grade name -> umpires needed (0, 1 or 2); missing = not set
 
 // 'PDCA Junior Competition' -> 'junior', anything with T20/Twenty20 -> 't20', else 'senior'.
+// An age group up to 19 (U10, Under 15, U17s) is junior; U21, U24 and older are not.
+const JUNIOR_AGE = /\bu\s?(?:[5-9]|1\d)(?:'?s)?\b|under\s?(?:[5-9]|1\d)\b/i;
 export function guessGroup(name) {
-  if (/junior|\bu\s?\d{1,2}\b|under\s?\d/i.test(name || '')) return 'junior';
+  if (/junior/i.test(name || '') || JUNIOR_AGE.test(name || '')) return 'junior';
   if (/t\s?20|twenty\s?20/i.test(name || '')) return 't20';
   return 'senior';
 }
@@ -56,13 +58,68 @@ export const groupOrder = key => { const i = COMPS.findIndex(c => c.key === key)
 // Umpires a grade needs, as the association set it (undefined when not set).
 export const umpiresForGrade = grade => (grade in GRADE_UMPIRES ? GRADE_UMPIRES[grade] : undefined);
 
-// A first suggestion for a grade's umpires: none for the youngest (Blast, Futures, under-11s), one
-// for other juniors, two for seniors.
+// A first suggestion for a grade's umpires: none for the youngest (Blast, Futures, under-11s), else one.
 export function suggestUmpires(grade, comp = '') {
   const s = `${grade} ${comp}`;
   if (/blast|futures|smash|master blaster|\bu\s?(?:[5-9]|1[01])\b|under\s?(?:[5-9]|1[01])\b/i.test(s)) return 0;
-  if (/junior|\bu\s?\d{1,2}\b|under\s?\d/i.test(s)) return 1;
-  return 2;
+  return 1;                     // one each to start with; the officer raises a grade to 2 where wanted
+}
+
+// A group name suggested from a competition's own name, unique to the association: the words left
+// once the association's name or initials, the year and generic words ("Competition", "Summer",
+// "Cricket", "Shield"...) are taken out. "Sydney Shires Competition" -> "Shires", "Frank Gray Shield
+// (U24's)" -> "Frank Gray", "PDCA Junior Competition" -> "Junior", "BCDCA - GIRL'S LEAGUE" -> "Girl's League".
+const GENERIC = /^(?:competitions?|comp|summer|winter|spring|autumn|season|cricket|association|district|club|shield|cup|trophy|the|of|and|&|-|–)$/i;
+export function suggestGroupName(compName, orgName = '') {
+  const orgWords = new Set((orgName.match(/[A-Za-z0-9']+/g) || []).map(w => w.toLowerCase()));
+  const initials = (orgName.split(/[\s-]+/).filter(Boolean).map(w => w[0]).join('')).toUpperCase();
+  const isSubseq = (a, b) => { let i = 0; for (const c of b) if (c === a[i]) i++; return i === a.length; };
+  const isInitials = t => { const bare = t.replace(/&/g, ''); return /^[A-Z&]{3,}$/.test(t) && bare.length >= 3 && isSubseq(bare, initials); };
+  const clean = n => n.replace(/\([^)]*\)/g, ' ').replace(/\b(?:19|20)\d\d(?:\/\d{2,4})?\b/g, ' ').replace(/\bseason\s+\d+\b/ig, ' ');
+  const base = clean(compName || '').split(/\s+/).filter(Boolean).filter(w => !GENERIC.test(w));
+  const seen = new Set();
+  let words = base.filter(w => !isInitials(w)).filter(w => { const k = w.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  // Words shared with the association's name ("Nepean District ..." -, "Sydney" in Sydney Shires), from the
+  // front, while something is left.
+  while (words.length > 1 && orgWords.has(words[0].toLowerCase())) words.shift();
+  let name = words.join(' ').replace(/^[-–&\s]+|[-–&\s]+$/g, '');
+  if (!name) name = base.join(' ') || (compName || '').trim() || 'Group';      // only initials left: keep them ("SMCA")
+  if (name === name.toUpperCase() && /[A-Z]{3}/.test(name) && !/^[A-Z&]+$/.test(name)) {
+    name = name.toLowerCase().replace(/(^|[\s-])([a-z])/g, (m, a, c) => a + c.toUpperCase()).replace(/\bt(\d+)/g, 'T$1');
+  }
+  return name;
+}
+
+// Groups for a set of competitions: one per suggested name (competitions that come out with the same
+// name share it; if two different ones would clash, their bracketed part tells them apart). Keys are
+// kept stable: an existing group with the same name keeps its key, and otherwise Senior / Junior / T20
+// keep the keys availability was saved under.
+export function suggestGroups(comps, orgName = '', existing = []) {
+  const names = new Map();                              // comp name -> group name
+  for (const c of comps) names.set(c, suggestGroupName(c, orgName));
+  const byName = new Map();
+  for (const [c, n] of names) { if (!byName.has(n)) byName.set(n, []); byName.get(n).push(c); }
+  for (const [n, cs] of [...byName]) {                  // "Premier (Men's)" / "Premier (Women's)"
+    const tags = cs.map(c => (c.match(/\(([^)]*)\)/) || [])[1]);
+    if (cs.length > 1 && tags.every(Boolean) && new Set(tags).size === cs.length) {
+      byName.delete(n);
+      cs.forEach((c, i) => { const nn = `${n} (${tags[i]})`; names.set(c, nn); byName.set(nn, [c]); });
+    }
+  }
+  const used = new Set();
+  const groups = [];
+  for (const n of byName.keys()) {
+    const had = existing.find(g => g.name === n && !used.has(g.key));
+    // Senior, Junior and T20 keep the keys availability is saved under (PDCA's data).
+    const word = ['senior', 'junior', 't20'].find(k => n.toLowerCase().includes(k) && !used.has(k) && !existing.some(g => g.key === k && g.name !== n));
+    const key = had ? had.key : (word || 'g' + Math.random().toString(36).slice(2, 8));
+    used.add(key);
+    groups.push({ key, name: n });
+  }
+  const order = g => ['senior', 'junior', 't20'].indexOf(g.key) + 1 || 9;
+  groups.sort((a, b) => order(a) - order(b));
+  const compGroup = Object.fromEntries([...names].map(([c, n]) => [c, groups.find(g => g.name === n).key]));
+  return { groups, compGroup };
 }
 
 export function compLabel(key) { return (COMPS.find(c => c.key === key) || { label: key }).label; }

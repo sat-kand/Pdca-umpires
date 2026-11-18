@@ -228,7 +228,7 @@ test('custom groups: grades are allocated in the groups the association chose', 
     ] });
     assert.deepEqual(made.sort(), ['girls-2026-11-16', 'jun-2026-11-16', 'sat-2026-11-16']);
   } finally { setGroups(null); }
-  assert.deepEqual([suggestUmpires('U10 - 1'), suggestUmpires('Cricket Blast Competition'), suggestUmpires('U15 - 2'), suggestUmpires('.1st Grade')], [0, 0, 1, 2]);
+  assert.deepEqual([suggestUmpires('U10 - 1'), suggestUmpires('Cricket Blast Competition'), suggestUmpires('U15 - 2'), suggestUmpires('.1st Grade')], [0, 0, 1, 1]);
 });
 
 test('moving a grade to another group takes its upcoming games out of the old group\'s round', async () => {
@@ -314,4 +314,26 @@ test('every week left in the season gets its round, however long the season', as
   const made = await saveSeasonAndRounds(store, { season: { id: 's', name: 'S' }, games, today: '2026-11-16' });
   assert.equal(made.length, 20);
   assert.ok(made.includes('senior-2027-03-29'), 'the last week of the season is there too');
+});
+
+test('groups follow the fixtures: suggested the first time, new grades placed, empty groups removed', async () => {
+  const { ensureGroups } = await import('../js/rounds.js');
+  const { setGroups } = await import('../js/logic.js');
+  const store = { org: { id: 'x', name: 'Sydney Shires Competition' }, async saveOrg(p) { Object.assign(this.org, structuredClone(p)); } };
+  try {
+    await ensureGroups(store, [game('1', 'Sydney Shires Competition', 'First Grade (The RB Clark Cup)', ['2026-11-21']), game('2', "Frank Gray Shield (U24's)", "Frank Gray Shield (U24's)", ['2026-11-22'])]);
+    assert.deepEqual(store.org.groups.map(g => g.name), ['Shires', 'Frank Gray']);
+    assert.equal(store.org.gradeUmpires["Frank Gray Shield (U24's)"], 1);
+    const shires = store.org.groups[0].key;
+    // the officer renames a group; a new grade arrives in that competition; Frank Gray finishes
+    store.org.groups[0].name = 'Saturday';
+    await ensureGroups(store, [game('1', 'Sydney Shires Competition', 'First Grade (The RB Clark Cup)', ['2026-11-21']), game('3', 'Sydney Shires Competition', 'Second Grade', ['2026-11-21'])]);
+    assert.deepEqual(store.org.groups.map(g => g.name), ['Saturday'], 'the new grade joins its competition\'s group; the empty Frank Gray group goes');
+    assert.equal(store.org.gradeGroups['Second Grade'], shires);
+    assert.equal(store.org.gradeGroups['First Grade (The RB Clark Cup)'], shires, 'the officer\'s grades keep their group');
+    // a different association's fixtures entirely: the old groups go, new ones are suggested
+    store.org.name = 'Parramatta District Cricket Association';
+    await ensureGroups(store, [game('9', 'PDCA Senior Competition', 'Senior A Grade', ['2026-11-21'])]);
+    assert.deepEqual(store.org.groups.map(g => g.name), ['Senior']);
+  } finally { setGroups(null); }
 });
