@@ -350,3 +350,19 @@ a.member-link:hover { text-decoration-color: currentColor; }
   /* Membership types: the name on its own line, fee and Remove under it. */
   .type-row { flex-wrap: wrap; } .type-row input:first-child { flex: 1 1 100%; max-width: none; }
 }
+
+/* Sign-up: umpire or member only, as two big choices that fit a phone. */
+.field-label { margin: .8rem 0 .3rem; font-weight: 600; }
+.role-pick { display: grid; gap: .5rem; margin-bottom: 1rem; }
+.role { display: flex; gap: .6rem; align-items: flex-start; padding: .7rem .8rem; border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; }
+.role:has(input:checked) { border-color: var(--green); background: var(--green-l); }
+.role input { margin-top: .2rem; } .role > span { display: grid; gap: .1rem; }
+
+/* Members: applications and the import steps. */
+.application { display: grid; gap: .3rem; padding: .7rem 0; border-bottom: 1px solid var(--line); }
+.app-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.member-filter { flex-wrap: wrap; margin-bottom: .5rem; }
+.import-step { border-top: 1px solid var(--line); padding-top: .8rem; margin-top: .8rem; }
+.import-step textarea { width: 100%; }
+.import-preview li { padding: .3rem 0; border-bottom: 1px solid var(--line); gap: .5rem; flex-wrap: wrap; }
+.import-step .import-card { border: 0; padding: 0; box-shadow: none; }

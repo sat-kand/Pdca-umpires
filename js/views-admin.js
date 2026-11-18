@@ -4,7 +4,7 @@ import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './u
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
   slotOptions, recount, summarise, formatSummary, publishState, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
-  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot, umpiresForGrade, suggestUmpires, firstGroup, groupNeedsUmpires,
+  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot, umpiresForGrade, suggestUmpires, firstGroup, groupNeedsUmpires, memberStatus, STATUS_LABEL, STATUS_CHIP,
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
@@ -14,11 +14,13 @@ import { membershipTypes, feeFor, money, renewalText } from './views-org.js';
 import { membershipLink } from './views-member.js';
 const profileLink = u => h('a', { class: 'member-link', href: `#/admin/member/${encodeURIComponent(u.pid)}`, title: 'Open profile' }, u.name);
 import { planImport, applyImport } from './import-availability.js';
+import { planMembers, applyMembers } from './import-members.js';
 import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, addDays, weekOf, upcomingRounds } from './rounds.js';
 
 // A finished round can still be changed for this many days after its last game (an umpire replaced on
 // the morning, say). After that it is a record: Availability and Report only, no Assign board.
 const EDIT_DAYS_AFTER = 4;
+const homeMembers = { filter: 'active', importOpen: false, comp: '', avail: { importOpen: true } };   // kept while the page is open
 const editableUntil = r => addDays(r.end || r.start || '', EDIT_DAYS_AFTER);
 const isLocked = (r, today = todayLocal()) => !!(r && (r.end || r.start)) && editableUntil(r) < today;
 
@@ -581,66 +583,6 @@ export async function viewSeasonAvailability(ctx) {
     by[u.email] = next;
   }
 
-  // Bringing in the spreadsheet an association already keeps, so umpires do not answer twice.
-  function importCard() {
-    const box = h('textarea', { rows: 6, placeholder: 'Paste the sheet here \u2014 heading row first, one umpire per row.\n\nName\tRound 1 - 20th & 27th Sep\tRound 2 - 11th & 18th Oct\nJ Smith\tDay 1, Day 2\tNot Available' });
-    const file = h('input', { type: 'file', accept: '.csv,.tsv,.txt,text/csv,text/plain' });
-    const addNew = h('input', { type: 'checkbox' });
-    const out = h('div', { class: 'import-out' });
-    const previewBtn = h('button', { class: 'btn', type: 'button' }, 'Check it');
-    const importBtn = h('button', { class: 'btn primary', type: 'button' }, 'Import');
-    importBtn.disabled = true;
-    let plan = null;
-
-    file.onchange = async () => { const f = file.files && file.files[0]; if (f) { box.value = await f.text(); preview(); } };
-
-    function preview() {
-      plan = planImport({ text: box.value, comp: ui.comp, season, members: people, availability: Object.values(by) });
-      importBtn.disabled = !!plan.error || !plan.people.length;
-      if (plan.error) { setChildren(out, h('p', { class: 'notice warn' }, plan.error)); return; }
-      const strangers = plan.strangers.map(p => p.name);
-      setChildren(out,
-        h('p', {}, h('strong', {}, `${plan.used.length} column${plan.used.length === 1 ? '' : 's'} matched to dates`), ' \u2014 ',
-          plan.used.map((c, i) => [i ? ', ' : '', `${c.heading.trim()} \u2192 ${c.dates.map(fmtDay).join(' + ')}`])),
-        plan.unmatchedColumns.length > 0 && h('p', { class: 'notice warn' },
-          `No ${compLabel(ui.comp)} dates found for: ${plan.unmatchedColumns.join(', ')}. Those columns are skipped.`),
-        h('p', {}, `${plan.matched} of ${plan.people.length} people matched a member.`),
-        strangers.length > 0 && h('p', { class: 'muted' }, `Not on the Members list: ${strangers.join(', ')}.`,
-          plan.strangers.some(p => !p.email) ? ` ${plan.strangers.filter(p => !p.email).length} of them cannot be added because the sheet has no email address for them.` : ' Tick the box below to add them as non-members.'),
-        h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
-          h('thead', {}, h('tr', {}, ['Name', 'Member', 'Available', 'Not available', 'Not understood'].map(c => h('th', {}, c)))),
-          h('tbody', {}, plan.people.slice(0, 12).map(p => h('tr', {},
-            h('td', {}, p.name),
-            h('td', {}, p.member ? (p.member.active === false ? h('span', { class: 'chip warn' }, 'Non-member') : h('span', { class: 'chip ok' }, 'Member')) : h('span', { class: 'chip warn' }, 'Not found')),
-            h('td', {}, String(p.yes)), h('td', {}, String(p.no)), h('td', {}, p.unknown ? String(p.unknown) : ''))))),
-          plan.people.length > 12 && h('p', { class: 'muted small' }, `\u2026 and ${plan.people.length - 12} more`)));
-    }
-    previewBtn.onclick = preview;
-    box.oninput = () => { importBtn.disabled = true; };
-
-    importBtn.onclick = busy(importBtn, async () => {
-      if (!plan) preview();
-      if (!plan || plan.error) return;
-      if (!confirm(`Import availability for ${plan.people.length} people into ${compLabel(ui.comp)}? Existing answers for these dates are replaced.`)) return;
-      try {
-        const res = await applyImport(store, plan, { comp: ui.comp, season, addStrangers: addNew.checked, newPid });
-        toast(`${res.saved} imported${res.added ? `, ${res.added} added as non-members` : ''}${res.skipped ? `, ${res.skipped} skipped` : ''}${res.noEmail ? ` (${res.noEmail} had no email address)` : ''}`, res.skipped ? 'warn' : 'ok');
-        plan = null;
-        box.value = '';
-        await reload();
-      } catch (e) { console.error(e); toast(e.message || String(e), 'err'); }
-    });
-
-    return h('details', { class: 'card import-card', open: ui.importOpen, ontoggle: e => { ui.importOpen = e.currentTarget.open; } },
-      h('summary', {}, 'Import from a spreadsheet'),
-      h('p', { class: 'muted' }, `Copy the rows out of your own sheet (including the heading row) and paste them here, or choose a CSV file. This replaces ${compLabel(ui.comp)} answers for the dates in the sheet and leaves everything else alone.`),
-      box,
-      h('p', {}, file),
-      h('label', { class: 'inline' }, addNew, ' Add people who are not on the Members list, as non-members (needs an email column in the sheet)'),
-      h('p', {}, previewBtn, ' ', importBtn),
-      out);
-  }
-
   function build() {
     // Every competition is laid out the same way: one column per playing date, upcoming dates first.
     const all = [...new Set(season.calendar.filter(e => (e.comp || firstGroup()) === ui.comp).flatMap(e => e.dates))].sort();
@@ -692,12 +634,12 @@ export async function viewSeasonAvailability(ctx) {
     return [
       h('div', { class: 'row-between' }, h('h1', {}, 'Availability'), h('span', { class: 'muted' }, season.name || '')),
       h('nav', { class: 'tabs noprint' }, comps.map(c => h('button', { class: 'tab' + (c.key === ui.comp ? ' active' : ''), type: 'button', onclick: () => { ui.comp = c.key; ui.on = null; draw(); } }, c.label))),
-      importCard(),
+      availabilityImportCard({ store, season, comp: () => ui.comp, people: () => people, by: () => Object.values(by), reload, ui }),
       h('div', { class: 'card' },
         h('div', { class: 'summary' },
           search,
           h('span', { class: 'chip ' + (missing.length ? 'warn' : 'ok') }, `${mem.length - missing.length} of ${mem.length} members have answered`),
-          others.length > 0 && h('span', { class: 'chip' }, `${others.length} non-member${others.length === 1 ? '' : 's'}`),
+          others.length > 0 && h('span', { class: 'chip' }, `${others.length} not active`),
           missing.length > 0 && h('button', { class: 'btn small', type: 'button', onclick: async () => { { const ok = await copyText(emails.join(', ')); toast(ok ? 'Emails copied' : 'Could not copy', ok ? 'ok' : 'err'); }; } }, 'Copy emails of the rest'),
           ui.on && h('button', { class: 'chip ok', type: 'button', onclick: () => { ui.on = null; draw(); } }, `Available ${fmtDay(ui.on)} \u2715`),
           hasPast && h('label', { class: 'inline right' }, (() => { const cb = h('input', { type: 'checkbox', checked: ui.past }); cb.onchange = () => { ui.past = cb.checked; draw(); }; return cb; })(), ' Show past dates')),
@@ -710,7 +652,7 @@ export async function viewSeasonAvailability(ctx) {
               h('tr', { class: 'counts' }, h('td', { class: 'stick' }, 'Available'), dates.map(d => (countCells[d] = h('td', { class: d < today ? 'past' : '' }, String(count(d))))))),
             h('tbody', {}, rows.map(u => h('tr', { class: u.active === false ? 'nonmember' : '' },
               h('td', { class: 'stick' }, profileLink(u), ' ', (tallyCells[u.pid] = h('span', { class: 'muted tally' }, tally(u))),
-                u.active === false && h('span', { class: 'chip warn tag' }, 'Non-member')),
+                u.active === false && h('span', { class: 'chip warn tag' }, STATUS_LABEL[memberStatus(u)])),
               dates.map(d => cell(u, d)))),
               !rows.length && h('tr', {}, h('td', { class: 'stick muted' }, 'Nobody matches'), dates.map(() => h('td', {})))))),
         h('p', { class: 'muted small' }, 'The count under each date is members only \u2014 only an active member can be appointed. Click a cell to change it: \u2713 available \u2192 \u2717 not available \u2192 blank (no answer). A dot marks cells you set. Click a date to list only the umpires available that day.')),
@@ -766,93 +708,236 @@ export async function viewReport(ctx, rid) {
           h('td', {}, g.ground.toUpperCase()), h('td', { class: slotCount(g) && /—/.test(umpireText(g)) ? 'gap' : '' }, umpireText(g)))))))))));
 }
 
+// Bringing in the availability sheet an association already keeps for one group, so umpires do not
+// answer twice. Used on the Availability page and on Members. `chooser`, when given, is shown above
+// it (the group to import into).
+export function availabilityImportCard({ store, season, comp, people, by, reload, ui, chooser = null }) {
+  const box = h('textarea', { rows: 6, placeholder: 'Paste the sheet here \u2014 heading row first, one umpire per row.\n\nName\tRound 1 - 20th & 27th Sep\tRound 2 - 11th & 18th Oct\nJ Smith\tDay 1, Day 2\tNot Available' });
+  const file = h('input', { type: 'file', accept: '.csv,.tsv,.txt,text/csv,text/plain' });
+  const addNew = h('input', { type: 'checkbox' });
+  const out = h('div', { class: 'import-out' });
+  const previewBtn = h('button', { class: 'btn', type: 'button' }, 'Check it');
+  const importBtn = h('button', { class: 'btn primary', type: 'button' }, 'Import');
+  importBtn.disabled = true;
+  let plan = null;
+
+  file.onchange = async () => { const f = file.files && file.files[0]; if (f) { box.value = await f.text(); preview(); } };
+
+  function preview() {
+    plan = planImport({ text: box.value, comp: comp(), season, members: people(), availability: by() });
+    importBtn.disabled = !!plan.error || !plan.people.length;
+    if (plan.error) { setChildren(out, h('p', { class: 'notice warn' }, plan.error)); return; }
+    const strangers = plan.strangers.map(p => p.name);
+    setChildren(out,
+      h('p', {}, h('strong', {}, `${plan.used.length} column${plan.used.length === 1 ? '' : 's'} matched to dates`), ' \u2014 ',
+        plan.used.map((c, i) => [i ? ', ' : '', `${c.heading.trim()} \u2192 ${c.dates.map(fmtDay).join(' + ')}`])),
+      plan.unmatchedColumns.length > 0 && h('p', { class: 'notice warn' },
+        `No ${compLabel(comp())} dates found for: ${plan.unmatchedColumns.join(', ')}. Those columns are skipped.`),
+      h('p', {}, `${plan.matched} of ${plan.people.length} people matched a member.`),
+      strangers.length > 0 && h('p', { class: 'muted' }, `Not on the Members list: ${strangers.join(', ')}.`,
+        plan.strangers.some(p => !p.email) ? ` ${plan.strangers.filter(p => !p.email).length} of them cannot be added because the sheet has no email address for them.` : ' Tick the box below to add them as non-members.'),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
+        h('thead', {}, h('tr', {}, ['Name', 'Member', 'Available', 'Not available', 'Not understood'].map(c => h('th', {}, c)))),
+        h('tbody', {}, plan.people.slice(0, 12).map(p => h('tr', {},
+          h('td', {}, p.name),
+          h('td', {}, p.member ? (p.member.active === false ? h('span', { class: 'chip warn' }, 'Non-member') : h('span', { class: 'chip ok' }, 'Member')) : h('span', { class: 'chip warn' }, 'Not found')),
+          h('td', {}, String(p.yes)), h('td', {}, String(p.no)), h('td', {}, p.unknown ? String(p.unknown) : ''))))),
+        plan.people.length > 12 && h('p', { class: 'muted small' }, `\u2026 and ${plan.people.length - 12} more`)));
+  }
+  previewBtn.onclick = preview;
+  box.oninput = () => { importBtn.disabled = true; };
+
+  importBtn.onclick = busy(importBtn, async () => {
+    if (!plan) preview();
+    if (!plan || plan.error) return;
+    if (!confirm(`Import availability for ${plan.people.length} people into ${compLabel(comp())}? Existing answers for these dates are replaced.`)) return;
+    try {
+      const res = await applyImport(store, plan, { comp: comp(), season, addStrangers: addNew.checked, newPid });
+      toast(`${res.saved} imported${res.added ? `, ${res.added} added as non-members` : ''}${res.skipped ? `, ${res.skipped} skipped` : ''}${res.noEmail ? ` (${res.noEmail} had no email address)` : ''}`, res.skipped ? 'warn' : 'ok');
+      plan = null;
+      box.value = '';
+      await reload();
+    } catch (e) { console.error(e); toast(e.message || String(e), 'err'); }
+  });
+
+  return h('details', { class: 'card import-card', open: ui.importOpen, ontoggle: e => { ui.importOpen = e.currentTarget.open; } },
+    h('summary', {}, 'Import from a spreadsheet'),
+    chooser,
+    h('p', { class: 'muted' }, `Copy the rows out of your own sheet (including the heading row) and paste them here, or choose a CSV file. This replaces ${compLabel(comp())} answers for the dates in the sheet and leaves everything else alone.`),
+    box,
+    h('p', {}, file),
+    h('label', { class: 'inline' }, addNew, ' Add people who are not on the Members list, as non-members (needs an email column in the sheet)'),
+    h('p', {}, previewBtn, ' ', importBtn),
+    out);
+}
+
 // ---------------------------------------------------------------------------
 // Umpire list
 // ---------------------------------------------------------------------------
 
 export async function viewUmpires(ctx) {
   const { store } = ctx;
-  let members = await store.listUmpires();
+  let [members, season] = await Promise.all([store.listUmpires(), store.getSeason ? store.getSeason() : null]);
   const wrap = h('div');
   const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { console.error(e); toast(e.message || String(e), 'err'); } };
+  const ui = homeMembers;                                // the filter and open cards stay while the page is open
+  const reload = async () => { members = await store.listUmpires(); draw(); };
+
+  // A member's own details (name, date of birth, address, mobile, accreditation) are theirs to keep up
+  // to date; the officer only sets what the association decides: approval, active or inactive,
+  // membership type, member since.
+  const save = (u, patch, redraw = false) => guard(async () => {
+    Object.assign(u, patch);
+    if ((u.active || u.approved) && !u.memberSince) u.memberSince = todayLocal();     // approved (or added) today
+    await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
+    if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error('membership link', e));
+    if (redraw) draw();
+  })();
+  const text = v => (v ? v : h('span', { class: 'muted' }, '—'));
+  const sinceText = u => (u.memberSince ? new Date(`${u.memberSince}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+  const types = membershipTypes(store.org);
+  const membershipCell = u => {
+    if (!types.length) return h('a', { class: 'muted', href: '#/admin/settings' }, 'Set up types');
+    const sel = h('select', { class: 'in-sm', 'aria-label': 'membership', onchange: e => save(u, { membership: e.target.value }) },
+      h('option', { value: '' }, '—'), types.map(t => h('option', { value: t.name, selected: u.membership === t.name }, t.name)));
+    const fee = feeFor(store.org, u.membership);
+    return h('div', { class: 'member-type' }, sel, fee ? h('span', { class: 'muted fee' }, money(fee)) : null);
+  };
+  // An email draft to a group: their addresses in BCC, so no one sees anyone else's.
+  const emailBtn = (label, list) => h('button', { class: 'btn', type: 'button', disabled: !list.length, onclick: async () => {
+    const emails = list.map(u => u.email);
+    const subject = `${store.org.name || 'Umpires'}: `;
+    const url = `mailto:?bcc=${encodeURIComponent(emails.join(','))}&subject=${encodeURIComponent(subject)}`;
+    if (url.length > 1900) {
+      await copyText(emails.join(', '));
+      toast('Too many addresses for a draft, so they were copied. Paste them into BCC.', 'warn');
+      location.href = `mailto:?subject=${encodeURIComponent(subject)}`;
+    } else location.href = url;
+  } }, `${label} (${list.length})`);
+
+  // Applications through the app: approve as an umpire (active) or as a member only (inactive), or turn down.
+  function applicationsCard(list) {
+    if (!list.length) return null;
+    const btn = (label, cls, fn) => { const b = h('button', { type: 'button', class: `btn small ${cls}` }, label); b.onclick = busy(b, guard(fn)); return b; };
+    return h('section', { class: 'card applications' },
+      h('h2', {}, `Applications (${list.length})`),
+      h('p', { class: 'muted' }, 'People who asked to join through Third Umpire. Approve them as an umpire (Active) or as a member who does not umpire (Inactive).'),
+      h('ul', { class: 'plain' }, list.map(u => h('li', { class: 'application', 'data-pid': u.pid },
+        h('div', {}, profileLink(u), ' ', h('span', { class: 'muted small' }, u.email)),
+        h('div', { class: 'muted small' }, u.wantsToUmpire === false ? 'Wants to be a member only' : u.wantsToUmpire ? 'Wants to umpire' : 'Applied'),
+        h('div', { class: 'app-actions' },
+          btn('Approve as umpire', u.wantsToUmpire === false ? '' : 'primary', () => save(u, { active: true, deactivated: false, approved: true }, true)),
+          btn('Approve as member only', u.wantsToUmpire === false ? 'primary' : '', () => save(u, { active: false, deactivated: true, approved: true }, true)),
+          btn('Turn down', 'danger', async () => {
+            if (!confirm(`Turn down ${u.name}? Their application is removed.`)) return;
+            await store.deleteUmpire(u.email);
+            members = members.filter(x => x.email !== u.email);
+            toast('Application turned down', 'ok');
+            draw();
+          }))))));
+  }
+
+  // Bringing in the lists an association already keeps: its membership file, then one availability
+  // file per group. Both can be repeated; nothing a member typed themselves is overwritten.
+  function membershipImport() {
+    const box = h('textarea', { rows: 6, placeholder: 'Paste the list here — heading row first, one member per row.\n\nFirst name\tLast name\tEmail\tMobile\tMembership type\tMember since\tStatus\nJane\tSmith\tj.smith@example.com\t0400 000 000\tOrdinary member\t15/04/2019\tActive' });
+    const file = h('input', { type: 'file', accept: '.csv,.tsv,.txt,text/csv,text/plain' });
+    const asActive = h('select', { 'aria-label': 'People without a Status are' },
+      h('option', { value: 'yes' }, 'Active (they umpire)'), h('option', { value: 'no' }, 'Inactive (member only)'));
+    const out = h('div', { class: 'import-out' });
+    const checkBtn = h('button', { class: 'btn', type: 'button' }, 'Check it');
+    const importBtn = h('button', { class: 'btn primary', type: 'button', disabled: true }, 'Import');
+    let plan = null;
+    const check = () => {
+      plan = planMembers({ text: box.value, members, defaultActive: asActive.value === 'yes', types });
+      importBtn.disabled = !!plan.error;
+      if (plan.error) { setChildren(out, h('p', { class: 'notice warn' }, plan.error)); return; }
+      setChildren(out,
+        h('p', {}, h('strong', {}, `${plan.added.length} new, ${plan.updated.length} already on the list`), ` · ${plan.active} active, ${plan.inactive} inactive`),
+        plan.updated.length > 0 && h('p', { class: 'muted small' }, 'For people already on the list only active or inactive, membership type and member since are updated. Their own details stay as they keep them.'),
+        plan.unknownTypes.length > 0 && h('p', { class: 'notice warn' }, `Not one of your membership types in Settings: ${plan.unknownTypes.join(', ')}. They are imported as written; add the type in Settings to set its fee.`),
+        plan.bad.length > 0 && h('p', { class: 'notice warn' }, `${plan.bad.length} row(s) skipped: they need an email address and a name. First: ${plan.bad[0]}`),
+        h('ul', { class: 'plain import-preview' }, plan.people.slice(0, 10).map(p => h('li', { class: 'row-between' },
+          h('span', {}, h('strong', {}, p.name || p.email), ' ', h('span', { class: 'muted small' }, p.email)),
+          h('span', {}, h('span', { class: 'chip ' + (p.existing ? '' : 'ok') }, p.existing ? 'Update' : 'New'), ' ',
+            h('span', { class: 'chip ' + (p.active ? 'ok' : 'muted-chip') }, p.active ? 'Active' : 'Inactive'))))),
+        plan.people.length > 10 && h('p', { class: 'muted small' }, `… and ${plan.people.length - 10} more`));
+    };
+    file.onchange = async () => { const f = file.files && file.files[0]; if (f) { box.value = await f.text(); check(); } };
+    box.oninput = () => { importBtn.disabled = true; };
+    asActive.onchange = () => { if (plan) check(); };
+    checkBtn.onclick = check;
+    importBtn.onclick = busy(importBtn, guard(async () => {
+      check();
+      if (!plan || plan.error) return;
+      const res = await applyMembers(store, plan, { newPid, today: todayLocal() });
+      for (const p of plan.people) if (store.saveMembershipLink) {
+        const u = { ...(p.existing || {}), email: p.email, membership: p.membership || (p.existing && p.existing.membership) || '', active: p.active, memberSince: p.memberSince || (p.existing && p.existing.memberSince) || todayLocal() };
+        store.saveMembershipLink(p.email, membershipLink(store.org, u)).catch(e => console.error('membership link', e));
+      }
+      toast(`${res.added} member(s) added, ${res.updated} updated`, 'ok');
+      box.value = ''; plan = null; setChildren(out);
+      await reload();
+    }));
+    return h('div', { class: 'import-step' },
+      h('h3', {}, '1. Membership file'),
+      h('p', { class: 'muted' }, 'Your list of members, with a heading row. Columns are found by name: First name, Last name (or Name), Email, Mobile, Membership type, Member since and Status (Active or Inactive). Copy it out of Excel or Google Sheets and paste it, or choose a CSV file. You can bring in your active and inactive members as one file or two.'),
+      box, h('p', {}, file),
+      h('label', {}, 'People with no Status in the file are', asActive),
+      h('p', {}, checkBtn, ' ', importBtn), out);
+  }
+
+  function availabilityImport() {
+    const comps = COMPS.filter(c => groupNeedsUmpires(c.key) && season && (season.calendar || []).some(e => (e.comp || firstGroup()) === c.key));
+    if (!season || !comps.length) return h('div', { class: 'import-step' }, h('h3', {}, '2. Availability files'),
+      h('p', { class: 'muted' }, 'The season dates are not loaded yet. Open Allocate once so they come in from Play Cricket, then come back here.'));
+    if (!comps.some(c => c.key === ui.comp)) ui.comp = comps[0].key;
+    const pick = h('select', { 'aria-label': 'Group', onchange: e => { ui.comp = e.target.value; draw(); } },
+      comps.map(c => h('option', { value: c.key, selected: c.key === ui.comp }, c.label)));
+    let availList = [];
+    const holder = h('div');
+    const card = () => availabilityImportCard({ store, season, comp: () => ui.comp, people: () => members, by: () => availList,
+      reload: async () => { availList = await store.listAvailability(season.id || 'manual'); await reload(); }, ui: ui.avail,
+      chooser: h('label', {}, 'Group', pick) });
+    store.listAvailability(season.id || 'manual').then(list => { availList = list; setChildren(holder, card()); });
+    return h('div', { class: 'import-step' },
+      h('h3', {}, '2. Availability files'),
+      h('p', { class: 'muted' }, 'One file for each group (each competition’s own form). Pick the group, then paste or choose its file. People are matched to members by email or name.'),
+      holder);
+  }
 
   const draw = () => {
-    members.sort((a, b) => Number(a.active) - Number(b.active) || compareMembers(a, b));
-    // A member's own details (name, date of birth, address, mobile, accreditation) are theirs to keep up
-    // to date; the officer only sets what the association decides: active, membership type, member since.
-    const save = (u, patch, redraw = false) => guard(async () => {
-      Object.assign(u, patch);
-      if (u.active && !u.memberSince) u.memberSince = todayLocal();     // approved (or added) today
-      await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
-      if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error('membership link', e));
-      if (redraw) draw();
-    })();
-    const text = v => (v ? v : h('span', { class: 'muted' }, '\u2014'));
-
-    const add = h('textarea', { rows: 5, placeholder: 'One member per line:\nFirst name, Last name, email, mobile, accreditation no. (both optional)\nJane, Smith, j.smith@example.com, 0400 000 000, L1-2284' });
-    const addBtn = h('button', { class: 'btn primary', type: 'button' }, 'Add members');
-    addBtn.onclick = busy(addBtn, async () => {
-      const lines = add.value.split('\n').map(l => l.trim()).filter(Boolean);
-      let added = 0; const bad = [];
-      for (const line of lines) {
-        const parts = line.split(/[,\t]/).map(s2 => s2.trim());
-        const at = parts.findIndex(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));    // names before the email, mobile after
-        const key = at < 0 ? '' : emailKey(parts[at]);
-        const firstName = at > 0 ? parts[0] : '';
-        const lastName = at > 1 ? parts.slice(1, at).join(' ') : '';
-        if (!key || !firstName) { bad.push(line); continue; }
-        if (members.some(u => u.email === key)) continue;
-        const u = { pid: newPid(), email: key, firstName, lastName, name: fullName(firstName, lastName),
-          phone: parts[at + 1] || '', accreditation: parts[at + 2] || '', dob: '', address: '', active: true, memberSince: todayLocal(), updatedAt: new Date().toISOString() };
-        await store.saveUmpire(u); members.push(u); added++;
-      }
-      toast(`${added} member(s) added${bad.length ? `; couldn't read ${bad.length} line(s)` : ''}`, bad.length ? 'err' : 'ok');
-      draw();
-    });
-
-    // Membership type comes from the list the officer set up in Settings; the fee follows the type.
-    const types = membershipTypes(store.org);
-    const membershipCell = u => {
-      if (!types.length) return h('a', { class: 'muted', href: '#/admin/settings' }, 'Set up types');
-      const sel = h('select', { class: 'in-sm', 'aria-label': 'membership',
-        onchange: e => save(u, { membership: e.target.value }) },
-        h('option', { value: '' }, '—'),
-        types.map(t => h('option', { value: t.name, selected: u.membership === t.name }, t.name)));
-      const fee = feeFor(store.org, u.membership);
-      return h('div', { class: 'member-type' }, sel, fee ? h('span', { class: 'muted fee' }, money(fee)) : null);
-    };
-    const pending = members.filter(u => !u.active && !u.deactivated);      // registered, not yet approved
-    // Personal details (date of birth, address, email, mobile, accreditation) stay on each profile.
+    const by = s2 => members.filter(u => memberStatus(u) === s2);
+    const applied = by('applied'), active = by('active'), inactive = by('inactive'), nonmembers = by('nonmember');
+    const FILTERS = [['active', 'Active', active], ['inactive', 'Inactive', inactive], ['all', 'All members', [...active, ...inactive]]];
+    if (nonmembers.length) FILTERS.push(['nonmember', 'Not members', nonmembers]);
+    if (!FILTERS.some(f => f[0] === ui.filter)) ui.filter = 'active';
+    const shown = FILTERS.find(f => f[0] === ui.filter)[2].slice().sort(compareMembers);
     const COLS = ['Active', 'Name', 'Status', 'Member since', 'Membership'];
-    const statusOf = u => (u.active ? ['Active', 'ok'] : u.deactivated ? ['Inactive', 'muted-chip'] : ['Waiting for approval', 'warn']);
-    const sinceText = u => (u.memberSince ? new Date(`${u.memberSince}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
-    // An email draft to a group: their addresses in BCC, so no one sees anyone else's.
-    const emailBtn = (label, list) => h('button', { class: 'btn', type: 'button', disabled: !list.length, onclick: async () => {
-      const emails = list.map(u => u.email);
-      const subject = `${store.org.name || 'Umpires'}: `;
-      const url = `mailto:?bcc=${encodeURIComponent(emails.join(','))}&subject=${encodeURIComponent(subject)}`;
-      if (url.length > 1900) {
-        await copyText(emails.join(', '));
-        toast('Too many addresses for a draft, so they were copied. Paste them into BCC.', 'warn');
-        location.href = `mailto:?subject=${encodeURIComponent(subject)}`;
-      } else location.href = url;
-    } }, `${label} (${list.length})`);
-    const activeList = members.filter(u => u.active), inactiveList = members.filter(u => !u.active && u.deactivated);
     setChildren(wrap,
-      h('div', { class: 'row-between' }, h('h1', {}, 'Members'), h('a', { class: 'btn', href: '#/admin' }, '\u2190 Allocate')),
-      h('p', { class: 'member-mail' }, emailBtn('Email active members', activeList), ' ', emailBtn('Email inactive members', inactiveList)),
-      pending.length > 0 && h('p', { class: 'notice warn' }, `${pending.length} member(s) are waiting for approval. Tick "Active" to approve them.`),
-      h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'board members' },        // stacks into cards on a phone
-        h('thead', {}, h('tr', {}, COLS.map(c => h('th', {}, c)))),
-        h('tbody', {}, members.map(u => { const n = nameParts(u); return h('tr', { class: u.active ? '' : u.deactivated ? 'inactive' : 'needs', 'data-pid': u.pid },
-          h('td', {}, h('input', { type: 'checkbox', checked: !!u.active, 'aria-label': 'Active', onchange: e => save(u, { active: e.target.checked, deactivated: !e.target.checked }, true) })),
-          h('td', {}, profileLink(u)),
-          h('td', {}, h('span', { class: 'chip ' + statusOf(u)[1] }, statusOf(u)[0])),
-          h('td', {}, text(sinceText(u))),
-          h('td', {}, membershipCell(u))); })))),
-      !members.length && h('p', { class: 'muted' }, 'No members yet. Add some below, or send them the link from Settings so they can sign in and fill in their own details.')),
+      h('div', { class: 'row-between' }, h('h1', {}, 'Members'), h('a', { class: 'btn', href: '#/admin' }, '← Allocate')),
+      h('p', { class: 'muted' }, 'Active members umpire: they give their availability and are appointed. Inactive members are members who do not umpire; they are kept for your communications.'),
+      h('p', { class: 'member-mail' }, emailBtn('Email active members', active), ' ', emailBtn('Email inactive members', inactive)),
+      applicationsCard(applied),
+      h('section', { class: 'card' },
+        h('nav', { class: 'tabs member-filter' }, FILTERS.map(([k, label, list]) =>
+          h('button', { type: 'button', class: 'tab' + (ui.filter === k ? ' active' : ''), onclick: () => { ui.filter = k; draw(); } }, `${label} (${list.length})`))),
+        shown.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'board members' },        // stacks into cards on a phone
+          h('thead', {}, h('tr', {}, COLS.map(c => h('th', {}, c)))),
+          h('tbody', {}, shown.map(u => { const st = memberStatus(u); return h('tr', { class: st === 'active' ? '' : 'inactive', 'data-pid': u.pid },
+            h('td', {}, st === 'nonmember' ? '' : h('input', { type: 'checkbox', checked: !!u.active, 'aria-label': 'Active',
+              onchange: e => save(u, { active: e.target.checked, deactivated: !e.target.checked, approved: true }, true) })),
+            h('td', {}, profileLink(u), u.wantsToUmpire && st === 'inactive' ? h('span', { class: 'chip pu tag' }, 'Asked to umpire') : null),
+            h('td', {}, h('span', { class: 'chip ' + STATUS_CHIP[st] }, STATUS_LABEL[st])),
+            h('td', {}, text(sinceText(u))),
+            h('td', {}, st === 'nonmember' ? '' : membershipCell(u))); }))))
+          : h('p', { class: 'muted' }, members.length ? 'No one here.' : 'No members yet. Bring in your membership list below, or send people the link from Settings so they can apply.')),
       renewalText(store.org) && h('p', { class: 'muted' }, `Membership renews ${renewalText(store.org)}. Types and fees are set in Settings.`),
-      h('div', { class: 'card' }, h('h2', {}, 'Add members'), h('p', { class: 'muted' }, 'Paste your existing list (for example from the Google Form responses). Added members are active straight away and can sign in with that email address. After that, members keep their own details (name, date of birth, address, mobile, accreditation) up to date themselves; you set Active, membership type and, on their profile, Member since.'), add, addBtn));
+      h('details', { class: 'card import-card', open: ui.importOpen || !members.length, ontoggle: e => { ui.importOpen = e.currentTarget.open; } },
+        h('summary', {}, 'Bring in your existing lists'),
+        h('p', { class: 'muted' }, 'Moving to Third Umpire: bring in your membership file first, then each group’s availability. New members after that apply through the link in Settings and give their availability in the app.'),
+        membershipImport(),
+        availabilityImport()));
   };
   draw();
   return wrap;

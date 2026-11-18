@@ -133,7 +133,7 @@ export async function applyImport(store, plan, { comp, season, addStrangers = fa
       if (!p.email) { noEmail++; skipped++; continue; }          // a person can only be added with an email address
       const parts = p.name.replace(EMAIL_RE, '').trim().split(/\s+/).filter(Boolean);
       member = { pid: newPid(), email: p.email.toLowerCase(), firstName: parts[0] || p.email, lastName: parts.slice(1).join(' '),
-        name: p.name.replace(EMAIL_RE, '').trim() || p.email, phone: '', active: false, updatedAt: new Date().toISOString() };
+        name: p.name.replace(EMAIL_RE, '').trim() || p.email, phone: '', active: false, nonMember: true, updatedAt: new Date().toISOString() };
       await store.saveUmpire(member);
       added++;
     }

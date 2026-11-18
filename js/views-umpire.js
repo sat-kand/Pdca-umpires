@@ -3,7 +3,7 @@
 import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
 import { recordWithdrawal } from './withdrawals.js';
 import { PLAYER_UMPIRE_COMPS } from './player-umpire.js';
-import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS, groupNeedsUmpires, needsUmpires } from './logic.js';
+import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS, groupNeedsUmpires, needsUmpires, memberStatus } from './logic.js';
 
 export function viewLogin(ctx) {
   const { store } = ctx;
@@ -37,22 +37,27 @@ export async function viewProfile(ctx) {
   const phone = h('input', { type: 'tel', value: existing?.phone || '', placeholder: 'Optional', autocomplete: 'tel' });
   const accreditation = h('input', { value: existing?.accreditation || '', placeholder: 'Optional' });
   const provider = h('input', { value: existing?.accreditationProvider || '', placeholder: 'For example, Cricket NSW', list: 'acc-providers' });
-  // Signing up asks only for what is needed (a name); everything else is added later from the profile.
-  const btn = h('button', { class: 'btn primary', type: 'submit' }, existing ? 'Save' : 'Continue');
+  // Signing up asks only for what is needed (a name, and whether they will umpire); the rest is added
+  // later from the profile.
+  const role = h('div', { class: 'role-pick', role: 'radiogroup', 'aria-label': 'Joining as' },
+    h('label', { class: 'role' }, h('input', { type: 'radio', name: 'role', value: 'umpire', checked: true }), h('span', {}, h('strong', {}, 'I want to umpire'), h('span', { class: 'muted small' }, 'Give your availability and be appointed to games'))),
+    h('label', { class: 'role' }, h('input', { type: 'radio', name: 'role', value: 'member' }), h('span', {}, h('strong', {}, 'Member only'), h('span', { class: 'muted small' }, 'Join the association and get its news, without umpiring'))));
+  const btn = h('button', { class: 'btn primary', type: 'submit' }, existing ? 'Save' : 'Apply');
   return h('form', { class: 'card narrow', onsubmit: busy(btn, async e => {
     e.preventDefault();
     const names = { firstName: first.value.trim(), lastName: last.value.trim(), name: fullName(first.value, last.value) };
     await store.saveUmpire(existing
       ? { ...names, pid: existing.pid, email: S.user.email, dob: dob.value, address: address.value.trim(), phone: phone.value.trim(),
           accreditation: accreditation.value.trim(), accreditationProvider: provider.value.trim(), active: existing.active, updatedAt: new Date().toISOString() }
-      : { ...names, pid: newPid(), email: S.user.email, active: S.isAdmin, updatedAt: new Date().toISOString() });
+      : { ...names, pid: newPid(), email: S.user.email, active: S.isAdmin, wantsToUmpire: S.isAdmin || role.querySelector('input:checked').value === 'umpire', updatedAt: new Date().toISOString() });
     await refreshUser();
     toast('Details saved');
     go(existing ? '/profile' : S.isAdmin ? '/my' : '/');
   }) },
   h('h1', {}, existing ? 'Your details' : 'Welcome'),
-  !existing && h('p', { class: 'muted' }, 'What is your name? You can add the rest later from your profile.'),
+  !existing && h('p', { class: 'muted' }, `Apply to join ${(store.org && store.org.name) || 'the association'}. You can add the rest of your details later from your profile.`),
   h('div', { class: 'two-up' }, h('label', {}, 'First name', first), h('label', {}, 'Last name', last)),
+  !existing && !S.isAdmin && [h('p', { class: 'field-label' }, 'Joining as'), role],
   existing && [h('label', {}, 'Date of birth', dob),
   h('label', {}, 'Address', address),
   h('label', {}, 'Mobile', phone),
@@ -74,9 +79,26 @@ export async function viewMy(ctx) {
   }
   const [season, rounds] = await Promise.all([store.getSeason(), store.listRounds()]);
   const root = h('div', { class: 'narrow-page' });
-  if (!u.active) root.append(h('p', { class: 'notice warn' }, u.deactivated
-    ? 'Your membership is not active at the moment. Contact the appointments officer if that is not right.'
-    : 'Your account is waiting for approval by the appointments officer. You can already give your availability.'));
+  // Members who do not umpire have no availability to give; applicants who want to umpire can start.
+  const status = memberStatus(u);
+  if (status === 'inactive' || status === 'nonmember' || (status === 'applied' && u.wantsToUmpire === false)) {
+    const ask = h('button', { class: 'btn primary', type: 'button' }, "I'd like to umpire");
+    ask.onclick = busy(ask, async () => {
+      await store.saveUmpire({ ...u, wantsToUmpire: true, updatedAt: new Date().toISOString() });
+      u.wantsToUmpire = true;
+      setChildren(note, h('p', {}, 'Thanks. The appointments officer has been asked to make you an active umpire.'));
+    });
+    const note = h('div', {}, u.wantsToUmpire && status !== 'applied'
+      ? h('p', {}, 'You have asked to umpire. The appointments officer will make you active.')
+      : h('p', {}, ask));
+    root.append(h('section', { class: 'card' },
+      h('h2', {}, (store.org && store.org.name) || 'Membership'),
+      h('p', {}, status === 'applied' ? 'Your application is waiting for approval by the association.' : status === 'nonmember' ? 'You are not a member of this association yet.' : 'You are a member who does not umpire, so there is no availability to give.'),
+      status !== 'applied' && note));
+    root.append(...(await otherOrgCards(ctx, u.email, todayLocal())));
+    return root;
+  }
+  if (status === 'applied') root.append(h('p', { class: 'notice warn' }, 'Your application is waiting for approval by the association. You can already give your availability.'));
 
   // ---- what the umpire has already answered (needed by the appointments below as well)
   const existing = season ? await store.getAvailability(season.id, u.email) : null;

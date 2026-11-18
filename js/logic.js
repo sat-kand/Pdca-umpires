@@ -249,6 +249,21 @@ export function compareGames(a, b) {
 
 // A game is "picked" when the officer has chosen its grade for umpires (slots > 0).
 // A grade the association set to None needs no umpires, whatever slots its games were given before.
+// Where someone stands with the association:
+//   applied   - asked to join (through the app), not yet approved
+//   active    - an approved member who umpires: gives availability and is appointed
+//   inactive  - an approved member who does not umpire: kept for the association's communications
+//   nonmember - not a member at all; only their availability came in with a spreadsheet
+export function memberStatus(u) {
+  if (!u) return 'applied';
+  if (u.active) return 'active';
+  if (u.nonMember) return 'nonmember';
+  if (u.deactivated || u.approved) return 'inactive';
+  return 'applied';
+}
+export const STATUS_LABEL = { applied: 'Waiting for approval', active: 'Active', inactive: 'Inactive', nonmember: 'Not a member' };
+export const STATUS_CHIP = { applied: 'warn', active: 'ok', inactive: 'muted-chip', nonmember: 'muted-chip' };
+
 // Entries (appointments, pull-outs) by game: a two-day game counts once. Each item has gameId or g.id;
 // the first entry of a game is kept, with every date of that game in `dates`.
 export const gameKey = x => (x.roundId || (x.r && x.r.id) || '') + '|' + (x.gameId || (x.g && x.g.id));

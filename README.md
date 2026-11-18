@@ -21,7 +21,23 @@ It is a static site (no build step) that runs on **GitHub Pages**, with **Fireba
 
 ## Members
 
-The **Members** page (formerly Umpires) is the association's list of people. Each member has a **first name**, **last name**, **date of birth**, **address**, email, mobile, **umpire accreditation number** and **membership type** (from the list in Settings; the fee follows the type). Members fill in their own details when they join by the link; officers can correct anything and approve new sign-ups with the **Active** tick. Paste an existing list as `First name, Last name, email, mobile, accreditation no.` lines (the last two optional). The allocation board, dropdowns and reports show the full name.
+The **Members** page is the association's list of people. Where someone stands:
+
+- **Waiting for approval** — they applied through Third Umpire (the join link in Settings), saying whether they want to umpire or be a **member only**. The officer approves them **as an umpire** (Active) or **as a member only** (Inactive), or turns them down. Applicants who want to umpire can already give their availability.
+- **Active** — an approved member who umpires: gives availability and is appointed.
+- **Inactive** — an approved member who does not umpire. They are kept for the association's communications (*Email inactive members*) and are not asked for availability. They can tap *I'd like to umpire*, which shows as *Asked to umpire* for the officer.
+- **Not a member** — someone whose availability came in with a spreadsheet but who is not on the membership list.
+
+The list has tabs for Active, Inactive and All members. Ticking **Active** moves a member between Active and Inactive. Members keep their own details (name, date of birth, address, mobile, accreditation); officers set approval, Active, membership type and member since.
+
+### Moving an association to Third Umpire
+
+*Bring in your existing lists* on the Members page, in this order:
+
+1. **Membership file** — the association's own list, pasted from Excel or Google Sheets or chosen as a CSV file, with a heading row. Columns are found by name, in any order: First name, Last name (or Name), Email, Mobile, Date of birth, Address, Accreditation, Membership type, Member since and **Status** (Active / Yes / Umpire, or Inactive / No / Member only). Rows with no Status take the choice made for the whole file, so active and inactive members can come in as one file or as two. *Check it* shows who is new and who is already on the list before anything is saved. Members already on the list keep their own details; only Active or Inactive, membership type and member since are updated, and only where the file has them. The old one-line format (`First name, Last name, email, mobile, accreditation no.`) still works.
+2. **Availability files** — one per group (each competition's own form): pick the group, then paste or choose its file (see below).
+
+After that, new members apply through the join link and give their availability in the app.
 
 ## Player umpires
 

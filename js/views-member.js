@@ -5,7 +5,7 @@
 // (association, type, active or not, since when), never another association's availability or games.
 
 import { h, toast, setChildren, busy, todayLocal } from './ui.js';
-import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey, firstGroup, byGame, gameCount } from './logic.js';
+import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey, firstGroup, byGame, gameCount, memberStatus, STATUS_LABEL, STATUS_CHIP } from './logic.js';
 import { feeFor, money, membershipTypes } from './views-org.js';
 
 // What other associations may see of this membership. Written whenever an officer saves or opens a member.
@@ -168,11 +168,14 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
   };
   function drawStatus() {
     const btn = (label, cls, fn) => { const b = h('button', { type: 'button', class: `btn small ${cls}` }, label); b.onclick = busy(b, fn); return b; };
-    const pending = !u.active && !u.deactivated;
+    const st = memberStatus(u), pending = st === 'applied';
     setChildren(statusBox,
-      h('span', { class: 'chip ' + (u.active ? 'ok' : pending ? 'warn' : 'muted-chip') }, u.active ? 'Active' : pending ? 'Waiting for approval' : 'Inactive'), ' ',
+      h('span', { class: 'chip ' + STATUS_CHIP[st] }, STATUS_LABEL[st]), ' ',
+      pending && h('span', { class: 'muted small' }, u.wantsToUmpire === false ? 'Wants to be a member only ' : u.wantsToUmpire ? 'Wants to umpire ' : ''),
+      st === 'inactive' && u.wantsToUmpire && h('span', { class: 'chip pu' }, 'Asked to umpire'), ' ',
       pending
-        ? [btn('Approve', 'primary', () => saveStatus({ active: true, deactivated: false }, 'Approved')), ' ',
+        ? [btn('Approve as umpire', 'primary', () => saveStatus({ active: true, deactivated: false, approved: true }, 'Approved as an umpire')), ' ',
+           btn('Approve as member only', '', () => saveStatus({ active: false, deactivated: true, approved: true }, 'Approved as a member')), ' ',
            btn('Reject', 'danger', async () => {
              if (!confirm(`Turn down ${u.name}? Their registration is removed.`)) return;
              await store.deleteUmpire(u.email);
@@ -180,8 +183,8 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
              location.hash = '#/admin/members';
            })]
         : u.active
-          ? btn('Make inactive', '', () => saveStatus({ active: false, deactivated: true }, 'Now inactive'))
-          : btn('Make active', 'primary', () => saveStatus({ active: true, deactivated: false }, 'Now active')));
+          ? btn('Make inactive', '', () => saveStatus({ active: false, deactivated: true, approved: true }, 'Now inactive'))
+          : btn(st === 'nonmember' ? 'Make a member (active)' : 'Make active', 'primary', () => saveStatus({ active: true, deactivated: false, approved: true, nonMember: false }, 'Now active')));
   }
   drawStatus();
 
@@ -214,7 +217,7 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
       row('Accreditation no.', u.accreditation), row('Accreditation provider', u.accreditationProvider),
       self
         ? [row('Membership type', u.membership ? `${u.membership}${feeFor(store.org, u.membership) ? ` · ${money(feeFor(store.org, u.membership))}` : ''}` : ''),
-           h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Status'), h('span', {}, h('span', { class: 'chip ' + (u.active ? 'ok' : u.deactivated ? 'muted-chip' : 'warn') }, u.active ? 'Active' : u.deactivated ? 'Inactive' : 'Waiting for approval'))),
+           h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Status'), h('span', {}, h('span', { class: 'chip ' + STATUS_CHIP[memberStatus(u)] }, STATUS_LABEL[memberStatus(u)]))),
            row('Member since', fmtLong(u.memberSince)),
            h('p', { class: 'muted small' }, 'Your appointments officer sets your status, membership type and member since. Your date of birth, address and mobile are only visible to them.')]
         : [h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Membership type'), typeBox),
@@ -314,7 +317,7 @@ async function membershipSection(org, view, u, today) {
   const gamesUmpired = new Set(past.map(a => a.g.id)).size;
   const pulls = ((avail && avail.declined) || []).map(x => ({ ...x, g: gameById.get(x.gameId) })).sort((a, b) => b.date.localeCompare(a.date));
   const rate = gameCount(appts) + gameCount(pulls) ? gameCount(appts) / (gameCount(appts) + gameCount(pulls)) : null;
-  const status = u.active ? ['Active', 'ok'] : u.deactivated ? ['Inactive', 'muted-chip'] : ['Waiting for approval', 'warn'];
+  const status = [STATUS_LABEL[memberStatus(u)], STATUS_CHIP[memberStatus(u)]];
 
   // When they became a member there: theirs to correct (a list loaded from a file may not have it).
   const since = h('input', { type: 'date', value: u.memberSince || '', 'aria-label': `Member since, ${org.name || org.id}`, max: today });

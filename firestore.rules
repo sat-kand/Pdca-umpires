@@ -130,21 +130,21 @@ service cloud.firestore {
             id == me()
             && request.resource.data.email == me()
             && request.resource.data.active == false
-            && request.resource.data.keys().hasOnly(['pid', 'email', 'name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider', 'active', 'updatedAt'])
+            && request.resource.data.keys().hasOnly(['pid', 'email', 'name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider', 'active', 'wantsToUmpire', 'updatedAt'])
           ));
 
         // Officers may turn down someone who has just registered.
-        allow delete: if isOrgAdmin(orgId) && orgOpen(orgId) && resource.data.active == false && resource.data.get('deactivated', false) != true;
+        allow delete: if isOrgAdmin(orgId) && orgOpen(orgId) && resource.data.active == false && resource.data.get('deactivated', false) != true && resource.data.get('approved', false) != true;
 
         // Officers set only what the association decides: active, membership type, member since.
         // A member's own details (name, date of birth, address, mobile, accreditation) are theirs alone.
         // Umpires may edit their own details, and when they became a member (an association that loaded
         // its members from a file may not have it), but never `active`, `pid` or `email`.
         allow update: if signedIn() && orgOpen(orgId) && (
-          (isOrgAdmin(orgId) && onlyChanges(['active', 'deactivated', 'membership', 'memberSince', 'updatedAt'])) || (
+          (isOrgAdmin(orgId) && onlyChanges(['active', 'deactivated', 'approved', 'nonMember', 'membership', 'memberSince', 'updatedAt'])) || (
             id == me()
             && request.resource.data.email == me()
-            && onlyChanges(['name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider', 'memberSince', 'updatedAt'])
+            && onlyChanges(['name', 'firstName', 'lastName', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider', 'memberSince', 'wantsToUmpire', 'updatedAt'])
           ));
       }
 
