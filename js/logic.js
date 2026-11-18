@@ -13,30 +13,26 @@ export const AVAIL = { YES: 'yes', MAYBE: 'maybe', NO: 'no' };
 
 // ---------- competitions ---------------------------------------------------
 
-// PDCA runs three competitions. Umpires give availability for each one separately,
-// and may be appointed to more than one on the same day.
 // ---------- groups --------------------------------------------------------
-// A GROUP is a set of grades an association allocates together (its own names: "Seniors", "Juniors",
-// "Friday Girls", ...). Groups decide the Allocate tiles, what umpires give availability for, and the
-// report's sections. An association that has not set any up gets Senior / Junior / T20, guessed from
-// competition names, which is what PDCA uses. Keys are short ids; availability is stored per group key.
-export const DEFAULT_GROUPS = [
-  { key: 'senior', name: 'Senior' },
-  { key: 'junior', name: 'Junior' },
-  { key: 't20', name: 'T20' },
-];
+// A GROUP is a set of grades an association allocates together, named after its own competitions
+// ("Shires", "Frank Gray", ...). Groups decide the Allocate tiles, what umpires give availability for,
+// and the report's sections. Nothing is built in: an association's groups are suggested from its own
+// fixtures the first time they load. Until then there is one placeholder group holding every grade.
+// Keys are short ids made from the group's name; availability is stored per group key.
+export const DEFAULT_GROUPS = [{ key: 'all', name: 'All grades' }];
 // The live list, in display order, as { key, label }. Replaced in place by setGroups().
 export const COMPS = DEFAULT_GROUPS.map(g => ({ key: g.key, label: g.name }));
 let GRADE_GROUP = {};           // grade name -> group key
 let GRADE_UMPIRES = {};         // grade name -> umpires needed (0, 1 or 2); missing = not set
+let ORG_NAME = '';
 
-// 'PDCA Junior Competition' -> 'junior', anything with T20/Twenty20 -> 't20', else 'senior'.
-// An age group up to 19 (U10, Under 15, U17s) is junior; U21, U24 and older are not.
-const JUNIOR_AGE = /\bu\s?(?:[5-9]|1\d)(?:'?s)?\b|under\s?(?:[5-9]|1\d)\b/i;
-export function guessGroup(name) {
-  if (/junior/i.test(name || '') || JUNIOR_AGE.test(name || '')) return 'junior';
-  if (/t\s?20|twenty\s?20/i.test(name || '')) return 't20';
-  return 'senior';
+// A short id for a group name: "Frank Gray" -> "frank-gray".
+export const groupKeyOf = name => (name || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'group';
+
+// The group a competition name would be suggested into, if the association has it.
+export function guessGroup(compName) {
+  const key = groupKeyOf(suggestGroupName(compName || '', ORG_NAME));
+  return COMPS.some(c => c.key === key) ? key : null;
 }
 
 export function setGroups(org) {
@@ -44,26 +40,24 @@ export function setGroups(org) {
   COMPS.splice(0, COMPS.length, ...list.map(g => ({ key: g.key, label: g.name })));
   GRADE_GROUP = { ...((org && org.gradeGroups) || {}) };
   GRADE_UMPIRES = { ...((org && org.gradeUmpires) || {}) };
+  ORG_NAME = (org && org.name) || '';
 }
+// The association's first group: where a game with no group of its own goes.
+export const firstGroup = () => (COMPS[0] ? COMPS[0].key : DEFAULT_GROUPS[0].key);
 
-// A game's (or a competition name's) group: the association's choice for its grade, else the guess,
-// else its first group.
+// A game's (or a competition name's) group: the association's choice for its grade, else the group its
+// competition's name suggests, else its first group.
 export function compKeyOf(x) {
   if (x && typeof x === 'object' && x.grade && GRADE_GROUP[x.grade] && COMPS.some(c => c.key === GRADE_GROUP[x.grade])) return GRADE_GROUP[x.grade];
-  const guess = guessGroup((typeof x === 'string' ? x : (x && x.comp)) || '');
-  return COMPS.some(c => c.key === guess) ? guess : (COMPS[0] ? COMPS[0].key : guess);
+  return guessGroup((typeof x === 'string' ? x : (x && x.comp)) || '') || firstGroup();
 }
 export const groupOrder = key => { const i = COMPS.findIndex(c => c.key === key); return i < 0 ? 99 : i; };
 
 // Umpires a grade needs, as the association set it (undefined when not set).
 export const umpiresForGrade = grade => (grade in GRADE_UMPIRES ? GRADE_UMPIRES[grade] : undefined);
 
-// A first suggestion for a grade's umpires: none for the youngest (Blast, Futures, under-11s), else one.
-export function suggestUmpires(grade, comp = '') {
-  const s = `${grade} ${comp}`;
-  if (/blast|futures|smash|master blaster|\bu\s?(?:[5-9]|1[01])\b|under\s?(?:[5-9]|1[01])\b/i.test(s)) return 0;
-  return 1;                     // one each to start with; the officer raises a grade to 2 where wanted
-}
+// A first suggestion for a grade's umpires: one each. The officer sets None or 2 where wanted.
+export function suggestUmpires() { return 1; }
 
 // A group name suggested from a competition's own name, unique to the association: the words left
 // once the association's name or initials, the year and generic words ("Competition", "Summer",
@@ -91,9 +85,8 @@ export function suggestGroupName(compName, orgName = '') {
 }
 
 // Groups for a set of competitions: one per suggested name (competitions that come out with the same
-// name share it; if two different ones would clash, their bracketed part tells them apart). Keys are
-// kept stable: an existing group with the same name keeps its key, and otherwise Senior / Junior / T20
-// keep the keys availability was saved under.
+// name share it; if two different ones would clash, their bracketed part tells them apart). An existing
+// group with the same name keeps its key; a new one gets a key made from its name.
 export function suggestGroups(comps, orgName = '', existing = []) {
   const names = new Map();                              // comp name -> group name
   for (const c of comps) names.set(c, suggestGroupName(c, orgName));
@@ -108,16 +101,13 @@ export function suggestGroups(comps, orgName = '', existing = []) {
   }
   const used = new Set();
   const groups = [];
-  for (const n of byName.keys()) {
+  for (const n of byName.keys()) {                     // in the order the competitions came in
     const had = existing.find(g => g.name === n && !used.has(g.key));
-    // Senior, Junior and T20 keep the keys availability is saved under (PDCA's data).
-    const word = ['senior', 'junior', 't20'].find(k => n.toLowerCase().includes(k) && !used.has(k) && !existing.some(g => g.key === k && g.name !== n));
-    const key = had ? had.key : (word || 'g' + Math.random().toString(36).slice(2, 8));
+    let key = had ? had.key : groupKeyOf(n);
+    if (!had) for (let i = 2; used.has(key) || existing.some(g => g.key === key && g.name !== n); i++) key = `${groupKeyOf(n)}-${i}`;
     used.add(key);
     groups.push({ key, name: n });
   }
-  const order = g => ['senior', 'junior', 't20'].indexOf(g.key) + 1 || 9;
-  groups.sort((a, b) => order(a) - order(b));
   const compGroup = Object.fromEntries([...names].map(([c, n]) => [c, groups.find(g => g.name === n).key]));
   return { groups, compGroup };
 }
@@ -217,7 +207,7 @@ export function sectionKey(g) {
 export function sectionLabel(games) {
   const first = games[0];
   const grades = [...new Set(games.map(g => g.grade))];
-  const names = grades.length === 1 ? gradeShort(grades[0]) : /senior/i.test(first.comp) ? 'Seniors' : first.comp.replace(/^PDCA\s+/i, '');
+  const names = grades.length === 1 ? gradeShort(grades[0]) : compLabel(compKeyOf(first));
   return `${first.roundName} ${names}`.trim();
 }
 
@@ -541,7 +531,7 @@ export function buildCalendar(games) {
 //   { comp, label, mode: 'dates',  rounds: [],                                       dates }
 export function upcomingDates(calendar, today) {
   const by = new Map();
-  for (const r of calendar || []) { const k = r.comp || 'senior'; if (!by.has(k)) by.set(k, []); by.get(k).push(r); }
+  for (const r of calendar || []) { const k = r.comp || firstGroup(); if (!by.has(k)) by.set(k, []); by.get(k).push(r); }
   return COMPS.filter(c => by.has(c.key)).map(c => {
     const entries = by.get(c.key);
     if (entries.every(e => e.label)) {

@@ -8,7 +8,7 @@
 // See README.md for the full setup.
 
 export const CONFIG = {
-  appName: 'PDCA Umpire Allocation',
+  appName: 'Third Umpire',
 
   apiBase: 'https://grassrootsapiproxy.cricket.com.au',
 

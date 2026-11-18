@@ -293,7 +293,7 @@ export async function viewMy(ctx) {
         : h('p', { class: 'muted' }, 'You have not chosen any games yet.'),
       lists.length
         ? h('div', { class: 'chooser' },
-          h('h3', {}, 'Choose a Senior game'),
+          h('h3', {}, compsHere.length === 1 ? `Choose a ${compLabel(compsHere[0])} game` : 'Choose a game'),
           h('div', { class: 'chooser-pick' }, compsHere.length > 1 && compSel, roundSel, gradeSel),
           list && h('ul', { class: 'plain pick-list' }, [...list.games].filter(g => !ui.grade || g.grade === ui.grade)
             .sort((a, b) => compareGrades(a.grade, b.grade) || a.home.name.localeCompare(b.home.name))

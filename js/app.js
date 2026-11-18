@@ -71,8 +71,8 @@ function drawHeader() {
     demo && h('div', { class: 'demo-banner' }, 'Demo mode — data is stored only in this browser. ',
       h('button', { class: 'link', type: 'button', onclick: async ev => {
         await S.store.useOrg(S.org ? S.org.id : DEMO_ORG.id);      // works for anyone in the demo, signed in or not
-        const b = ev.currentTarget; b.disabled = true; b.textContent = 'Loading real PDCA fixtures…';
-        try { const r = await seedDemo(S.store); toast(r.live ? `Loaded the real PDCA fixtures (${r.games} games) and sample umpires` : 'Play Cricket not reachable: loaded made-up sample fixtures', r.live ? 'ok' : 'err'); } finally { if (S.user) await loadUser(S.user); render(); }
+        const b = ev.currentTarget; b.disabled = true; b.textContent = `Loading ${(S.store.org && S.store.org.name) || 'the association'}'s fixtures…`;
+        try { const r = await seedDemo(S.store); toast(r.live ? `Loaded ${(S.store.org && S.store.org.name) || 'the association'}'s fixtures from Play Cricket (${r.games} games) and sample umpires` : 'Play Cricket not reachable: loaded made-up sample fixtures', r.live ? 'ok' : 'err'); } finally { if (S.user) await loadUser(S.user); render(); }
       } }, 'Load sample data'), ' · ',
       h('button', { class: 'link', type: 'button', onclick: () => { if (confirm('Erase all demo data in this browser?')) { localStorage.removeItem(ORG_KEY); S.store.demoReset(); location.hash = '#/'; } } }, 'Reset')),
     h('div', { class: 'bar' },

@@ -4,7 +4,7 @@
 
 import { CONFIG } from './config.js';
 import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures, mergeFixtures } from './fixtures.js';
-import { buildCalendar, compKeyOf, summarise, COMPS, groupOrder, suggestGroups, suggestUmpires } from './logic.js';
+import { buildCalendar, compKeyOf, summarise, COMPS, groupOrder, suggestGroups, suggestUmpires, firstGroup } from './logic.js';
 import { applyOrg } from './org-setup.js';
 
 // Bump when the information saved on each round changes shape, so stored rounds are rebuilt on the next visit.
@@ -100,7 +100,7 @@ export function visibleRounds(rounds, today, more = 0, startDay = 1) {
 export function needsSync(season, rounds, today, now = Date.now()) {
   if (!season || !season.calendar || season.schema !== SCHEMA) return true;
   if (now - Date.parse(season.updatedAt || 0) > STALE_MS) return true;
-  return season.calendar.some(c => !currentRound(rounds, c.comp || 'senior', today) && c.dates.some(d => d >= today));
+  return season.calendar.some(c => !currentRound(rounds, c.comp || firstGroup(), today) && c.dates.some(d => d >= today));
 }
 
 // A round's games as members may see them: no allocations, no officer notes.

@@ -11,7 +11,7 @@
 // the heading. Rows are matched to members by name (or by an email column, if there is one).
 
 import { parseCsv } from './fixtures.js';
-import { availKey, nameParts, fullName } from './logic.js';
+import { availKey, nameParts, fullName, firstGroup } from './logic.js';
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 const norm = s => (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -19,7 +19,7 @@ const EMAIL_RE = /[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+/;
 
 // The dates of one competition in the season calendar, with the round labels they belong to.
 export function calendarFor(season, comp) {
-  const entries = ((season && season.calendar) || []).filter(e => (e.comp || 'senior') === comp);
+  const entries = ((season && season.calendar) || []).filter(e => (e.comp || firstGroup()) === comp);
   const dates = [...new Set(entries.flatMap(e => e.dates))].sort();
   const rounds = entries.filter(e => e.label).map(e => ({ label: e.label, dates: [...e.dates].sort() }));
   return { dates, rounds };

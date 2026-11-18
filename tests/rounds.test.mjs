@@ -1,4 +1,5 @@
 import test from 'node:test';
+import './pdca-groups.mjs';
 import assert from 'node:assert/strict';
 import { roundWindows, roundSets, visibleRounds, nextRoundWindow, majorityRound, currentRound, needsSync, saveSeasonAndRounds, applyFresh, defaultSlotsFn, STALE_MS, SCHEMA } from '../js/rounds.js';
 import { summarise, isPicked } from '../js/logic.js';
@@ -227,8 +228,8 @@ test('custom groups: grades are allocated in the groups the association chose', 
       game('j1', 'BCDCA - Junior Competition', 'U13 - 1', ['2026-11-21']),
     ] });
     assert.deepEqual(made.sort(), ['girls-2026-11-16', 'jun-2026-11-16', 'sat-2026-11-16']);
-  } finally { setGroups(null); }
-  assert.deepEqual([suggestUmpires('U10 - 1'), suggestUmpires('Cricket Blast Competition'), suggestUmpires('U15 - 2'), suggestUmpires('.1st Grade')], [0, 0, 1, 1]);
+  } finally { (await import('./pdca-groups.mjs')).usePdcaGroups(); }
+  assert.deepEqual([suggestUmpires('U10 - 1'), suggestUmpires('Cricket Blast Competition'), suggestUmpires('U15 - 2'), suggestUmpires('.1st Grade')], [1, 1, 1, 1]);
 });
 
 test('moving a grade to another group takes its upcoming games out of the old group\'s round', async () => {
@@ -243,7 +244,7 @@ test('moving a grade to another group takes its upcoming games out of the old gr
     assert.equal(old.find(g => g.id === 'w').removed, true);
     assert.equal(old.find(g => g.id === 'a').removed, false);
     assert.deepEqual((await store.listGames('women-2026-11-16')).map(g => g.id), ['w']);
-  } finally { setGroups(null); }
+  } finally { (await import('./pdca-groups.mjs')).usePdcaGroups(); }
 });
 
 test('association helpers: Play Cricket id from a link, association id', async () => {
@@ -335,7 +336,7 @@ test('groups follow the fixtures: suggested the first time, new grades placed, e
     store.org.name = 'Parramatta District Cricket Association';
     await ensureGroups(store, [game('9', 'PDCA Senior Competition', 'Senior A Grade', ['2026-11-21'])]);
     assert.deepEqual(store.org.groups.map(g => g.name), ['Senior']);
-  } finally { setGroups(null); }
+  } finally { (await import('./pdca-groups.mjs')).usePdcaGroups(); }
 });
 
 test('rounds of a group that was removed are not shown', async () => {
@@ -347,5 +348,5 @@ test('rounds of a group that was removed are not shown', async () => {
     { id: 'shires-2026-11-23', comp: 'shires', start: '2026-11-28', end: '2026-11-28' },
   ];
   assert.deepEqual(upcomingRounds(rounds, '2026-11-18').map(r => r.id), ['shires-2026-11-23']);
-  setGroups({});
+  (await import('./pdca-groups.mjs')).usePdcaGroups();
 });

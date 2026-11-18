@@ -1,4 +1,5 @@
 import test from 'node:test';
+import './pdca-groups.mjs';
 import assert from 'node:assert/strict';
 import { parseTable, datesForHeading, answersFor, calendarFor, planImport, applyImport } from '../js/import-availability.js';
 

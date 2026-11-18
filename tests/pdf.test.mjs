@@ -1,4 +1,5 @@
 import test from 'node:test';
+import './pdca-groups.mjs';
 import assert from 'node:assert/strict';
 import { textWidth, fitText, wrapText, pdfDoc } from '../js/pdf.js';
 import { buildReportPdf, reportFileName } from '../js/report-pdf.js';

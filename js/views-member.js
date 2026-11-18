@@ -5,7 +5,7 @@
 // (association, type, active or not, since when), never another association's availability or games.
 
 import { h, toast, setChildren, busy, todayLocal } from './ui.js';
-import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey } from './logic.js';
+import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey, firstGroup } from './logic.js';
 import { feeFor, money, membershipTypes } from './views-org.js';
 
 // What other associations may see of this membership. Written whenever an officer saves or opens a member.
@@ -83,7 +83,7 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
   let rec = avail || (season ? { seasonId: season.id || 'manual', email: u.email, name: u.name, days: {} } : null);
   const byComp = new Map();
   for (const e of (season && season.calendar) || []) {
-    const comp = e.comp || 'senior';
+    const comp = e.comp || firstGroup();
     for (const date of e.dates || []) {
       if (date < today) continue;
       if (!byComp.has(comp)) byComp.set(comp, new Set());

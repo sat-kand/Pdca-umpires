@@ -117,7 +117,7 @@ function build(pages, [W, H], title) {
       + `/Resources << /Font << /F1 ${fontReg} 0 R /F2 ${fontBold} 0 R >> >> /Contents ${contents} 0 R >>`));
   }
   objs[kidsNo - 1] = `<< /Type /Pages /Count ${pageNos.length} /Kids [${pageNos.map(n => `${n} 0 R`).join(' ')}] >>`;
-  const info = add(`<< /Title (${esc(title)}) /Producer (PDCA Umpire Allocation) >>`);
+  const info = add(`<< /Title (${esc(title)}) /Producer (Third Umpire) >>`);
 
   let out = '%PDF-1.4\n%âãÏÓ\n';
   const offsets = [];

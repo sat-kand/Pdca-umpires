@@ -1,4 +1,5 @@
 import test from 'node:test';
+import './pdca-groups.mjs';
 import assert from 'node:assert/strict';
 import { applyPlayerUmpires, wantedKeys, pickKey } from '../js/player-umpire.js';
 

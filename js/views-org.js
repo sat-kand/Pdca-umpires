@@ -2,7 +2,7 @@
 // Every association has its own umpires, officers, fixtures and allocations.
 
 import { h, toast, busy, copyText, setChildren } from './ui.js';
-import { emailKey, COMPS, DEFAULT_GROUPS, guessGroup, suggestUmpires, suggestGroups, compareGrades, gradeShort } from './logic.js';
+import { emailKey, COMPS, DEFAULT_GROUPS, guessGroup, groupKeyOf, suggestGroupName, suggestUmpires, suggestGroups, compareGrades, gradeShort } from './logic.js';
 import { applyOrg } from './org-setup.js';
 
 // Used when the tool's owner sets up an association; it then edits its own list in Settings.
@@ -125,24 +125,28 @@ export async function viewOrgSettings(ctx) {
     saveBtn), saveBtn, 'membership');
   }
 
-  // Player umpires: whether members may choose their own (Senior) games, and the line they see about it.
+  // Player umpires: whether members may choose their own games, in which groups, and the line they see about it.
   function playerUmpireCard() {
     const org = store.org;
     const p = org.playerUmpire || {};
     const on = h('input', { type: 'checkbox', checked: !!p.enabled });
-    const text = h('textarea', { rows: 2, placeholder: 'e.g. Pick any Senior round, grade or fixture you want to umpire.' }, p.description || '');
+    const text = h('textarea', { rows: 2, placeholder: 'e.g. Pick any round, grade or fixture you want to umpire.' }, p.description || '');
+    const chosen = (Array.isArray(p.groups) && p.groups.length ? p.groups : COMPS.slice(0, 1).map(c => c.key));
+    const groupBoxes = COMPS.map(c => [c.key, h('input', { type: 'checkbox', checked: chosen.includes(c.key) })]);
     const title = h('input', { value: p.title || '', placeholder: 'Player umpire', 'aria-label': 'Name for player umpiring' });
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
     return saveButton(h('form', { class: 'card', onsubmit: busy(saveBtn, async e => {
       e.preventDefault();
       saved.add('playerUmpire');
-      await store.saveOrg({ playerUmpire: { ...p, enabled: on.checked, title: title.value.trim(), description: text.value.trim() }, updatedAt: new Date().toISOString() });
+      await store.saveOrg({ playerUmpire: { ...p, enabled: on.checked, groups: groupBoxes.filter(([, b]) => b.checked).map(([k]) => k), title: title.value.trim(), description: text.value.trim() }, updatedAt: new Date().toISOString() });
       await ctx.refreshUser();
       toast('Saved', 'ok');
       await draw();
     }) },
     h('h2', {}, 'Player umpires'),
-    h('label', { class: 'inline' }, on, ' Let members choose their own Senior games to umpire'),
+    h('label', { class: 'inline' }, on, ' Let members choose their own games to umpire'),
+    h('p', { class: 'muted small' }, 'In these groups:'),
+    h('div', { class: 'row-gap' }, groupBoxes.map(([k, b]) => h('label', { class: 'inline' }, b, ' ', COMPS.find(c => c.key === k).label))),
     h('p', { class: 'muted small' }, 'When this is off, members only see "Full umpire". Games already chosen stay where they are.'),
     h('label', {}, 'What it is called (leave empty for "Player umpire")', title),
     h('label', {}, 'What members are told (leave empty to show nothing)', text),
@@ -165,7 +169,7 @@ export async function viewOrgSettings(ctx) {
       gradeUmpires: { ...(org.gradeUmpires || {}) },
     };
     const groupOf = gr => ui.gradeGroups[gr] && ui.groups.some(g => g.key === ui.gradeGroups[gr]) ? ui.gradeGroups[gr]
-      : (ui.groups.some(g => g.key === guessGroup(seen.get(gr))) ? guessGroup(seen.get(gr)) : ui.groups[0].key);
+      : (ui.groups.find(g => g.key === groupKeyOf(suggestGroupName(seen.get(gr) || '', org.name || ''))) || ui.groups[0]).key;
     const umpOf = gr => (gr in ui.gradeUmpires ? ui.gradeUmpires[gr] : suggestUmpires(gr, seen.get(gr)));
     // Groups with no grades (left from another association's fixtures, say) are not kept.
     if (grades.length) ui.groups = ui.groups.filter(g => grades.some(gr => groupOf(gr) === g.key)).concat([]);
@@ -177,7 +181,7 @@ export async function viewOrgSettings(ctx) {
     // Groups named from the competitions themselves, each grade in its competition's group.
     const useSuggestions = () => {
       const sug = suggestGroups([...new Set(seen.values())].filter(Boolean), org.name || '',
-        ui.groups.filter(g => !['senior', 'junior', 't20'].includes(g.key)));   // all groups are replaced, so Senior etc. take back their keys
+        ui.groups);
       if (!sug.groups.length) return;
       ui.groups = sug.groups.map(g => ({ ...g }));
       ui.gradeGroups = Object.fromEntries(grades.map(gr => [gr, sug.compGroup[seen.get(gr)] || ui.groups[0].key]));

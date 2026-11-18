@@ -4,7 +4,7 @@ import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './u
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
   slotOptions, recount, summarise, formatSummary, publishState, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
-  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot, umpiresForGrade, suggestUmpires, guessGroup, DEFAULT_GROUPS,
+  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot, umpiresForGrade, suggestUmpires, firstGroup,
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
@@ -43,7 +43,7 @@ function tabs(rid, active, locked = false) {
 async function openGradesModal({ store, round, chosenGames = new Set(), onDone }) {
   const [games, settings] = await Promise.all([store.listGames(round.id), store.getSettings()]);
   // Grades the association set to 0 umpires (Blast, under-11s, ...) are never offered.
-  const live = games.filter(g => !g.removed && compKeyOf(g) === (round.comp || 'senior') && umpiresForGrade(g.grade) !== 0);
+  const live = games.filter(g => !g.removed && compKeyOf(g) === (round.comp || firstGroup()) && umpiresForGrade(g.grade) !== 0);
   const grades = [...new Set(live.map(g => g.grade))].sort(compareGrades);
   const count = gr => live.filter(g => g.grade === gr).length;
   // Umpires per game: what the board has, else what the association set for the grade, else 1.
@@ -74,7 +74,7 @@ async function openGradesModal({ store, round, chosenGames = new Set(), onDone }
   done.onclick = busy(done, async () => {
     const changed = [];
     for (const g of games) {
-      const mine = !g.removed && (g.grade in want) && compKeyOf(g) === (round.comp || 'senior');
+      const mine = !g.removed && (g.grade in want) && compKeyOf(g) === (round.comp || firstGroup());
       if (!mine) continue;
       if (want[g.grade]) {                                   // the grade is selected: every game, and none is "player umpire only" any more
         const n = perGame(g);
@@ -96,7 +96,7 @@ async function openGradesModal({ store, round, chosenGames = new Set(), onDone }
   });
   const cancel = h('button', { class: 'btn', type: 'button', onclick: () => { dlg.close(); dlg.remove(); } }, 'Cancel');
   dlg.append(
-    h('h2', {}, `${compLabel(round.comp || 'senior')} · ${round.title}`),
+    h('h2', {}, `${compLabel(round.comp || firstGroup())} · ${round.title}`),
     h('p', { class: 'muted' }, 'Tick the grades that need umpires.'),
     h('div', { class: 'row-between' }, total, h('span', {}, h('button', { class: 'link', type: 'button', onclick: () => setAll(true) }, 'All'), ' · ', h('button', { class: 'link', type: 'button', onclick: () => setAll(false) }, 'None'))),
     h('div', { class: 'grade-list' }, rows.map(r => r.row), !grades.length && h('p', { class: 'muted' }, 'No games in this round.')),
@@ -533,7 +533,7 @@ export async function viewSeasonAvailability(ctx) {
   // rest are marked: they still appear, because their answers came in with the season's import.
   let people = umpires.slice().sort((a, b) => Number(b.active !== false) - Number(a.active !== false) || compareMembers(a, b));
   const members = () => people.filter(u => u.active !== false);
-  const comps = COMPS.filter(c => season.calendar.some(e => (e.comp || 'senior') === c.key));
+  const comps = COMPS.filter(c => season.calendar.some(e => (e.comp || firstGroup()) === c.key));
   const wrap = h('div');
   const ui = { comp: comps[0].key, past: false, q: '', on: null };       // on = show only umpires available on this date
   const ICON = { yes: '\u2713', no: '\u2717', none: '' };
@@ -622,7 +622,7 @@ export async function viewSeasonAvailability(ctx) {
 
   function build() {
     // Every competition is laid out the same way: one column per playing date, upcoming dates first.
-    const all = [...new Set(season.calendar.filter(e => (e.comp || 'senior') === ui.comp).flatMap(e => e.dates))].sort();
+    const all = [...new Set(season.calendar.filter(e => (e.comp || firstGroup()) === ui.comp).flatMap(e => e.dates))].sort();
     const dates = ui.past ? all : all.filter(d => d >= today);
     const hasPast = all.some(d => d < today);
     if (ui.on && !dates.includes(ui.on)) ui.on = null;

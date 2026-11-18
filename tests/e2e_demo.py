@@ -159,8 +159,8 @@ with sync_playwright() as p:
     page.click("button:has-text('Load sample data')")
     page.wait_for_selector(".tile-round")
     tile = lambda name, n=0: page.locator(f".comp-tile:has(h2:has-text('{name}'))").nth(n)
-    check(page.locator(".comp-tile h2").all_inner_texts() == ["Senior", "Junior", "Junior", "T20"] and page.locator("section.week").count() == 2,
-          "one section per week: this week Senior and Junior; next week the Junior one-day games on the two-day games' second Saturday, and T20")
+    check(page.locator(".comp-tile h2").all_inner_texts() == ["Senior", "Junior", "T20", "Junior"] and page.locator("section.week").count() == 2,
+          "one section per week: this week Senior and Junior; next week T20 and the Junior one-day games on the two-day games' second Saturday (groups in the order Play Cricket lists the competitions)")
     check(page.locator(".week-head h2").all_inner_texts()[:2] == ["This week", "Next week"], "weeks are headed This week, Next week")
     wk2 = page.locator("section.week").nth(1).inner_text()
     check("two-day games from Sat, 21 Nov continue Sat, 28 Nov" in wk2, "next week lists the two-day games continuing from this week, instead of repeating them")
@@ -371,7 +371,7 @@ with sync_playwright() as p:
     check(page.locator("h2:has-text('My appointments')").count() == 1, "published appointments show on the same page")
     check(page.locator("li.appt a[href*='maps']").count() >= 1, "appointment links to a map")
     titles = page.locator(".comp-title").all_inner_texts()
-    check(titles == ["Senior", "Junior", "T20"], f"one section per group, in the association's order: {titles}")
+    check(titles == ["Senior", "T20", "Junior"], f"one section per group, in the association's order: {titles}")
     sen = page.locator(".comp-section:has(h2:has-text('Senior'))")
     jun = page.locator(".comp-section:has(h2:has-text('Junior'))")
     # Senior and T20 games are all the same length -> by round with Day 1 / Day 2; Junior mixes lengths -> date list
@@ -509,7 +509,7 @@ with sync_playwright() as p:
     print("Admin: season availability dashboard")
     page.click(".nav-link:has-text('Availability')")
     page.wait_for_selector(".season-grid table")
-    check(page.locator(".tabs button.tab").all_inner_texts() == ["Senior", "Junior", "T20"], "dashboard has a tab per competition: Senior, Junior, T20")
+    check(page.locator(".tabs button.tab").all_inner_texts() == ["Senior", "T20", "Junior"], "dashboard has a tab per group")
     check(page.locator(".season-grid tbody tr").count() == 10, "one row per active umpire")
     n_dates = page.locator(".season-grid .datebtn").count()
     check(n_dates == 12 and page.locator(".season-grid th.past").count() == 0, "Senior: one column per upcoming date, nothing greyed out to scroll past")
@@ -855,9 +855,12 @@ with sync_playwright() as p:
     page.click(".menu-items .nav-link:has-text('Settings')")
     page.wait_for_selector("form:has(h2:has-text('Player umpires'))")
     pu_form = page.locator("form:has(h2:has-text('Player umpires'))")
-    check(pu_form.locator("input[type=checkbox]").is_checked() and "Senior round" in pu_form.locator("textarea").input_value(),
+    boxes = pu_form.locator("label.inline:has(input[type=checkbox])").all_inner_texts()
+    check([x.strip() for x in boxes][1:] == ["Senior", "T20", "Junior"] and pu_form.locator("label:has-text('Senior') input").is_checked()
+          and not pu_form.locator("label:has-text('Junior') input").is_checked(), f"the officer picks which groups player umpires choose from; the first group to start with ({boxes})")
+    check(pu_form.locator("input[type=checkbox]").first.is_checked() and "Senior round" in pu_form.locator("textarea").input_value(),
           "Settings has a Player umpires switch and the text members see")
-    pu_form.locator("input[type=checkbox]").uncheck()
+    pu_form.locator("input[type=checkbox]").first.uncheck()
     pu_form.locator("button:has-text('Save')").click()
     page.wait_for_selector(".toast:has-text('Saved')")
     sign_out(page)
@@ -873,7 +876,7 @@ with sync_playwright() as p:
     page.click(".menu > summary")
     page.click(".menu-items .nav-link:has-text('Settings')")
     pu_form = page.locator("form:has(h2:has-text('Player umpires'))")
-    pu_form.locator("input[type=checkbox]").check()
+    pu_form.locator("input[type=checkbox]").first.check()
     pu_form.locator("textarea").fill("")
     pu_form.locator("button:has-text('Save')").click()
     page.wait_for_selector(".toast:has-text('Saved')")
@@ -1090,8 +1093,8 @@ with sync_playwright() as p:
     page.wait_for_selector(".comp-list")
     AV = "() => Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.availability).find(a => a.email === 'umpire5@demo.test')"
     saved0 = page.evaluate(AV)
-    check([c.is_checked() for c in page.locator(".comp-pick input").all()] == [True, True, True] and page.locator(".comp-pick").all_inner_texts() == ["Senior", "Junior", "T20"],
-          "under Full umpire: Senior, Junior and T20, all ticked for someone who answers in all three")
+    check([c.is_checked() for c in page.locator(".comp-pick input").all()] == [True, True, True] and page.locator(".comp-pick").all_inner_texts() == ["Senior", "T20", "Junior"],
+          "under Full umpire: Senior, T20 and Junior, all ticked for someone who answers in all three")
     save_btn = page.locator(".savebar button:has-text('Save')")
     check(save_btn.is_disabled(), "nothing changed yet: Save is greyed out")
     page.locator(".comp-pick:has-text('Junior') input").uncheck()
@@ -1241,7 +1244,8 @@ with sync_playwright() as p:
     sign_out(page)
     sign_in(page, "admin@demo.test")
     page.click("button:has-text('Load sample data')")
-    page.wait_for_selector("text=Loaded the real PDCA fixtures")
+    page.wait_for_selector("text=Loaded Parramatta District Cricket Association's fixtures from Play Cricket")
+    check(True, "Load sample data names the association whose link is in Settings, not a built-in one")
     check(True, "sample data announces it used the real fixtures")
     page.wait_for_selector(".tile-round")
     check(re.search(r"\d+ / \d+ filled", tile("Senior").inner_text()) is not None, "sample Senior tile already has grades picked")
@@ -1457,10 +1461,11 @@ with sync_playwright() as p:
     page.wait_for_selector(".groups-card")
     gc = page.locator(".groups-card")
     check(gc.locator("button[type=submit]").is_disabled(), "Save is greyed out until something changes")
-    check([i.input_value() for i in gc.locator(".group-list input").all()] == ["Senior", "Junior", "T20"], "PDCA starts with its three groups: Senior, Junior, T20")
+    start_groups = [i.input_value() for i in gc.locator(".group-list input").all()]
+    check(sorted(start_groups) == ["Junior", "Senior", "T20"], f"PDCA's groups come from its own competitions ({start_groups})")
     check(gc.locator("table.grades-table tbody tr").count() > 5, "every grade is listed with its group and umpires needed")
     u10 = gc.locator("tr:has-text('U10')").first
-    check(u10.count() == 0 or u10.locator("select").nth(1).input_value() == "0", "the youngest grades are suggested as needing no umpires")
+    check(u10.count() == 0 or u10.locator("select").nth(1).input_value() == "1", "nothing is built in: every grade starts at one umpire, the youngest included")
     gc.locator(".group-list input").first.fill("Seniors")
     gc.locator("button:has-text('Add group')").click()
     gc.locator(".group-list input").last.fill("Women")
@@ -1472,7 +1477,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".groups-card button[type=submit]:has-text('Saved')")
     check(page.locator(".groups-card button[type=submit]").is_disabled(), "after saving it reads Saved and stays greyed out until the next change")
     org = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org")
-    check([g["name"] for g in org["groups"]] == ["Seniors", "Junior", "T20", "Women"] and (not women.count() or org["gradeGroups"].get("Senior Women") == org["groups"][3]["key"]),
+    check([g["name"] for g in org["groups"]] == ["Seniors"] + start_groups[1:] + ["Women"] and (not women.count() or org["gradeGroups"].get("Senior Women") == org["groups"][3]["key"]),
           "groups can be renamed and added, and a grade moved to another group")
     page.goto(BASE + "#/admin")
     page.wait_for_selector(".comp-tile")

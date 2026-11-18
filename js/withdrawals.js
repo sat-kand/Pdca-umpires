@@ -5,7 +5,7 @@
 // a *withdrawal* and queues an email to the address in Settings. The officer's app applies it the
 // next time the Allocate page opens: the slots go back to empty and the game carries a note.
 
-import { compLabel, fmtDay, gradeShort, summarise, publishedAllocFor } from './logic.js';
+import { compLabel, fmtDay, gradeShort, summarise, publishedAllocFor, firstGroup } from './logic.js';
 import { todayLocal } from './ui.js';
 
 const dateOf = key => key.slice(key.indexOf(':') + 1);
@@ -24,13 +24,13 @@ export async function affectedGames(store, { umpire, dropped, today = todayLocal
   const rounds = (await store.listRounds()).filter(r => r.published && (r.end || '') >= today);
   const out = [];
   for (const r of rounds) {
-    const wanted = dropped.filter(d => (r.comp || 'senior') === d.comp && (r.dates || []).includes(d.date));
+    const wanted = dropped.filter(d => (r.comp || firstGroup()) === d.comp && (r.dates || []).includes(d.date));
     if (!wanted.length) continue;
     for (const g of await store.listGames(r.id)) {
       if (g.removed) continue;
       for (const { date } of wanted) {
         if (publishedAllocFor(r, g, date).some(a => a && a.p === umpire.pid)) {          // a game they were given
-          out.push({ roundId: r.id, gameId: g.id, date, comp: r.comp || 'senior',
+          out.push({ roundId: r.id, gameId: g.id, date, comp: r.comp || firstGroup(),
             label: `${gradeShort(g.grade)}: ${g.home.name} v ${g.away.name}` });
         }
       }

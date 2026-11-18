@@ -1,16 +1,17 @@
-// Sample data for demo mode. "Load sample data" pulls PDCA's real fixtures from Play Cricket
-// (Senior, T20 and Junior) and pairs them with made-up umpires. If Play Cricket can't be
+// Sample data for demo mode. "Load sample data" pulls the association's real fixtures from Play Cricket
+// (from the link in its Settings) and pairs them with made-up umpires. If Play Cricket can't be
 // reached it falls back to made-up fixtures that overlap the same way, so the whole flow
 // can always be tried without any setup.
 
 import { newPid, compKeyOf, compareGrades, COMPS } from './logic.js';
-import { addDays, saveSeasonAndRounds, buildRound } from './rounds.js';
+import { addDays, saveSeasonAndRounds, buildRound, ensureGroups } from './rounds.js';
 import { CONFIG } from './config.js';
 import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures } from './fixtures.js';
 
-const SEN = 'PDCA Senior Competition';
-const JUN = 'PDCA Junior Competition';
-const T20 = 'PDCA T20 Competition';
+// Competitions for the made-up fallback fixtures only.
+const SEN = 'Senior Competition';
+const JUN = 'Junior Competition';
+const T20 = 'T20 Competition';
 
 const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 // Sample dates are always "this coming Saturday and the one after", so the demo never looks stale.
@@ -55,7 +56,7 @@ export const demoGames = ([D1, D2]) => { const two = [D1, D2]; return [
 ]; };
 
 
-// Sample umpires, named as they appear on a PDCA allocation sheet (initial and surname).
+// Sample umpires, named as they appear on an allocation sheet (initial and surname).
 // Emails stay umpire1@demo.test ... umpire10@demo.test, so anyone can sign in as one in the demo.
 const NAMES = [
   ['G', 'Serrao'], ['D', 'Everton'], ['K', 'Bakon'], ['B', 'Chellapa'], ['R', 'Dryburgh'],
@@ -82,12 +83,13 @@ export async function loadLiveSeason({ fetchFn, timeoutMs = 45000, playCricketId
 
 // The "current round" for the demo: every game whose first day is in the week starting at the
 // next upcoming game (or, if the season is over, the last week).
-// Made-up answers that differ by competition, so the demo shows separate availability:
-// umpires 3 and 6 never do juniors, umpire 5 does juniors only, and so on.
+// Made-up answers that differ by group, so the demo shows separate availability: umpires 3 and 6
+// never do the last group, umpire 5 never does the first, and so on.
 export function demoAnswer(i, comp, k) {
-  if (comp === 'junior' && (i === 3 || i === 6)) return 'no';
-  if (comp === 'senior' && i === 5) return 'no';
-  return (i + COMPS.findIndex(c => c.key === comp) * 3 + k * 5) % 4 === 0 ? 'no' : 'yes';
+  const g = COMPS.findIndex(c => c.key === comp);
+  if (g > 0 && g === COMPS.length - 1 && (i === 3 || i === 6)) return 'no';
+  if (g === 0 && i === 5) return 'no';
+  return (i + g * 3 + k * 5) % 4 === 0 ? 'no' : 'yes';
 }
 
 export async function seedDemo(store, { live = true, fetchFn } = {}) {
@@ -121,14 +123,16 @@ export async function seedDemo(store, { live = true, fetchFn } = {}) {
     }
   }
 
-  // The committee has asked for the first five Senior grades and all T20 grades; Junior is still
-  // to be picked, so that tile starts at 0/0 slots.
+  // The association's groups, suggested from its own competitions.
+  await ensureGroups(store, all, comps);
+  // The committee has asked for the first five grades of the first group and every grade of the groups
+  // in between; the last group is still to be picked, so its tiles start at "Choose grades".
   const grades = key => [...new Set(all.filter(g => compKeyOf(g) === key).map(g => g.grade))].sort(compareGrades);
+  const keys = COMPS.map(c => c.key);
   const slotsByGrade = {};
-  grades('senior').slice(0, 5).forEach(gr => { slotsByGrade[gr] = 1; });
-  grades('t20').forEach(gr => { slotsByGrade[gr] = 1; });
+  grades(keys[0]).slice(0, 5).forEach(gr => { slotsByGrade[gr] = 1; });
+  keys.slice(1, -1).forEach(k => grades(k).forEach(gr => { slotsByGrade[gr] = 1; }));
   await store.saveSettings({ slotsByGrade });
-
   const made = await saveSeasonAndRounds(store, { season: seasonInfo, games: all, comps, today: todayIso(), source: real ? undefined : { type: 'demo' } });
   const season = await store.getSeason();
 
@@ -141,18 +145,19 @@ export async function seedDemo(store, { live = true, fetchFn } = {}) {
   // own grades (the made-up fallback names are only used when Play Cricket could not be reached).
   const realGrades = key => grades(key).length ? grades(key) : null;
   const gr = (key, i, fallback) => { const l = realGrades(key); return l ? l[i % l.length] : fallback; };
+  const K1 = keys[0], K2 = keys[keys.length - 1];
   const past = [
-    { key: 'senior', published: true, games: [
-      fx('p1', gr('senior', 0, 'Senior A Grade'), 'GLCC Senior Maroon', 'Kings Langley', 'McCredie Park', [P1, P2], 'Round 1'),
-      fx('p2', gr('senior', 0, 'Senior A Grade'), 'Wenty Leagues Black', 'Baulkham Hills', 'Monty Bennett', [P1, P2], 'Round 1'),
-      fx('p3', gr('senior', 1, 'Senior A Reserve'), 'Parramatta CCC', 'KSS Team 1 Senior', 'Arthur Philip Reserve', [P1, P2], 'Round 1'),
-      fx('p4', gr('senior', 2, 'Senior B01'), 'Wenty Leagues', 'Vone Sports Club', 'Darling Street', [P1, P2], 'Round 1')] },
-    { key: 'junior', published: true, games: [
-      fx('p5', gr('junior', 0, 'U14 Blue'), 'Winston Hills', 'Baulkham Hills', 'Bella Vista Oval', [P1], 'Round 1', 'One Day', JUN),
-      fx('p6', gr('junior', 1, 'U12 Gold'), 'Parramatta', 'GLCC', 'Darling Street', [P1], 'Round 1', 'One Day', JUN)] },
-    { key: 'junior', published: false, games: [
-      fx('p7', gr('junior', 0, 'U14 Blue'), 'Baulkham Hills', 'Kings Langley', 'Pearce Reserve', [P2], 'Round 2', 'One Day', JUN),
-      fx('p8', gr('junior', 1, 'U12 Gold'), 'GLCC', 'Wenty Leagues', 'Roberta Street Park', [P2], 'Round 2', 'One Day', JUN)] },
+    { key: K1, published: true, games: [
+      fx('p1', gr(K1, 0, 'Senior A Grade'), 'GLCC Senior Maroon', 'Kings Langley', 'McCredie Park', [P1, P2], 'Round 1'),
+      fx('p2', gr(K1, 0, 'Senior A Grade'), 'Wenty Leagues Black', 'Baulkham Hills', 'Monty Bennett', [P1, P2], 'Round 1'),
+      fx('p3', gr(K1, 1, 'Senior A Reserve'), 'Parramatta CCC', 'KSS Team 1 Senior', 'Arthur Philip Reserve', [P1, P2], 'Round 1'),
+      fx('p4', gr(K1, 2, 'Senior B01'), 'Wenty Leagues', 'Vone Sports Club', 'Darling Street', [P1, P2], 'Round 1')] },
+    { key: K2, published: true, games: [
+      fx('p5', gr(K2, 0, 'U14 Blue'), 'Winston Hills', 'Baulkham Hills', 'Bella Vista Oval', [P1], 'Round 1', 'One Day', JUN),
+      fx('p6', gr(K2, 1, 'U12 Gold'), 'Parramatta', 'GLCC', 'Darling Street', [P1], 'Round 1', 'One Day', JUN)] },
+    { key: K2, published: false, games: [
+      fx('p7', gr(K2, 0, 'U14 Blue'), 'Baulkham Hills', 'Kings Langley', 'Pearce Reserve', [P2], 'Round 2', 'One Day', JUN),
+      fx('p8', gr(K2, 1, 'U12 Gold'), 'GLCC', 'Wenty Leagues', 'Roberta Street Park', [P2], 'Round 2', 'One Day', JUN)] },
   ];
   let n = 0;
   for (const r of past) {

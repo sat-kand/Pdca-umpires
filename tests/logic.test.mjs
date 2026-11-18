@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import './pdca-groups.mjs';
 import assert from 'node:assert/strict';
 import {
   fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap,
@@ -42,7 +43,7 @@ test('groupSections splits two-day seniors from single-day women on the same wee
   ];
   const s = groupSections(games);
   assert.equal(s.length, 2);
-  assert.equal(s[0].label, 'Round 2 Seniors');
+  assert.equal(s[0].label, 'Round 2 Senior');
   assert.deepEqual(s[0].games.map(g => g.id), ['3', '1']);
   assert.equal(s[1].label, 'Round 4 Women');
 });
@@ -153,11 +154,10 @@ test('report text: one day, two slots, and a different umpire each day', () => {
   assert.equal(umpireText(mk('5', 'Senior B02', 'A', 'B', [D1], 0)), '');
 });
 
-test('compKeyOf recognises Senior, T20 and Junior competitions', () => {
+test('compKeyOf puts a competition in the group its own name suggests, else the first group', () => {
   assert.equal(compKeyOf('PDCA Senior Competition'), 'senior');
   assert.equal(compKeyOf('PDCA Junior Competition'), 'junior');
   assert.equal(compKeyOf('PDCA T20 Competition'), 't20');
-  assert.equal(compKeyOf('Twenty20 Cup'), 't20');
   assert.equal(compKeyOf({ comp: 'PDCA Junior Competition' }), 'junior');
   assert.equal(compKeyOf('Imported'), 'senior');
   // a T20 *match* inside the Senior competition (e.g. Women) is still Senior
@@ -355,22 +355,26 @@ test('player umpires elsewhere come after allocated umpires and before unavailab
 test('group names are suggested from each association\'s own competition names', async () => {
   const { suggestGroups } = await import('../js/logic.js');
   const names = (org, comps) => suggestGroups(comps, org).groups.map(g => g.name);
-  assert.deepEqual(names('Parramatta District Cricket Association', ['PDCA Junior Competition', 'PDCA Senior Competition', 'PDCA Sunday T20']), ['Senior', 'Junior', 'Sunday T20']);
+  assert.deepEqual(names('Parramatta District Cricket Association', ['PDCA Junior Competition', 'PDCA Senior Competition', 'PDCA Sunday T20']), ['Junior', 'Senior', 'Sunday T20']);   // in the competitions' own order
   assert.deepEqual(names('Sydney Shires Competition', ["Frank Gray Shield (U24's)", 'Sydney Shires Competition']), ['Frank Gray', 'Shires']);
   assert.deepEqual(names('Blacktown City District Cricket Association', ["BCDCA - GIRL'S LEAGUE", 'BCDCA - Senior Competition', 'BCDCA - White Ball Cricket', 'U9 Futures - Season 4']),
-    ['Senior', "Girl's League", 'White Ball', 'U9 Futures']);
+    ["Girl's League", 'Senior', 'White Ball', 'U9 Futures']);
   assert.deepEqual(names('NSW Premier Cricket', ["NSW  Premier Cricket (Women's)", "NSW Premier Cricket (Men's)"]), ["Premier (Women's)", "Premier (Men's)"]);
   assert.deepEqual(names('Nepean District Cricket Association', ['Nepean District Cricket Association - Seniors', 'NDCA T20 COMPETITION']), ['Seniors', 'T20']);
-  assert.deepEqual(names('Inner West Harbour Junior Cricket Association', ['IWHJCA Cricket Blast Competitions', 'IWHJCA Junior Competition']), ['Junior', 'Blast']);
-  // PDCA keeps the keys its availability is saved under
-  assert.deepEqual(suggestGroups(['PDCA Senior Competition', 'PDCA Junior Competition', 'PDCA Sunday T20'], 'Parramatta District Cricket Association').groups.map(g => g.key), ['senior', 'junior', 't20']);
+  assert.deepEqual(names('Inner West Harbour Junior Cricket Association', ['IWHJCA Cricket Blast Competitions', 'IWHJCA Junior Competition']), ['Blast', 'Junior']);
+  // keys are made from the names, so PDCA's Senior and Junior keep the keys its availability is saved under
+  assert.deepEqual(suggestGroups(['PDCA Senior Competition', 'PDCA Junior Competition', 'PDCA Sunday T20'], 'Parramatta District Cricket Association').groups.map(g => g.key), ['senior', 'junior', 'sunday-t20']);
 });
 
-test('U24 is not junior; under-19 and younger are', async () => {
-  const { guessGroup, suggestUmpires } = await import('../js/logic.js');
-  assert.equal(guessGroup("Frank Gray Shield (U24's)"), 'senior');
-  assert.equal(suggestUmpires("Frank Gray Shield (U24's)"), 1);
-  assert.equal(suggestUmpires('U10 - 1'), 0);
-  assert.equal(guessGroup('U17 Division 1'), 'junior');
-  assert.equal(suggestUmpires('U15 - 2'), 1);
+test('nothing is built in: no group or umpire count is guessed from words like Junior or U24', async () => {
+  const { setGroups, guessGroup, suggestUmpires, COMPS } = await import('../js/logic.js');
+  const { usePdcaGroups } = await import('./pdca-groups.mjs');
+  setGroups({});
+  assert.deepEqual(COMPS.map(c => c.key), ['all']);
+  assert.equal(guessGroup('PDCA Junior Competition'), null);
+  setGroups({ name: 'Sydney Shires Competition', groups: [{ key: 'shires', name: 'Shires' }, { key: 'frank-gray', name: 'Frank Gray' }] });
+  assert.equal(guessGroup("Frank Gray Shield (U24's)"), 'frank-gray');
+  assert.equal(guessGroup('Sydney Shires Competition'), 'shires');
+  assert.deepEqual([suggestUmpires("Frank Gray Shield (U24's)"), suggestUmpires('U10 - 1')], [1, 1]);
+  usePdcaGroups();
 });
