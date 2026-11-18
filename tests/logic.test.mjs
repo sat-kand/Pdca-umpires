@@ -375,6 +375,6 @@ test('nothing is built in: no group or umpire count is guessed from words like J
   setGroups({ name: 'Sydney Shires Competition', groups: [{ key: 'shires', name: 'Shires' }, { key: 'frank-gray', name: 'Frank Gray' }] });
   assert.equal(guessGroup("Frank Gray Shield (U24's)"), 'frank-gray');
   assert.equal(guessGroup('Sydney Shires Competition'), 'shires');
-  assert.deepEqual([suggestUmpires("Frank Gray Shield (U24's)"), suggestUmpires('U10 - 1')], [1, 1]);
+  assert.deepEqual([suggestUmpires("Frank Gray Shield (U24's)"), suggestUmpires('U10 - 1'), suggestUmpires('Cricket Blast Competition')], [1, 0, 0]);
   usePdcaGroups();
 });

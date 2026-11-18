@@ -229,7 +229,7 @@ test('custom groups: grades are allocated in the groups the association chose', 
     ] });
     assert.deepEqual(made.sort(), ['girls-2026-11-16', 'jun-2026-11-16', 'sat-2026-11-16']);
   } finally { (await import('./pdca-groups.mjs')).usePdcaGroups(); }
-  assert.deepEqual([suggestUmpires('U10 - 1'), suggestUmpires('Cricket Blast Competition'), suggestUmpires('U15 - 2'), suggestUmpires('.1st Grade')], [1, 1, 1, 1]);
+  assert.deepEqual([suggestUmpires('U10 - 1'), suggestUmpires('Cricket Blast Competition'), suggestUmpires('U15 - 2'), suggestUmpires('.1st Grade')], [0, 0, 1, 1]);
 });
 
 test('moving a grade to another group takes its upcoming games out of the old group\'s round', async () => {

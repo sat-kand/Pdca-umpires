@@ -1465,7 +1465,7 @@ with sync_playwright() as p:
     check(sorted(start_groups) == ["Junior", "Senior", "T20"], f"PDCA's groups come from its own competitions ({start_groups})")
     check(gc.locator("table.grades-table tbody tr").count() > 5, "every grade is listed with its group and umpires needed")
     u10 = gc.locator("tr:has-text('U10')").first
-    check(u10.count() == 0 or u10.locator("select").nth(1).input_value() == "1", "nothing is built in: every grade starts at one umpire, the youngest included")
+    check(u10.count() == 0 or u10.locator("select").nth(1).input_value() == "0", "the youngest grades are suggested as needing no umpires")
     gc.locator(".group-list input").first.fill("Seniors")
     gc.locator("button:has-text('Add group')").click()
     gc.locator(".group-list input").last.fill("Women")

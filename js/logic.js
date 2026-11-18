@@ -56,8 +56,13 @@ export const groupOrder = key => { const i = COMPS.findIndex(c => c.key === key)
 // Umpires a grade needs, as the association set it (undefined when not set).
 export const umpiresForGrade = grade => (grade in GRADE_UMPIRES ? GRADE_UMPIRES[grade] : undefined);
 
-// A first suggestion for a grade's umpires: one each. The officer sets None or 2 where wanted.
-export function suggestUmpires() { return 1; }
+// A first suggestion for a grade's umpires: none for the youngest (Blast, Futures, under-11s), else one.
+// The officer sets None, 1 or 2 where wanted.
+export function suggestUmpires(grade, comp = '') {
+  const s = `${grade} ${comp}`;
+  if (/blast|futures|smash|master blaster|\bu\s?(?:[5-9]|1[01])\b|under\s?(?:[5-9]|1[01])\b/i.test(s)) return 0;
+  return 1;
+}
 
 // A group name suggested from a competition's own name, unique to the association: the words left
 // once the association's name or initials, the year and generic words ("Competition", "Summer",
