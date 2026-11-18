@@ -61,7 +61,7 @@ export function buildRound({ key, win, games, season, compIds = [], source = nul
 
 // Rounds this module builds (id = '<competition>-<first day>') that have not finished; older all-competition rounds are ignored.
 export const upcomingRounds = (rounds, today) => rounds
-  .filter(r => r.comp && new RegExp(`^${r.comp}-\\d{4}-\\d{2}-\\d{2}$`).test(r.id) && (r.end || '') >= today)
+  .filter(r => r.comp && COMPS.some(c => c.key === r.comp) && new RegExp(`^${r.comp}-\\d{4}-\\d{2}-\\d{2}$`).test(r.id) && (r.end || '') >= today)
   .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
 
 // A competition's soonest unfinished round.

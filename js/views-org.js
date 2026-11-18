@@ -2,7 +2,7 @@
 // Every association has its own umpires, officers, fixtures and allocations.
 
 import { h, toast, busy, copyText, setChildren } from './ui.js';
-import { emailKey, COMPS, DEFAULT_GROUPS, guessGroup, suggestUmpires, compareGrades, gradeShort } from './logic.js';
+import { emailKey, COMPS, DEFAULT_GROUPS, guessGroup, suggestUmpires, suggestGroups, compareGrades, gradeShort } from './logic.js';
 import { applyOrg } from './org-setup.js';
 
 // Used when the tool's owner sets up an association; it then edits its own list in Settings.
@@ -174,6 +174,19 @@ export async function viewOrgSettings(ctx) {
     const gi = k => ui.groups.findIndex(g => g.key === k);
     grades = grades.sort((a, b) => gi(groupOf(a)) - gi(groupOf(b)) || (seen.get(a) || '').localeCompare(seen.get(b) || '') || compareGrades(a, b));
     const box = h('div');
+    // Groups named from the competitions themselves, each grade in its competition's group.
+    const useSuggestions = () => {
+      const sug = suggestGroups([...new Set(seen.values())].filter(Boolean), org.name || '',
+        ui.groups.filter(g => !['senior', 'junior', 't20'].includes(g.key)));   // all groups are replaced, so Senior etc. take back their keys
+      if (!sug.groups.length) return;
+      ui.groups = sug.groups.map(g => ({ ...g }));
+      ui.gradeGroups = Object.fromEntries(grades.map(gr => [gr, sug.compGroup[seen.get(gr)] || ui.groups[0].key]));
+      ui.groups = ui.groups.filter(g => Object.values(ui.gradeGroups).includes(g.key));
+      ui.gradeUmpires = {};
+      grades.sort((a, b) => gi(groupOf(a)) - gi(groupOf(b)) || (seen.get(a) || '').localeCompare(seen.get(b) || '') || compareGrades(a, b));
+      draw2();
+      box.closest('form')?.dispatchEvent(new Event('input', { bubbles: true }));
+    };
     const draw2 = () => {
       const used = k => grades.some(gr => groupOf(gr) === k);
       setChildren(box,
@@ -198,7 +211,7 @@ export async function viewOrgSettings(ctx) {
               h('td', {}, h('select', { 'aria-label': `Umpires for ${gr}`, onchange: e => { ui.gradeUmpires[gr] = Number(e.target.value); draw2(); } },
                 [0, 1, 2].map(n => h('option', { value: n, selected: umpOf(gr) === n }, n === 0 ? 'None' : String(n)))))))))),
         h('p', { class: 'row-gap' },
-          h('button', { class: 'link', type: 'button', onclick: () => { ui.gradeGroups = {}; ui.gradeUmpires = {}; draw2(); } }, 'Use the suggestions')));
+          h('button', { class: 'link', type: 'button', onclick: useSuggestions }, 'Use the suggestions')));
     };
     draw2();
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');

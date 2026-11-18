@@ -334,7 +334,7 @@ export async function viewMy(ctx) {
   const availIntro = h('p', { class: 'muted' });
   const card = h('div', { class: 'avail-body' });
   // A status for each competition and for player umpiring, shown whether or not it is ticked.
-  const statusChips = { senior: h('span', { class: 'chip' }), junior: h('span', { class: 'chip' }), t20: h('span', { class: 'chip' }), player: h('span', { class: 'chip' }) };
+  const statusChips = Object.fromEntries([...ALL_COMPS, 'player'].map(k => [k, h('span', { class: 'chip' })]));
   if (!season) {
     root.append(h('section', { class: 'card' }, h('h2', {}, 'Availability'), h('p', { class: 'muted' }, 'The season dates have not been set up yet. Please check back soon.')));
     return root;

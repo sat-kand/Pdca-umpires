@@ -337,3 +337,15 @@ test('groups follow the fixtures: suggested the first time, new grades placed, e
     assert.deepEqual(store.org.groups.map(g => g.name), ['Senior']);
   } finally { setGroups(null); }
 });
+
+test('rounds of a group that was removed are not shown', async () => {
+  const { upcomingRounds } = await import('../js/rounds.js');
+  const { setGroups } = await import('../js/logic.js');
+  setGroups({ groups: [{ key: 'shires', name: 'Shires' }] });
+  const rounds = [
+    { id: 'senior-2026-11-23', comp: 'senior', start: '2026-11-28', end: '2026-11-29' },
+    { id: 'shires-2026-11-23', comp: 'shires', start: '2026-11-28', end: '2026-11-28' },
+  ];
+  assert.deepEqual(upcomingRounds(rounds, '2026-11-18').map(r => r.id), ['shires-2026-11-23']);
+  setGroups({});
+});
