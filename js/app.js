@@ -6,7 +6,7 @@ import { createDemoStore } from './store-demo.js';
 import { seedDemo } from './demo-seed.js';
 import { viewLogin, viewProfile, viewMy } from './views-umpire.js';
 import { viewAssociations, viewOrgSettings } from './views-org.js';
-import { viewAdminHome, viewBoard, viewAvailabilityOverview, viewSeasonAvailability, viewReport, viewUmpires } from './views-admin.js';
+import { viewAdminHome, viewPastAllocations, viewBoard, viewAvailabilityOverview, viewSeasonAvailability, viewReport, viewUmpires } from './views-admin.js';
 
 const S = { store: null, user: null, org: null, isAdmin: false, umpire: null };
 const ORG_KEY = 'pdca-org';            // the association this browser last used
@@ -55,6 +55,7 @@ const ROUTES = [
   [/^\/profile$/, () => (S.umpire ? viewMyProfile(ctx) : viewProfile(ctx))],
   [/^\/profile\/edit$/, () => viewProfile(ctx)],
   [/^\/admin$/, () => viewAdminHome(ctx), true],
+  [/^\/admin\/past$/, () => viewPastAllocations(ctx), true],
   [/^\/admin\/availability$/, () => viewSeasonAvailability(ctx), true],
   [/^\/admin\/(?:members|umpires)$/, () => viewUmpires(ctx), true],   // the old /umpires link still works
   [/^\/admin\/settings$/, () => viewOrgSettings(ctx), true],
@@ -79,11 +80,12 @@ function drawHeader() {
       h('a', { class: 'brand', href: '#/' }, '🏏 ', CONFIG.appName),
       S.isAdmin && h('nav', { class: 'nav' }, link('#/admin', 'Allocate'), link('#/admin/availability', 'Availability'),
         // Members, Settings and the association picker sit together, out of the way of the weekly work.
-        h('details', { class: 'menu' }, h('summary', { class: 'nav-link' }, 'Manage'),
-          h('div', { class: 'menu-items' }, link('#/admin/members', 'Members'), link('#/admin/settings', 'Settings'), link('#/associations', 'Your associations'))),
-        link('#/my', 'My availability')),
+        h('details', { class: 'menu' }, h('summary', { class: 'nav-link' }, 'My Organisation'),
+          h('div', { class: 'menu-items' }, link('#/admin/members', 'Members'), link('#/admin/past', 'Past allocations'), link('#/admin/settings', 'Settings'), link('#/associations', 'Your associations')))),
       S.user && h('div', { class: 'who' },
-        h('a', { class: 'who-name', href: '#/profile', title: 'My profile' }, (S.umpire && S.umpire.name) || S.user.email),
+        // Their own things sit under their name: profile and availability.
+        h('details', { class: 'menu who-menu' }, h('summary', { class: 'who-name' }, (S.umpire && S.umpire.name) || S.user.email),
+          h('div', { class: 'menu-items' }, link('#/profile', 'My profile'), link('#/my', 'My availability'))),
         h('button', { class: 'btn small', type: 'button', onclick: async () => { await S.store.signOut(); location.hash = '#/'; } }, 'Sign out'))),
     S.org && S.org.plan === 'suspended' && h('div', { class: 'demo-banner' }, 'This association has been set to read-only, so changes cannot be saved.'));
 }

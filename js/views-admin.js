@@ -107,11 +107,14 @@ async function openGradesModal({ store, round, chosenGames = new Set(), onDone }
   dlg.showModal();
 }
 
+const homeWeeks = { more: 0 };             // kept for this page load only
+
 export async function viewAdminHome(ctx) {
   const { store } = ctx;
   const today = todayLocal();
   const wrap = h('div');
-  const state = { rounds: [], season: null, syncing: false, error: '', more: 0, dropouts: [] };
+  // Weeks loaded with "Load next week" stay loaded until the page is refreshed or the browser closed.
+  const state = { rounds: [], season: null, syncing: false, error: '', more: homeWeeks.more, dropouts: [] };
 
   async function load() {
     state.dropouts = await applyWithdrawals(store);         // umpires who pulled out of a published round, until the officer says 'Got it'
@@ -155,12 +158,10 @@ export async function viewAdminHome(ctx) {
   const continuing = week => upcomingRounds(state.rounds, today)
     .filter(r => weekOf(r.start, startDay) < week && (r.dates || []).some(d => d >= week && d <= addDays(week, 6)))
     .map(r => h('li', {}, h('a', { href: `#/admin/round/${r.id}` }, `${compLabel(r.comp)}: two-day games from ${fmtDay(r.start)}`),
-      ` continue ${(r.dates || []).filter(d => d >= week && d <= addDays(week, 6)).map(fmtDay).join(' & ')} (allocated there)`));
+      ` continue ${(r.dates || []).filter(d => d >= week && d <= addDays(week, 6)).map(fmtDay).join(' & ')} (allocated previous week)`));
 
   function draw() {
     const shown = visibleRounds(state.rounds, today, state.more, startDay);
-    // Finished rounds that were worked on (something allocated, or published), newest first.
-    const past = state.rounds.filter(r => (r.end || '') < today && (r.published || ((r.stats || {}).filled || 0) > 0)).sort((x, y) => (y.start || '').localeCompare(x.start || ''));
     setChildren(wrap,
       h('div', { class: 'row-between' }, h('h1', {}, 'Allocate'), state.syncing && h('span', { class: 'muted' }, 'Updating fixtures from Play Cricket…')),
       state.error && h('p', { class: 'notice warn' }, state.error, ' ', h('button', { class: 'link', type: 'button', onclick: () => sync(true) }, 'Try again')),
@@ -181,16 +182,7 @@ export async function viewAdminHome(ctx) {
         (c => c.length > 0 && h('ul', { class: 'plain continuing muted' }, c))(continuing(set.week)),
         h('div', { class: 'cards' }, set.map(r => tile(r, set.week))))),
       COMPS.some(c => !currentRound(state.rounds, c.key, today)) && h('div', { class: 'cards' }, COMPS.filter(c => !currentRound(state.rounds, c.key, today)).map(empty)),
-      shown.hasMore && h('div', { class: 'load-more' }, h('button', { class: 'btn', type: 'button', onclick: () => { state.more++; draw(); } }, 'Load next week')),
-      h('details', { class: 'card past-rounds', open: state.pastOpen, ontoggle: ev => { state.pastOpen = ev.currentTarget.open; } },
-        h('summary', {}, `Past allocations (${past.length})`),
-        !past.length && h('p', { class: 'muted' }, 'Nothing here yet. A round moves here once its last day has passed, if it was published or had umpires allocated.'),
-        h('ul', { class: 'plain' }, past.map(r => { const st = r.stats || { needed: 0, filled: 0 };
-          const open = !isLocked(r, today);       // still within the days after the game when changes are allowed
-          return h('li', {}, h('a', { class: 'past-row', href: open ? `#/admin/round/${r.id}` : `#/admin/round/${r.id}/report` },
-            h('strong', {}, fmtRange(r.dates || [r.start, r.end])), h('span', {}, r.comp ? compLabel(r.comp) : (r.title || '')), h('span', { class: 'muted' }, r.formats || ''),
-            h('span', { class: 'chip' }, `${st.filled}/${st.needed} slots filled`), h('span', { class: 'chip ' + (r.published ? 'ok' : 'warn') }, r.published ? 'Published' : 'Not published'),
-            open && h('span', { class: 'chip pu' }, `Can change until ${fmtDay(editableUntil(r))}`))); }))));
+      shown.hasMore && h('div', { class: 'load-more' }, h('button', { class: 'btn', type: 'button', onclick: () => { state.more = ++homeWeeks.more; draw(); } }, 'Load next week')));
   }
 
   async function sync(force) {
@@ -206,6 +198,24 @@ export async function viewAdminHome(ctx) {
   // First visit, or fixtures more than half a day old, or a competition has no round yet: fetch in the background.
   if (needsSync(state.season, state.rounds, today)) sync();
   return wrap;
+}
+
+// Past allocations: finished rounds that were worked on (something allocated, or published), newest first.
+export async function viewPastAllocations(ctx) {
+  const { store } = ctx;
+  const today = todayLocal();
+  const past = (await store.listRounds()).filter(r => (r.end || '') < today && (r.published || ((r.stats || {}).filled || 0) > 0))
+    .sort((x, y) => (y.start || '').localeCompare(x.start || ''));
+  return h('div', {},
+    h('h1', {}, 'Past allocations'),
+    h('section', { class: 'card past-rounds' },
+      !past.length && h('p', { class: 'muted' }, 'Nothing here yet. A round moves here once its last day has passed, if it was published or had umpires allocated.'),
+      h('ul', { class: 'plain' }, past.map(r => { const st = r.stats || { needed: 0, filled: 0 };
+        const open = !isLocked(r, today);       // still within the days after the game when changes are allowed
+        return h('li', {}, h('a', { class: 'past-row', href: open ? `#/admin/round/${r.id}` : `#/admin/round/${r.id}/report` },
+          h('strong', {}, fmtRange(r.dates || [r.start, r.end])), h('span', {}, r.comp ? compLabel(r.comp) : (r.title || '')), h('span', { class: 'muted' }, r.formats || ''),
+          h('span', { class: 'chip' }, `${st.filled}/${st.needed} slots filled`), h('span', { class: 'chip ' + (r.published ? 'ok' : 'warn') }, r.published ? 'Published' : 'Not published'),
+          open && h('span', { class: 'chip pu' }, `Can change until ${fmtDay(editableUntil(r))}`))); }))));
 }
 
 // ---------------------------------------------------------------------------

@@ -223,6 +223,7 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; }
   border-radius: 10px; padding: .3rem; box-shadow: 0 8px 24px rgba(0,0,0,.18); display: grid; }
 .menu-items .nav-link { color: var(--ink); padding: .45rem .6rem; border-radius: 7px; opacity: 1; }
 .menu-items .nav-link:hover { background: var(--green-l); }
+.who-menu .menu-items { left: auto; right: 0; }
 .mode { display: flex; gap: .7rem; align-items: flex-start; padding: .55rem 0; cursor: pointer; }
 .mode input { margin-top: .2rem; width: 1.1rem; height: 1.1rem; }
 .mode > span { display: grid; gap: .1rem; }

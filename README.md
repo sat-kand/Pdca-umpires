@@ -25,7 +25,7 @@ The **Members** page (formerly Umpires) is the association's list of people. Eac
 
 ## Player umpires
 
-Player umpiring is switched on by the appointments officer in **Manage → Settings → Player umpires**, which also holds what it is called (empty = “Player umpire”) and the line members are shown about it (empty = nothing shown). When it is off, members only give their availability; games already chosen stay on the boards. When it is on, a member can umpire in two ways, and can do both:
+Player umpiring is switched on by the appointments officer in **My Organisation → Settings → Player umpires**, which also holds what it is called (empty = “Player umpire”) and the line members are shown about it (empty = nothing shown). When it is off, members only give their availability; games already chosen stay on the boards. When it is on, a member can umpire in two ways, and can do both:
 
 - **Availability** (everyone, unless they only choose games as a player umpire) — tick the association's groups they umpire (any mix), answer each date for those, and the appointments officer gives them games. The groups and the player-umpire option sit together in a card headed with the association's name; the date form comes next, then the games chosen as a player umpire. Player umpiring is never ticked for them. The tick boxes only show or hide parts of the page. Every ticked competition is sent with Save, whether it is a first submit or an edit, so every one of its dates must be answered Available or Not available — a blank date stops the save and is highlighted. Unticked competitions are not checked. Senior, Junior, T20 and Player umpire each show their own status at all times, ticked or not (*Not submitted*, *Unsaved changes*, *✓ Submitted*); Save is greyed out until a ticked part changes and sends only the ticked parts — an unticked competition, Full umpire or Player umpire keeps what was last saved. A game is given back by removing it and saving. Competitions they don't tick are hidden from the form and are left exactly as last saved, and the officer's Availability page doesn't count them as missing.
 - **Choose my own games (player umpire)** — Senior games only, as PDCA allows player umpires in the Senior competition alone: pick a round, narrow it to a grade if they like, then choose any game in it (Day 1, Day 2 or both days of a two-day game). Choosing a game does not touch their date answers, so the officer's Availability sheet only ever shows regular availability. One game per competition per day.
@@ -65,8 +65,8 @@ Sending that email needs the Firebase **Trigger Email from Firestore** extension
 The app holds many associations, each completely separate: its own officers, umpires, Play Cricket link, fixtures, availability and allocations.
 
 - **Starting one:** only the product owner sets an association up, in the Firebase console: add a document to `orgs` (`id` matching the document id, `name`, `playCricketId`, `plan: trial`, `notifyEmail`), then add the first officer at `orgs/{id}/admins/{their email}`. Nobody can create one from inside the app.
-- **Manage → Settings** (officers only): rename the association, set its Play Cricket link, add or remove officers, and copy the **link for umpires**. Umpires open that link, sign in, add their name and wait for approval.
-- **Switching:** **Manage → Your associations** lists the ones a person belongs to, for anyone in more than one.
+- **My Organisation → Settings** (officers only): rename the association, set its Play Cricket link, add or remove officers, and copy the **link for umpires**. Umpires open that link, sign in, add their name and wait for approval.
+- **Switching:** **My Organisation → Your associations** lists the ones a person belongs to, for anyone in more than one.
 - **Read-only:** an association can be set to `plan: suspended` by hand in the Firebase console, which makes it read-only. The tool is free and says nothing about plans or payment.
 
 ## One-time setup for the product owner (about 20 minutes)
@@ -96,7 +96,7 @@ Then **Authentication → Settings → Authorized domains → Add domain**: `YOU
 Free GitHub Pages needs a public repository. That is fine here: the code contains no secrets (the Firebase web config is meant to be public — security comes from the Firestore rules) and the data lives in Firebase, not in the repo.
 
 ### 5. Create the first association
-In the Firebase console create the PDCA association as described under *Associations* below (a document in `orgs`, then yourself in its `admins`). Then open the site → sign in → **Manage → Members → Add members** → send umpires the link from **Manage → Settings**.
+In the Firebase console create the PDCA association as described under *Associations* below (a document in `orgs`, then yourself in its `admins`). Then open the site → sign in → **My Organisation → Members → Add members** → send umpires the link from **My Organisation → Settings**.
 
 ## Notes
 
