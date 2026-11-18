@@ -5,7 +5,7 @@
 // (association, type, active or not, since when), never another association's availability or games.
 
 import { h, toast, setChildren, busy, todayLocal } from './ui.js';
-import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey, firstGroup } from './logic.js';
+import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey, firstGroup, byGame, gameCount } from './logic.js';
 import { feeFor, money, membershipTypes } from './views-org.js';
 
 // What other associations may see of this membership. Written whenever an officer saves or opens a member.
@@ -67,8 +67,9 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
     ? ((avail && avail.declined) || []).map(x => ({ gameId: x.gameId, date: x.date, at: x.at, label: label(gameById.get(x.gameId)) }))
     : mine.flatMap(w => (w.games || []).map(ref => ({ ...ref, at: w.createdAt, restored: !!ref.restored }))))
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  const dropped = pulls.filter(p => !p.restored).length;
-  const kept = appts.filter(a => a.published).length;
+  // By game: a two-day game, kept or pulled out of, counts once.
+  const dropped = gameCount(pulls.filter(p => !p.restored));
+  const kept = gameCount(appts.filter(a => a.published));
   const rate = kept + dropped ? kept / (kept + dropped) : null;
 
   // ---- membership: keep this association's line for others up to date, then read them all
@@ -184,10 +185,11 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
   }
   drawStatus();
 
+  // One row per game, with all its days ("Sat, 28 Nov & Sat, 5 Dec").
   const apptRow = a => h('li', { class: 'row-between' },
-    h('span', {}, h('strong', {}, fmtDay(a.d.date)), ' ', h('span', { class: 'chip' }, compLabel(compKeyOf(a.g))), ' ',
+    h('span', {}, h('strong', {}, (a.dates || [a.d.date]).map(fmtDay).join(' & ')), ' ', h('span', { class: 'chip' }, compLabel(compKeyOf(a.g))), ' ',
       h('span', { class: 'chip grade' }, gradeShort(a.g.grade)), ` ${a.g.home.name} v ${a.g.away.name}`,
-      a.g.days.length > 1 ? h('span', { class: 'muted' }, ` · Day ${a.d.day}`) : null),
+      a.g.days.length > 1 && (a.dates || []).length === 1 ? h('span', { class: 'muted' }, ` · Day ${a.d.day}`) : null),
     h('span', {}, a.pu && h('span', { class: 'chip pu' }, 'Player umpire'), ' ',
       a.d.date >= today && !a.published && h('span', { class: 'chip muted-chip' }, 'Not published yet'),
       !self && h('a', { class: 'muted small', href: `#/admin/round/${a.r.id}` }, ' Open')));
@@ -202,7 +204,7 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
 
     h('div', { class: 'stats' },
       stat(String(gamesUmpired), gamesUmpired === 1 ? 'game umpired here' : 'games umpired here'),
-      stat(String(upcoming.length), 'upcoming appointments'),
+      stat(String(gameCount(upcoming)), 'upcoming appointments'),
       stat(String(dropped), dropped === 1 ? 'pull-out' : 'pull-outs'),
       stat(rate === null ? '—' : pct(rate), 'fulfilment rate')),
 
@@ -232,16 +234,16 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
             h('div', {}, h('strong', {}, (store.org.playerUmpire && store.org.playerUmpire.title) || 'Player umpire'), h('span', { class: 'muted' }, ` · ${picks.length} game${picks.length === 1 ? '' : 's'} chosen`)),
             h('ul', { class: 'plain muted small' }, picks.map(p => h('li', {}, `${p.dates.map(fmtDay).join(' & ')} · ${gradeShort(p.grade)} · ${p.label}`)))))),
 
-    h('section', { class: 'card' }, h('h2', {}, `Upcoming appointments (${upcoming.length})`),
-      upcoming.length ? h('ul', { class: 'plain appt-list' }, upcoming.map(apptRow)) : h('p', { class: 'muted' }, 'None.')),
+    h('section', { class: 'card' }, h('h2', {}, `Upcoming appointments (${gameCount(upcoming)})`),
+      upcoming.length ? h('ul', { class: 'plain appt-list' }, byGame(upcoming).map(apptRow)) : h('p', { class: 'muted' }, 'None.')),
 
-    h('section', { class: 'card' }, h('h2', {}, `Past appointments (${past.length})`),
-      past.length ? h('ul', { class: 'plain appt-list' }, [...past].reverse().map(apptRow)) : h('p', { class: 'muted' }, 'None yet.')),
+    h('section', { class: 'card' }, h('h2', {}, `Past appointments (${gamesUmpired})`),
+      past.length ? h('ul', { class: 'plain appt-list' }, byGame([...past].reverse()).map(apptRow)) : h('p', { class: 'muted' }, 'None yet.')),
 
-    h('section', { class: 'card' }, h('h2', {}, `Pull-outs (${pulls.length})`),
+    h('section', { class: 'card' }, h('h2', {}, `Pull-outs (${gameCount(pulls)})`),
       h('p', { class: 'muted small' }, self ? 'Published games you said you could not do. Fulfilment rate is the share of your published games you kept.' : 'Published games they later said they could not do. Fulfilment rate is the share of their published games they kept.'),
-      pulls.length ? h('ul', { class: 'plain appt-list' }, pulls.map(p => h('li', { class: 'row-between' },
-        h('span', {}, h('strong', {}, fmtDay(p.date)), ` ${p.label || ''}`),
+      pulls.length ? h('ul', { class: 'plain appt-list' }, byGame(pulls).map(p => h('li', { class: 'row-between' },
+        h('span', {}, h('strong', {}, p.dates.map(fmtDay).join(' & ')), ` ${p.label || ''}`),
         h('span', { class: 'muted small' }, p.restored ? 'Taken back' : p.at ? `Pulled out ${fmtLong(ymd(p.at))}` : 'Pulled out'))))
         : h('p', { class: 'muted' }, 'None.')),
 
@@ -311,7 +313,7 @@ async function membershipSection(org, view, u, today) {
   const past = appts.filter(a => a.d.date < today);
   const gamesUmpired = new Set(past.map(a => a.g.id)).size;
   const pulls = ((avail && avail.declined) || []).map(x => ({ ...x, g: gameById.get(x.gameId) })).sort((a, b) => b.date.localeCompare(a.date));
-  const rate = appts.length + pulls.length ? appts.length / (appts.length + pulls.length) : null;
+  const rate = gameCount(appts) + gameCount(pulls) ? gameCount(appts) / (gameCount(appts) + gameCount(pulls)) : null;
   const status = u.active ? ['Active', 'ok'] : u.deactivated ? ['Inactive', 'muted-chip'] : ['Waiting for approval', 'warn'];
 
   // When they became a member there: theirs to correct (a list loaded from a file may not have it).
@@ -332,14 +334,14 @@ async function membershipSection(org, view, u, today) {
     kv('Member since', since),
     h('div', { class: 'stats' },
       stat(String(gamesUmpired), gamesUmpired === 1 ? 'game umpired' : 'games umpired'),
-      stat(String(pulls.length), pulls.length === 1 ? 'pull-out' : 'pull-outs'),
+      stat(String(gameCount(pulls)), gameCount(pulls) === 1 ? 'pull-out' : 'pull-outs'),
       stat(rate === null ? '—' : pct(rate), 'fulfilment rate')),
     h('details', {},
-      h('summary', {}, `Past appointments (${past.length})`),
-      past.length ? h('ul', { class: 'plain appt-list' }, past.map(a => h('li', { class: 'row-between' },
-        h('span', {}, h('strong', {}, fmtDay(a.d.date)), ' ', gameText(a)), a.pu && h('span', { class: 'chip pu' }, 'Player umpire'))))
+      h('summary', {}, `Past appointments (${gamesUmpired})`),
+      past.length ? h('ul', { class: 'plain appt-list' }, byGame(past).map(a => h('li', { class: 'row-between' },
+        h('span', {}, h('strong', {}, a.dates.map(fmtDay).join(' & ')), ' ', gameText(a)), a.pu && h('span', { class: 'chip pu' }, 'Player umpire'))))
         : h('p', { class: 'muted' }, 'None yet.')),
     pulls.length > 0 && h('details', {},
-      h('summary', {}, `Games I said I couldn't do (${pulls.length})`),
-      h('ul', { class: 'plain appt-list' }, pulls.map(p => h('li', {}, h('strong', {}, fmtDay(p.date)), ' ', p.g ? `${gradeShort(p.g.grade)}: ${p.g.home.name} v ${p.g.away.name}` : '')))));
+      h('summary', {}, `Games I said I couldn't do (${gameCount(pulls)})`),
+      h('ul', { class: 'plain appt-list' }, byGame(pulls).map(p => h('li', {}, h('strong', {}, p.dates.map(fmtDay).join(' & ')), ' ', p.g ? `${gradeShort(p.g.grade)}: ${p.g.home.name} v ${p.g.away.name}` : '')))));
 }

@@ -424,13 +424,16 @@ export async function viewBoard(ctx, rid) {
     const autoBtn = h('button', { class: 'btn', type: 'button' }, '✨ Suggest allocations');
     autoBtn.onclick = busy(autoBtn, guard(async () => {
       // Pull-outs after publishing this season, per umpire (ones they took back do not count).
+      // Counted by game: a two-day game, kept or pulled out of, counts once.
       const dropped = {};
-      for (const w of await store.listWithdrawals()) {
-        const n = (w.games || []).filter(r => !r.restored).length;
-        if (n && w.pid) dropped[w.pid] = (dropped[w.pid] || 0) + n;
+      const pulledGames = new Set();
+      for (const w of await store.listWithdrawals()) for (const r of (w.games || []).filter(r => !r.restored)) {
+        if (!w.pid || pulledGames.has(w.pid + '|' + r.roundId + '|' + r.gameId)) continue;
+        pulledGames.add(w.pid + '|' + r.roundId + '|' + r.gameId);
+        dropped[w.pid] = (dropped[w.pid] || 0) + 1;
       }
       const kept = { ...seasonLoads(otherStats) };
-      for (const g of B.games) for (const d of g.days) for (const a of allocFor(g, d.date)) if (a) kept[a.p] = (kept[a.p] || 0) + 1;
+      for (const [p, n] of Object.entries(recount(B.games).byUmpire)) kept[p] = (kept[p] || 0) + n;
       const changes = autoAllocate({ games: B.games, umpires: B.umpires, availByEmail: B.availByEmail, baseLoads: seasonLoads(otherStats), claimOf, reliability: reliabilityOf({ kept, dropped }) });
       if (!changes.length) { toast('No empty slots could be filled with umpires who said "Available".', 'warn'); return; }
       const ids = new Set(changes.map(c => c.gameId));

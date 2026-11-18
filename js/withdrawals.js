@@ -5,7 +5,7 @@
 // a *withdrawal* and queues an email to the address in Settings. The officer's app applies it the
 // next time the Allocate page opens: the slots go back to empty and the game carries a note.
 
-import { compLabel, fmtDay, gradeShort, summarise, publishedAllocFor, firstGroup } from './logic.js';
+import { compLabel, fmtDay, gradeShort, summarise, publishedAllocFor, firstGroup, gameCount } from './logic.js';
 import { todayLocal } from './ui.js';
 
 const dateOf = key => key.slice(key.indexOf(':') + 1);
@@ -72,7 +72,7 @@ async function queueEmail(store, w) {
     orgId: org.id,
     createdAt: new Date().toISOString(),
     message: {
-      subject: `${w.name} is no longer available (${w.games.length} allocated game${w.games.length === 1 ? '' : 's'})`,
+      subject: `${w.name} is no longer available (${gameCount(w.games)} allocated game${gameCount(w.games) === 1 ? '' : 's'})`,
       text: `${w.name} (${w.email}) has changed their availability to "Not available" for games they were already allocated to:\n\n`
         + `${lines.join('\n')}\n\nThese slots are now unallocated. Open the app to fill them.\n`,
     },

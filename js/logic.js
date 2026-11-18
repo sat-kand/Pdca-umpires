@@ -249,6 +249,20 @@ export function compareGames(a, b) {
 
 // A game is "picked" when the officer has chosen its grade for umpires (slots > 0).
 // A grade the association set to None needs no umpires, whatever slots its games were given before.
+// Entries (appointments, pull-outs) by game: a two-day game counts once. Each item has gameId or g.id;
+// the first entry of a game is kept, with every date of that game in `dates`.
+export const gameKey = x => (x.roundId || (x.r && x.r.id) || '') + '|' + (x.gameId || (x.g && x.g.id));
+export function byGame(list) {
+  const m = new Map();
+  for (const x of list) {
+    const k = gameKey(x), date = x.date || (x.d && x.d.date);
+    if (!m.has(k)) m.set(k, { ...x, dates: [] });
+    if (date && !m.get(k).dates.includes(date)) m.get(k).dates.push(date);
+  }
+  return [...m.values()].map(x => ({ ...x, dates: x.dates.sort() }));
+}
+export const gameCount = list => new Set(list.map(gameKey)).size;
+
 // Whether a game's grade needs umpires at all (not set to None).
 export const needsUmpires = game => umpiresForGrade(game.grade) !== 0;
 export const isPicked = game => (game.slots || 0) > 0 && umpiresForGrade(game.grade) !== 0;
@@ -362,7 +376,8 @@ export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy
 
 export function recount(games) {
   let needed = 0, filled = 0, gamesNeeding = 0;
-  const byUmpire = {};
+  const byUmpire = {};                 // games per umpire: a two-day game counts once
+  const seenGame = new Set();
   for (const g of games) {
     const n = slotCount(g);
     if (!n) continue;
@@ -370,7 +385,10 @@ export function recount(games) {
     for (const d of g.days) {
       const a = allocFor(g, d.date);
       needed += n;
-      for (const s of a) if (s) { filled++; byUmpire[s.p] = (byUmpire[s.p] || 0) + 1; }
+      for (const s of a) if (s) {
+        filled++;
+        if (!seenGame.has(s.p + '|' + g.id)) { seenGame.add(s.p + '|' + g.id); byUmpire[s.p] = (byUmpire[s.p] || 0) + 1; }
+      }
     }
   }
   return { games: gamesNeeding, needed, filled, byUmpire };

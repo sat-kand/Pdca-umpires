@@ -459,7 +459,8 @@ export async function viewMy(ctx) {
       if (!mine.length) apptCard && apptCard.remove();
     }
     if (mine.length) drawAppointments();
-    if (w) toast(`Saved. You were down for ${w.games.length} game${w.games.length === 1 ? '' : 's'} on those dates.`, 'warn');
+    if (w) { const n = new Set(w.games.map(x => x.roundId + '|' + x.gameId)).size;      // a two-day game is one game
+      toast(`Saved. You were down for ${n} game${n === 1 ? '' : 's'} on those dates.`, 'warn'); }
     else toast(puOn && modes.player && nextPicks.length ? 'Saved. The appointments officer will see the games you chose.' : 'Availability saved');
   });
   saveBtn.onclick = async () => { await saveOnce(); drawStatus(); };   // busy() re-enables the button; put it back to how it should be

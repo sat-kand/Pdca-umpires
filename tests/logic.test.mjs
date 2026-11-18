@@ -86,7 +86,7 @@ test('slotOptions groups yes / no response / non-member / avoid', () => {
   assert.deepEqual(chosen, [], 'a player umpire who chose the game is not warned about their date answers');
 });
 
-test('recount counts slot-days and per-umpire appointments', () => {
+test('recount counts slot-days and per-umpire games (a two-day game once)', () => {
   const games = [
     mk('1', 'Senior A Grade', 'A', 'B', [D1, D2], 2, { [D1]: [{ p: 'u1', n: 'Ann' }, { p: 'u2', n: 'Bob' }], [D2]: [{ p: 'u1', n: 'Ann' }] }),
     mk('2', 'Senior B02', 'C', 'D', [D1], 0),
@@ -96,8 +96,8 @@ test('recount counts slot-days and per-umpire appointments', () => {
   assert.equal(r.games, 2);
   assert.equal(r.needed, 5);
   assert.equal(r.filled, 3);
-  assert.deepEqual(r.byUmpire, { u1: 2, u2: 1 });
-  assert.deepEqual(seasonLoads([r, { byUmpire: { u1: 4, u9: 1 } }, null]), { u1: 6, u2: 1, u9: 1 });
+  assert.deepEqual(r.byUmpire, { u1: 1, u2: 1 });
+  assert.deepEqual(seasonLoads([r, { byUmpire: { u1: 4, u9: 1 } }, null]), { u1: 5, u2: 1, u9: 1 });
 });
 
 test('autoAllocate: only "yes", no double-booking, balances load, keeps two-day pair', () => {
@@ -397,4 +397,16 @@ test('a grade set to None is never on the board, even if its games were given pl
   assert.deepEqual([isPicked(g('U11 - 1')), slotCount(g('U11 - 1')), isPicked(g('U12 Gold')), slotCount(g('U12 Gold'))], [false, 0, true, 1]);
   assert.deepEqual([groupNeedsUmpires('junior'), groupNeedsUmpires('t20'), groupNeedsUmpires('senior')], [true, false, true]);
   usePdcaGroups();
+});
+
+test('a two-day game counts once: per umpire loads and grouped lists', async () => {
+  const { recount, byGame, gameCount } = await import('../js/logic.js');
+  const g = { id: 'g1', grade: 'Senior A Grade', slots: 1, days: [{ date: '2026-11-28' }, { date: '2026-12-05' }],
+    alloc: { '2026-11-28': [{ p: 'u1' }], '2026-12-05': [{ p: 'u1' }] } };
+  const r = recount([g]);
+  assert.equal(r.filled, 2);                      // two places filled
+  assert.deepEqual(r.byUmpire, { u1: 1 });       // but one game for the umpire
+  const pulls = [{ roundId: 'r', gameId: 'g1', date: '2026-12-05' }, { roundId: 'r', gameId: 'g1', date: '2026-11-28' }];
+  assert.equal(gameCount(pulls), 1);
+  assert.deepEqual(byGame(pulls)[0].dates, ['2026-11-28', '2026-12-05']);
 });
