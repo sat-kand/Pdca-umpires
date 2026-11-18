@@ -583,22 +583,19 @@ with sync_playwright() as p:
     page.wait_for_selector("form input")
     check(page.locator("form input:not([type=radio])").count() == 2 and "Date of birth" not in page.inner_text("form") and "Mobile" not in page.inner_text("form"),
           "applying asks only for their name; the rest is added later from their profile")
-    check(page.locator(".role").all_inner_texts()[0].startswith("I want to umpire") and page.locator(".role input").first.is_checked()
-          and "Member only" in page.locator(".role").nth(1).inner_text(), "and whether they want to umpire or be a member only")
+    check(page.locator(".role").count() == 0, "no umpire-or-member choice: umpiring follows the availability they give")
     page.locator("form input").nth(0).fill("New")
     page.locator("form input").nth(1).fill("Umpire")
     page.click("form button:has-text('Apply')")
     page.wait_for_selector("text=waiting for approval")
-    check(page.locator(".comp-section").count() > 0, "someone who applied to umpire can already give their availability")
+    check(page.locator(".comp-section").count() > 0, "someone who has applied can already give their availability")
     sign_out(page)
     sign_in(page, "socialmember@demo.test")
     page.wait_for_selector("form input")
     page.locator("form input").nth(0).fill("Social")
     page.locator("form input").nth(1).fill("Member")
-    page.locator(".role").nth(1).click()
     page.click("form button:has-text('Apply')")
     page.wait_for_selector("text=waiting for approval")
-    check(page.locator(".comp-section").count() == 0, "someone who applied as a member only is not asked for availability")
     sign_out(page)
     sign_in(page, "admin@demo.test")
     page.click("nav .menu > summary")
@@ -616,20 +613,28 @@ with sync_playwright() as p:
     check(names[:2] == ["Social Member", "New Umpire"] or names[:2] == ["New Umpire", "Social Member"], f"people waiting for approval are at the top ({names[:3]})")
     rest = [n.split()[-1].lower() for n in names[2:]]
     check(rest == sorted(rest), "then everyone by last name")
-    check("Wants to umpire" in row_of(page, "newbie@demo.test").inner_text() and "member only" in row_of(page, "socialmember@demo.test").inner_text()
-          and row_of(page, "newbie@demo.test").locator("button:has-text('Approve')").count() == 1, "each shows what they asked for, and an Approve button")
+    check(row_of(page, "newbie@demo.test").locator("button:has-text('Approve')").count() == 1 and "Waiting for approval" not in row_of(page, "newbie@demo.test").locator("td").nth(2).inner_text(),
+          "each person waiting has an Approve button")
     row_of(page, "newbie@demo.test").locator("button:has-text('Approve')").click()
     page.wait_for_selector("tr[data-pid] >> text=Member")
     row_of(page, "socialmember@demo.test").locator("button:has-text('Approve')").click()
     page.wait_for_timeout(300)
-    check("Active umpire" in row_of(page, "newbie@demo.test").inner_text() and "Member" in row_of(page, "newbie@demo.test").inner_text(), "approved: a Member, and an Active umpire as they asked")
-    check("Inactive member" in row_of(page, "socialmember@demo.test").inner_text(), "the member-only applicant is approved as an Inactive member")
-    row_of(page, "socialmember@demo.test").locator("button.tagbtn").click()
-    page.wait_for_timeout(300)
-    check("Active umpire" in row_of(page, "socialmember@demo.test").inner_text(), "clicking the tag makes them an Active umpire")
-    row_of(page, "socialmember@demo.test").locator("button.tagbtn").click()
-    page.wait_for_timeout(300)
-    check("Inactive member" in row_of(page, "socialmember@demo.test").inner_text(), "and clicking again an Inactive member")
+    check("Member" in row_of(page, "newbie@demo.test").inner_text() and "Inactive member" in row_of(page, "newbie@demo.test").inner_text(),
+          "approved: a Member; an Inactive member until they say Available to a date")
+    check(row_of(page, "newbie@demo.test").locator("button.tagbtn").count() == 0, "Active umpire / Inactive member is not something the officer changes")
+    # Their availability decides it, for this association: Not available to everything keeps them inactive,
+    # one Available makes them an Active umpire.
+    def set_days(email, days):
+        page.evaluate("""([email, days]) => { const k = 'pdca-umpires-demo-v2', db = JSON.parse(localStorage.getItem(k)), o = db.orgs.pdca;
+            const sid = o.season.id; o.availability[sid + '__' + email] = { seasonId: sid, email, days, updatedAt: new Date().toISOString() };
+            localStorage.setItem(k, JSON.stringify(db)); }""", [email, days])
+        page.reload()
+        page.wait_for_selector("table.members")
+    dates = page.evaluate("() => { const o = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca; return o.season.calendar.slice(0, 2).map(e => e.comp + ':' + e.dates[0]); }")
+    set_days("socialmember@demo.test", {dates[0]: "no", dates[1]: "no"})
+    check("Inactive member" in row_of(page, "socialmember@demo.test").inner_text(), "Not available to everything: still an Inactive member")
+    set_days("socialmember@demo.test", {dates[0]: "no", dates[1]: "yes"})
+    check("Active umpire" in row_of(page, "socialmember@demo.test").inner_text(), "Available to one date: an Active umpire")
     page.fill(".member-search", "social")
     check(page.locator("table.members tbody tr").count() == 1, "search finds members by name")
     page.fill(".member-search", "")
@@ -643,38 +648,36 @@ with sync_playwright() as p:
     patu = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['pat@example.com']")
     check(patu["firstName"] == "Pat" and patu["lastName"] == "Example" and patu["phone"] == "0400 000 000" and patu["accreditation"] == "L3-7782",
           "bulk add reads First name, Last name, email, mobile and accreditation number")
-    # A membership file with headings: an existing member made inactive (their own details kept), a new
-    # inactive member from the file-wide choice, and a new active one from the Status column.
+    # A membership file with headings: an existing member (their own details kept) and two new members.
     before_u1 = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['umpire1@demo.test']")
     bring = page.locator("details.import-card:has(> summary:has-text('Bring in'))")
     if bring.get_attribute("open") is None:
         bring.locator("> summary").click()
-    page.fill(".import-step textarea >> nth=0", "First name\tLast name\tEmail\tMembership type\tMember since\tStatus\n"
-              "Changed\tName\tumpire1@demo.test\tLife member\t2015\tInactive\n"
-              "Quiet\tMember\tquiet@example.com\t\t\t\n"
-              "Keen\tUmpire\tkeen@example.com\tOrdinary member\t15/04/2019\tActive")
-    page.locator(".import-step select >> nth=0").select_option("no")
+    check(page.locator(".import-step:has(h3:has-text('1. Membership file')) select").count() == 0, "the membership file has no active or inactive choice: that follows availability")
+    page.fill(".import-step textarea >> nth=0", "First name\tLast name\tEmail\tMembership type\tMember since\n"
+              "Changed\tName\tumpire1@demo.test\tLife member\t2015\n"
+              "Quiet\tMember\tquiet@example.com\t\t\n"
+              "Keen\tUmpire\tkeen@example.com\tOrdinary member\t15/04/2019")
     page.click(".import-step button:has-text('Check it') >> nth=0")
     prev = page.inner_text(".import-step .import-out >> nth=0")
-    check("2 new, 1 already on the list" in prev and "1 active, 2 inactive" in prev, f"the check says who is new, who is updated, and active or inactive ({prev[:80]!r})")
+    check("2 new, 1 already on the list" in prev, f"the check says who is new and who is updated ({prev[:80]!r})")
     page.click(".import-step button:has-text('Import') >> nth=0")
     page.wait_for_selector(".toast:has-text('2 member(s) added, 1 updated')")
     db = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires")
     u1 = db["umpire1@demo.test"]
-    check(u1["name"] == before_u1["name"] and u1.get("phone") == before_u1.get("phone") and u1["active"] is False and u1["membership"] == "Life member" and u1["memberSince"] == "2015-01-01",
-          "an existing member keeps their own details; only inactive, membership type and member since change")
-    check(db["quiet@example.com"]["active"] is False and db["quiet@example.com"].get("deactivated") and db["keen@example.com"]["active"] is True and db["keen@example.com"]["memberSince"] == "2019-04-15",
-          "no Status: the file-wide choice (inactive); Status Active: active, with its member-since date")
+    check(u1["name"] == before_u1["name"] and u1.get("phone") == before_u1.get("phone") and u1["membership"] == "Life member" and u1["memberSince"] == "2015-01-01",
+          "an existing member keeps their own details; only membership type and member since change")
+    check(db["keen@example.com"]["memberSince"] == "2019-04-15" and db["quiet@example.com"].get("approved"), "new people come in as members, with their member-since date")
+    check("Inactive member" in row_of(page, "quiet@example.com").inner_text() and "Active umpire" in row_of(page, "umpire1@demo.test").inner_text(),
+          "a new member with no availability is an Inactive member; one with Available dates is an Active umpire")
     check(page.locator(".import-step:has(h3:has-text('2. Availability files')) select").count() == 1, "availability files are brought in per group, right here")
     page.select_option(".member-tools select", "inactive")
-    check(row_of(page, "quiet@example.com").count() == 1 and row_of(page, "umpire1@demo.test").count() == 1, "both are on the Inactive members list")
+    check(row_of(page, "quiet@example.com").count() == 1 and row_of(page, "umpire1@demo.test").count() == 0, "the Show filter lists Inactive members")
     row_of(page, "quiet@example.com").locator("input[type=checkbox]").check()
-    row_of(page, "umpire1@demo.test").locator("input[type=checkbox]").check()
-    check("2 selected" in page.inner_text(".bulk-bar") and page.locator(".bulk-bar button:has-text('Make active umpires (2)')").count() == 1, "ticked rows can be changed together")
-    page.click(".bulk-bar button:has-text('Make active umpires')")
-    page.wait_for_timeout(300)
-    page.select_option(".member-tools select", "active")
-    check(row_of(page, "umpire1@demo.test").count() == 1 and row_of(page, "quiet@example.com").count() == 1, "both are Active umpires now")
+    check("1 selected" in page.inner_text(".bulk-bar") and page.locator(".bulk-bar button:has-text('Make active')").count() == 0
+          and page.locator(".bulk-bar button:has-text('Approve')").count() == 1 and page.locator(".bulk-bar button:has-text('Reject')").count() == 1,
+          "ticked rows can be approved or rejected together (nothing to make active by hand)")
+    page.click(".bulk-bar button:has-text('Clear')")
     page.select_option(".member-tools select", "all")
     page.goto(BASE + "#/admin/members")
     page.wait_for_selector("table.members")
@@ -772,7 +775,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(300)
     check(page.locator(".warn-icon").count() >= 1, "choosing them raises a warning like the others")
     page.click("details:has-text('Show warnings') summary")
-    check("Not an active member" in page.inner_text("details:has-text('Show warnings')"), "the warning says they are not an active member")
+    check("Not a member in good standing" in page.inner_text("details:has-text('Show warnings')"), "the warning says they are not a member")
     page.locator("select.slot").first.select_option(value="")
     page.wait_for_timeout(300)
     page.click(".publish button:has-text('Re-publish')")
@@ -1537,21 +1540,17 @@ with sync_playwright() as p:
     after = page.locator(f".member-profile .date-btn[data-date='{d0}']").first.inner_text()
     av2 = page.evaluate("() => Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.availability).find(a => a.email === 'umpire2@demo.test')")
     check(before != after and any(k.endswith(d0) for k in (av2.get("edited") or {})), f"clicking a date changes their availability and marks it as the officer's ({before} -> {after})")
-    # Active / inactive
-    page.click(".status-box button:has-text('Make inactive member')")
-    page.wait_for_selector(".status-box .chip:has-text('Inactive member')")
-    check(page.locator(".status-box button:has-text('Make active umpire')").count() == 1, "an active umpire can be made an inactive member, and back")
-    page.click(".status-box button:has-text('Make active umpire')")
-    page.wait_for_selector(".status-box .chip:has-text('Active umpire')")
+    # Umpiring follows their availability: no buttons for it
+    check(page.locator(".status-box .chip:has-text('Active umpire')").count() == 1 and page.locator(".status-box button:has-text('Make')").count() == 0,
+          "the profile shows Active umpire from their availability, with nothing to change by hand")
     page.click(".status-box button:has-text('Suspend')")
     page.wait_for_selector(".status-box .chip:has-text('Suspended')")
     u2 = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['umpire2@demo.test']")
-    check(u2["suspended"] is True and u2["active"] is False and page.locator(".status-box button:has-text('Make active umpire')").count() == 0,
+    check(u2["suspended"] is True and u2["active"] is False and page.locator(".status-box .chip:has-text('Active umpire')").count() == 0,
           "suspending (on the profile only) stops them umpiring")
     page.click(".status-box button:has-text('Lift suspension')")
-    page.wait_for_selector(".status-box .chip:has-text('Member')")
-    page.click(".status-box button:has-text('Make active umpire')")
     page.wait_for_selector(".status-box .chip:has-text('Active umpire')")
+    check(True, "lifting the suspension makes them a member again (Active umpire, from their availability)")
     page.select_option(".member-profile select[aria-label='Membership type']", label="Life member")
     page.wait_for_timeout(300)
     check(page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['umpire2@demo.test'].membership") == "Life member",
@@ -1564,8 +1563,8 @@ with sync_playwright() as p:
         localStorage.setItem(k, JSON.stringify(db)); }""")
     page.goto(BASE + "#/admin/member/pnew1")
     page.wait_for_selector(".status-box .chip:has-text('Waiting for approval')")
-    page.click(".status-box button:has-text('Approve as umpire')")
-    page.wait_for_selector(".status-box .chip:has-text('Active umpire')")
+    page.click(".status-box button:has-text('Approve')")
+    page.wait_for_selector(".status-box .chip:has-text('Member')")
     check(page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['newbie@demo.test'].active") is True, "a new registration can be approved from the profile")
     page.goto(BASE + "#/admin/member/pnew2")
     page.wait_for_selector(".status-box button:has-text('Reject')")

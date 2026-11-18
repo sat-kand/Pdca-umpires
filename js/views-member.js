@@ -5,7 +5,7 @@
 // (association, type, active or not, since when), never another association's availability or games.
 
 import { h, toast, setChildren, busy, todayLocal } from './ui.js';
-import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey, firstGroup, byGame, gameCount, memberStatus, STATUS_LABEL, STATUS_CHIP, membershipOf, MEMBERSHIP_LABEL, MEMBERSHIP_CHIP, MEMBER_CHANGE } from './logic.js';
+import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey, firstGroup, byGame, gameCount, memberStatus, STATUS_LABEL, STATUS_CHIP, membershipOf, MEMBERSHIP_LABEL, MEMBERSHIP_CHIP, MEMBER_CHANGE, isActiveUmpire } from './logic.js';
 import { feeFor, money, membershipTypes } from './views-org.js';
 
 // What other associations may see of this membership. Written whenever an officer saves or opens a member.
@@ -174,19 +174,15 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
       // Membership: waiting for approval, member, suspended or rejected.
       h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Membership'), h('div', { class: 'status-line' },
         h('span', { class: 'chip ' + MEMBERSHIP_CHIP[m] }, MEMBERSHIP_LABEL[m]),
-        m === 'applied' && h('span', { class: 'muted small' }, u.wantsToUmpire === false ? 'Wants to be a member only' : 'Wants to umpire'),
-        m === 'applied' && [btn('Approve as umpire', u.wantsToUmpire === false ? '' : 'primary', () => saveStatus({ ...MEMBER_CHANGE.approve(u), active: true, deactivated: false }, 'Approved as an umpire')), ' ',
-          btn('Approve as member only', u.wantsToUmpire === false ? 'primary' : '', () => saveStatus({ ...MEMBER_CHANGE.approve(u), active: false, deactivated: true }, 'Approved as a member')), ' ',
+                m === 'applied' && [btn('Approve', 'primary', () => set('approve', 'Approved as a member')), ' ',
           btn('Reject', 'danger', () => set('reject', 'Application rejected'))],
         m === 'member' && btn('Suspend', 'danger', () => set('suspend', 'Membership suspended')),
         m === 'suspended' && btn('Lift suspension', 'primary', () => set('unsuspend', 'Suspension lifted')),
         (m === 'rejected' || m === 'nonmember') && btn('Approve as member', 'primary', () => set('approve', 'Approved')))),
-      // Umpiring: only members can be active.
+      // Umpiring: from this season's availability, not set by hand.
       m === 'member' && h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Umpiring'), h('div', { class: 'status-line' },
-        h('span', { class: 'chip ' + (u.active ? 'ok' : 'muted-chip') }, u.active ? 'Active umpire' : 'Inactive member'),
-        !u.active && u.wantsToUmpire && h('span', { class: 'chip pu' }, 'Asked to umpire'),
-        u.active ? btn('Make inactive member', '', () => set('inactive', 'Now an inactive member'))
-          : btn('Make active umpire', 'primary', () => set('active', 'Now an active umpire')))));
+        h('span', { class: 'chip ' + (isActiveUmpire(u, avail) ? 'ok' : 'muted-chip') }, isActiveUmpire(u, avail) ? 'Active umpire' : 'Inactive member'),
+        h('span', { class: 'muted small' }, isActiveUmpire(u, avail) ? 'Available to at least one date this season' : 'No date marked Available this season'))));
   }
   drawStatus();
 
@@ -219,9 +215,9 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
       row('Accreditation no.', u.accreditation), row('Accreditation provider', u.accreditationProvider),
       self
         ? [row('Membership type', u.membership ? `${u.membership}${feeFor(store.org, u.membership) ? ` · ${money(feeFor(store.org, u.membership))}` : ''}` : ''),
-           h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Status'), h('span', {}, h('span', { class: 'chip ' + STATUS_CHIP[memberStatus(u)] }, STATUS_LABEL[memberStatus(u)]))),
+           h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Status'), h('span', {}, h('span', { class: 'chip ' + STATUS_CHIP[memberStatus(u, avail)] }, STATUS_LABEL[memberStatus(u, avail)]))),
            row('Member since', fmtLong(u.memberSince)),
-           h('p', { class: 'muted small' }, 'Your appointments officer sets your status, membership type and member since. Your date of birth, address and mobile are only visible to them.')]
+           h('p', { class: 'muted small' }, 'The association sets your membership, membership type and member since; you are an Active umpire once you say Available to a date. Your date of birth, address and mobile are only visible to them.')]
         : [h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Membership type'), typeBox),
            statusBox,
            h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Member since'),
@@ -319,7 +315,7 @@ async function membershipSection(org, view, u, today) {
   const gamesUmpired = new Set(past.map(a => a.g.id)).size;
   const pulls = ((avail && avail.declined) || []).map(x => ({ ...x, g: gameById.get(x.gameId) })).sort((a, b) => b.date.localeCompare(a.date));
   const rate = gameCount(appts) + gameCount(pulls) ? gameCount(appts) / (gameCount(appts) + gameCount(pulls)) : null;
-  const status = [STATUS_LABEL[memberStatus(u)], STATUS_CHIP[memberStatus(u)]];
+  const status = [STATUS_LABEL[memberStatus(u, avail)], STATUS_CHIP[memberStatus(u, avail)]];
 
   // When they became a member there: theirs to correct (a list loaded from a file may not have it).
   const since = h('input', { type: 'date', value: u.memberSince || '', 'aria-label': `Member since, ${org.name || org.id}`, max: today });

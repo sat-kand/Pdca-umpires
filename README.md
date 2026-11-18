@@ -21,20 +21,18 @@ It is a static site (no build step) that runs on **GitHub Pages**, with **Fireba
 
 ## Members
 
-The **Members** page is the association's list of people. Where someone stands:
+The **Members** page is the association's list of people. Each person has two things:
 
-- **Waiting for approval** — they applied through Third Umpire (the join link in Settings), saying whether they want to umpire or be a **member only**. The officer approves them (as an umpire or as a member only) or rejects them; rejected applications are kept under *Rejected*. Applicants who want to umpire can already give their availability.
-- **Active** — an approved member who umpires: gives availability and is appointed.
-- **Inactive** — an approved member who does not umpire. They are kept for the association's communications (*Email inactive members*) and are not asked for availability. They can tap *I'd like to umpire*, which shows as *Asked to umpire* for the officer.
-- **Not a member** — someone whose availability came in with a spreadsheet but who is not on the membership list.
+- **Membership**, set by the officer: **Waiting for approval** (applied through the join link in Settings; they can already give availability), **Member**, **Suspended** (on the profile only; a suspended member is not appointed or asked for availability) or **Rejected**. *Not a member* is someone whose availability came in with a spreadsheet only.
+- **Umpiring**, never set by hand and separate for each association: a member is an **Active umpire** once they have said Available to at least one date this season (or chosen a game as a player umpire). With no answers, or Not available to everything, they are an **Inactive member**, kept for the association's communications (*Email inactive members*).
 
-The list shows each member's **Umpiring** (Active umpire or Inactive member) and **Membership** (Waiting for approval, Member, Suspended or Rejected), with search and a *Show* filter. People waiting for approval are always at the top, then everyone by last name. Click an Umpiring tag to switch it, or **Approve** to make an applicant a Member (Active or Inactive as they asked). Tick rows to change several at once: make active umpires, make inactive members, approve or reject. Everything can also be done on the member's profile, which is the only place to **Suspend** a member (or lift it); a suspended member does not umpire. Member since is on the profile. Members keep their own details (name, date of birth, address, mobile, accreditation); officers set membership, umpiring, membership type and member since.
+The list shows Umpiring and Membership, with search and a *Show* filter. People waiting for approval are always at the top, then everyone by last name. Click **Approve** to make an applicant a Member; tick rows to approve or reject several at once. Approving, rejecting and suspending are also on the member's profile, with member since. Members keep their own details (name, date of birth, address, mobile, accreditation); officers set membership, membership type and member since.
 
 ### Moving an association to Third Umpire
 
 *Bring in your existing lists* on the Members page, in this order:
 
-1. **Membership file** — the association's own list, pasted from Excel or Google Sheets or chosen as a CSV file, with a heading row. Columns are found by name, in any order: First name, Last name (or Name), Email, Mobile, Date of birth, Address, Accreditation, Membership type, Member since and **Status** (Active / Yes / Umpire, or Inactive / No / Member only). Rows with no Status take the choice made for the whole file, so active and inactive members can come in as one file or as two. *Check it* shows who is new and who is already on the list before anything is saved. Members already on the list keep their own details; only Active or Inactive, membership type and member since are updated, and only where the file has them. The old one-line format (`First name, Last name, email, mobile, accreditation no.`) still works.
+1. **Membership file** — the association's own list, pasted from Excel or Google Sheets or chosen as a CSV file, with a heading row. Columns are found by name, in any order: First name, Last name (or Name), Email, Mobile, Date of birth, Address, Accreditation, Membership type and Member since. Everyone in the file becomes a member; whether they are an Active umpire follows their availability. *Check it* shows who is new and who is already on the list before anything is saved. Members already on the list keep their own details; only membership type and member since are updated, and only where the file has them (a suspension stays). The old one-line format (`First name, Last name, email, mobile, accreditation no.`) still works.
 2. **Availability files** — one per group (each competition's own form): pick the group, then paste or choose its file (see below).
 
 After that, new members apply through the join link and give their availability in the app.

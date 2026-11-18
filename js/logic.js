@@ -251,9 +251,10 @@ export function compareGames(a, b) {
 // A grade the association set to None needs no umpires, whatever slots its games were given before.
 // Where someone stands with the association, in two parts.
 // Membership:  applied (asked to join, waiting for approval) / member / suspended / rejected, and
-//              nonmember for someone whose availability came in with a spreadsheet only.
-// Umpiring:    an Active umpire gives availability and is appointed; an Inactive member does not umpire
-//              and is kept for the association's communications. Only members can be active.
+//              nonmember for someone whose availability came in with a spreadsheet only. Set by the officer.
+// Umpiring:    worked out, never set by hand, separately for each association: an Active umpire is a
+//              member who said Available to at least one date (or chose a game as a player umpire) this
+//              season; everyone else (no answer, or Not available to everything) is an Inactive member.
 export function membershipOf(u) {
   if (!u) return 'applied';
   if (u.rejected) return 'rejected';
@@ -264,23 +265,27 @@ export function membershipOf(u) {
 }
 export const MEMBERSHIP_LABEL = { applied: 'Waiting for approval', member: 'Member', suspended: 'Suspended', rejected: 'Rejected', nonmember: 'Not a member' };
 export const MEMBERSHIP_CHIP = { applied: 'warn', member: 'ok', suspended: 'no', rejected: 'muted-chip', nonmember: 'muted-chip' };
-// One word for both parts, used where only one status fits: active / inactive / applied / suspended /
-// rejected / nonmember.
-export function memberStatus(u) {
+// Whether someone can be appointed: a member in good standing.
+export const canUmpire = u => membershipOf(u) === 'member';
+// Active umpire this season: Available to at least one date, or a game chosen as a player umpire.
+export const isActiveUmpire = (u, avail) => canUmpire(u) && !!avail
+  && (Object.values(avail.days || {}).some(v => v === 'yes') || (avail.picks || []).length > 0);
+// One word for both parts: active / inactive / applied / suspended / rejected / nonmember. Pass the
+// member's availability for this season (null when they have none).
+export function memberStatus(u, avail = null) {
   const m = membershipOf(u);
   if (m !== 'member') return m;
-  return u.active ? 'active' : 'inactive';
+  return isActiveUmpire(u, avail) ? 'active' : 'inactive';
 }
 export const STATUS_LABEL = { applied: 'Waiting for approval', active: 'Active umpire', inactive: 'Inactive member', nonmember: 'Not a member', suspended: 'Suspended', rejected: 'Rejected' };
 export const STATUS_CHIP = { applied: 'warn', active: 'ok', inactive: 'muted-chip', nonmember: 'muted-chip', suspended: 'no', rejected: 'muted-chip' };
-// What each change sets. Suspending or rejecting also stops them umpiring.
+// What each membership change sets. `active` is kept as "a member in good standing" for older data;
+// suspending or rejecting clears it.
 export const MEMBER_CHANGE = {
-  approve: u => ({ approved: true, rejected: false, suspended: false, nonMember: false, active: u.wantsToUmpire !== false, deactivated: u.wantsToUmpire === false }),
+  approve: () => ({ approved: true, rejected: false, suspended: false, nonMember: false, active: true, deactivated: false }),
   reject: () => ({ rejected: true, approved: false, active: false, deactivated: false }),
-  suspend: () => ({ suspended: true, active: false, deactivated: true }),
-  unsuspend: () => ({ suspended: false, approved: true }),
-  active: () => ({ approved: true, rejected: false, suspended: false, nonMember: false, active: true, deactivated: false }),
-  inactive: () => ({ approved: true, rejected: false, suspended: false, nonMember: false, active: false, deactivated: true }),
+  suspend: () => ({ suspended: true, active: false }),
+  unsuspend: () => ({ suspended: false, approved: true, active: true, deactivated: false }),
 };
 
 // Entries (appointments, pull-outs) by game: a two-day game counts once. Each item has gameId or g.id;
@@ -357,7 +362,7 @@ export function availStatus(availByEmail, umpire, comp, date) {
 // nothing). Their choice comes first: that day they are not given any other game of that competition.
 export function assignmentWarnings({ game, date, slotIndex, umpire, availByEmail, busy, chosen = false, claimOf }) {
   const w = [];
-  if (umpire.active === false) w.push('Not an active member');
+  if (!canUmpire(umpire)) w.push('Not a member in good standing');
   const comp = compKeyOf(game);
   const claim = claimOf ? claimOf(umpire.pid, date, comp) : null;
   if (claim === game.id) chosen = true;
@@ -394,7 +399,7 @@ export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy
     const bothDays = days.length > 1 && okDays.length === days.length;
     // Someone whose membership is not active can still be allocated, but they are kept in a group of
     // their own so the officer chooses them on purpose.
-    const member = u.active !== false;
+    const member = u.active !== false || canUmpire(u);
     const group = avoid ? 'avoid'
       : chosen ? 'chosen'
       : !member ? (st === 'yes' ? 'nonmember' : 'avoid')
@@ -480,7 +485,7 @@ export function reliabilityOf({ kept = {}, dropped = {} }) {
 }
 
 export function autoAllocate({ games, umpires, availByEmail, baseLoads = {}, claimOf, reliability = {} }) {
-  const active = umpires.filter(u => u.active);
+  const active = umpires.filter(canUmpire);
   const busy = buildBusyMap(games);
   const loads = { ...baseLoads };
   for (const [p, n] of Object.entries(recount(games).byUmpire)) loads[p] = (loads[p] || 0) + n;

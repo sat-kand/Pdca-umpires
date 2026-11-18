@@ -81,7 +81,7 @@ test('slotOptions groups yes / no response / non-member / avoid', () => {
   const quiet = slotOptions({ game: g, date: D1, slotIndex: 0, umpires: [U('u7', 'Gus', false)], availByEmail: avail({}), busy: {}, loads: {} });
   assert.equal(quiet[0].group, 'avoid', 'a non-member who has not said they are available is not offered as available');
   const warn = assignmentWarnings({ game: g, date: D1, slotIndex: 0, umpire: U('u6', 'Fay', false), availByEmail: a, busy: {} });
-  assert.deepEqual(warn, ['Not an active member']);
+  assert.deepEqual(warn, ['Not a member in good standing']);
   const chosen = assignmentWarnings({ game: g, date: D1, slotIndex: 0, umpire: U('u7', 'Gus'), availByEmail: avail({}), busy: {}, chosen: true });
   assert.deepEqual(chosen, [], 'a player umpire who chose the game is not warned about their date answers');
 });

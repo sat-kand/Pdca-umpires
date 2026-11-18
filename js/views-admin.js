@@ -4,7 +4,7 @@ import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './u
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
   slotOptions, recount, summarise, formatSummary, publishState, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
-  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot, umpiresForGrade, suggestUmpires, firstGroup, groupNeedsUmpires, memberStatus, STATUS_LABEL, STATUS_CHIP, membershipOf, MEMBERSHIP_LABEL, MEMBERSHIP_CHIP, MEMBER_CHANGE,
+  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot, umpiresForGrade, suggestUmpires, firstGroup, groupNeedsUmpires, memberStatus, STATUS_LABEL, STATUS_CHIP, membershipOf, MEMBERSHIP_LABEL, MEMBERSHIP_CHIP, MEMBER_CHANGE, canUmpire, isActiveUmpire,
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
@@ -285,8 +285,8 @@ export async function viewBoard(ctx, rid) {
     draw();
   }
 
-  // Active umpires who have not answered for any date of this round.
-  const noReply = () => { const cols = roundColumns(visible()); return B.umpires.filter(u => u.active && cols.every(c => availStatus(B.availByEmail, u, c.comp, c.date) === 'none')); };
+  // Members who have not answered for any date of this round.
+  const noReply = () => { const cols = roundColumns(visible()); return B.umpires.filter(u => canUmpire(u) && cols.every(c => availStatus(B.availByEmail, u, c.comp, c.date) === 'none')); };
 
   function collectWarnings() {
     const busy = buildBusyMap(B.games), out = [];
@@ -494,7 +494,7 @@ export async function viewAvailabilityOverview(ctx, rid) {
   if (isLocked(round)) { location.replace(`#/admin/round/${rid}/report`); return h('div'); }
   const [umpires, availList, allGames] = await Promise.all([store.listUmpires(), store.listAvailability((round.season && round.season.id) || 'manual'), store.listGames(rid)]);
   const by = Object.fromEntries(availList.map(a => [a.email, a]));
-  const active = umpires.filter(u => u.active).sort(compareMembers);
+  const active = umpires.filter(canUmpire).sort(compareMembers);
   // Every playing date of the round, whether or not its grades are selected yet: availability is
   // about the day, and is what helps decide which grades to cover.
   const cols = roundColumns(allGames);
@@ -554,8 +554,8 @@ export async function viewSeasonAvailability(ctx) {
   const by = Object.fromEntries(availList.map(a => [a.email, a]));
   // Everyone whose availability is held, members first. Only active members can be appointed, so the
   // rest are marked: they still appear, because their answers came in with the season's import.
-  let people = umpires.slice().sort((a, b) => Number(b.active !== false) - Number(a.active !== false) || compareMembers(a, b));
-  const members = () => people.filter(u => u.active !== false);
+  let people = umpires.slice().sort((a, b) => Number(canUmpire(b)) - Number(canUmpire(a)) || compareMembers(a, b));
+  const members = () => people.filter(canUmpire);
   const comps = COMPS.filter(c => groupNeedsUmpires(c.key) && season.calendar.some(e => (e.comp || firstGroup()) === c.key));
   const wrap = h('div');
   const ui = { comp: comps[0].key, past: false, q: '', on: null };       // on = show only umpires available on this date
@@ -565,7 +565,7 @@ export async function viewSeasonAvailability(ctx) {
   const draw = () => setChildren(wrap, build());
   const reload = async () => {
     const [us, list] = await Promise.all([store.listUmpires(), store.listAvailability(seasonId)]);
-    people = us.slice().sort((a, b) => Number(b.active !== false) - Number(a.active !== false) || compareMembers(a, b));
+    people = us.slice().sort((a, b) => Number(canUmpire(b)) - Number(canUmpire(a)) || compareMembers(a, b));
     for (const k of Object.keys(by)) delete by[k];
     for (const a of list) by[a.email] = a;
     draw();
@@ -596,7 +596,7 @@ export async function viewSeasonAvailability(ctx) {
     const optedOut = u => { const m = (by[u.email] || {}).modes; return !!m && (m.regular === false || (Array.isArray(m.comps) && !m.comps.includes(ui.comp))); };
     const missing = mem.filter(u => !answered(u) && !optedOut(u));
     const emails = missing.map(u => u.email);
-    const others = people.filter(u => u.active === false && answered(u));
+    const others = people.filter(u => !canUmpire(u) && answered(u));
     const q = ui.q.trim().toLowerCase();
     const shownPeople = [...mem, ...others];
     const rows = shownPeople.filter(u => (!q || u.name.toLowerCase().includes(q)) && (!ui.on || st(u, ui.on) === 'yes'));
@@ -650,9 +650,9 @@ export async function viewSeasonAvailability(ctx) {
               h('tr', {}, h('th', { class: 'stick' }, 'Umpire'), dates.map(d => { const [w, n] = dayHead(d);
                 return h('th', { class: (d < today ? 'past ' : '') + (ui.on === d ? 'on' : '') }, h('button', { type: 'button', class: 'datebtn', title: 'Show only umpires available on ' + fmtDay(d), onclick: () => { ui.on = ui.on === d ? null : d; draw(); } }, h('span', { class: 'sub' }, w), h('span', {}, n))); })),
               h('tr', { class: 'counts' }, h('td', { class: 'stick' }, 'Available'), dates.map(d => (countCells[d] = h('td', { class: d < today ? 'past' : '' }, String(count(d))))))),
-            h('tbody', {}, rows.map(u => h('tr', { class: u.active === false ? 'nonmember' : '' },
+            h('tbody', {}, rows.map(u => h('tr', { class: canUmpire(u) ? '' : 'nonmember' },
               h('td', { class: 'stick' }, profileLink(u), ' ', (tallyCells[u.pid] = h('span', { class: 'muted tally' }, tally(u))),
-                u.active === false && h('span', { class: 'chip warn tag' }, STATUS_LABEL[memberStatus(u)])),
+                !canUmpire(u) && h('span', { class: 'chip warn tag' }, STATUS_LABEL[memberStatus(u)])),
               dates.map(d => cell(u, d)))),
               !rows.length && h('tr', {}, h('td', { class: 'stick muted' }, 'Nobody matches'), dates.map(() => h('td', {})))))),
         h('p', { class: 'muted small' }, 'The count under each date is members only \u2014 only an active member can be appointed. Click a cell to change it: \u2713 available \u2192 \u2717 not available \u2192 blank (no answer). A dot marks cells you set. Click a date to list only the umpires available that day.')),
@@ -740,7 +740,7 @@ export function availabilityImportCard({ store, season, comp, people, by, reload
         h('thead', {}, h('tr', {}, ['Name', 'Member', 'Available', 'Not available', 'Not understood'].map(c => h('th', {}, c)))),
         h('tbody', {}, plan.people.slice(0, 12).map(p => h('tr', {},
           h('td', {}, p.name),
-          h('td', {}, p.member ? (p.member.active === false ? h('span', { class: 'chip warn' }, 'Non-member') : h('span', { class: 'chip ok' }, 'Member')) : h('span', { class: 'chip warn' }, 'Not found')),
+          h('td', {}, p.member ? (!canUmpire(p.member) ? h('span', { class: 'chip warn' }, MEMBERSHIP_LABEL[membershipOf(p.member)]) : h('span', { class: 'chip ok' }, 'Member')) : h('span', { class: 'chip warn' }, 'Not found')),
           h('td', {}, String(p.yes)), h('td', {}, String(p.no)), h('td', {}, p.unknown ? String(p.unknown) : ''))))),
         plan.people.length > 12 && h('p', { class: 'muted small' }, `\u2026 and ${plan.people.length - 12} more`)));
   }
@@ -778,17 +778,22 @@ export function availabilityImportCard({ store, season, comp, people, by, reload
 export async function viewUmpires(ctx) {
   const { store } = ctx;
   let [members, season] = await Promise.all([store.listUmpires(), store.getSeason ? store.getSeason() : null]);
+  // Active umpire or Inactive member comes from this season's availability, never set by hand.
+  let availBy = {};
+  const loadAvail = async () => { availBy = season ? Object.fromEntries((await store.listAvailability(season.id || 'manual')).map(a => [a.email, a])) : {}; };
+  await loadAvail();
+  const statusOf = u => memberStatus(u, availBy[u.email]);
   const wrap = h('div');
   const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { console.error(e); toast(e.message || String(e), 'err'); } };
   const ui = homeMembers;                                // the filter and open cards stay while the page is open
-  const reload = async () => { members = await store.listUmpires(); draw(); };
+  const reload = async () => { members = await store.listUmpires(); await loadAvail(); draw(); };
 
   // A member's own details (name, date of birth, address, mobile, accreditation) are theirs to keep up
   // to date; the officer only sets what the association decides: approval, active or inactive,
   // membership type, member since.
   const save = (u, patch, redraw = false) => guard(async () => {
     Object.assign(u, patch);
-    if ((u.active || u.approved) && !u.memberSince) u.memberSince = todayLocal();     // approved (or added) today
+    if (membershipOf(u) === 'member' && !u.memberSince) u.memberSince = todayLocal();     // approved (or added) today
     await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
     if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error('membership link', e));
     if (redraw) draw();
@@ -817,39 +822,35 @@ export async function viewUmpires(ctx) {
   // Bringing in the lists an association already keeps: its membership file, then one availability
   // file per group. Both can be repeated; nothing a member typed themselves is overwritten.
   function membershipImport() {
-    const box = h('textarea', { rows: 6, placeholder: 'Paste the list here — heading row first, one member per row.\n\nFirst name\tLast name\tEmail\tMobile\tMembership type\tMember since\tStatus\nJane\tSmith\tj.smith@example.com\t0400 000 000\tOrdinary member\t15/04/2019\tActive' });
+    const box = h('textarea', { rows: 6, placeholder: 'Paste the list here — heading row first, one member per row.\n\nFirst name\tLast name\tEmail\tMobile\tMembership type\tMember since\nJane\tSmith\tj.smith@example.com\t0400 000 000\tOrdinary member\t15/04/2019' });
     const file = h('input', { type: 'file', accept: '.csv,.tsv,.txt,text/csv,text/plain' });
-    const asActive = h('select', { 'aria-label': 'People without a Status are' },
-      h('option', { value: 'yes' }, 'Active (they umpire)'), h('option', { value: 'no' }, 'Inactive (member only)'));
     const out = h('div', { class: 'import-out' });
     const checkBtn = h('button', { class: 'btn', type: 'button' }, 'Check it');
     const importBtn = h('button', { class: 'btn primary', type: 'button', disabled: true }, 'Import');
     let plan = null;
     const check = () => {
-      plan = planMembers({ text: box.value, members, defaultActive: asActive.value === 'yes', types });
+      plan = planMembers({ text: box.value, members, types });
       importBtn.disabled = !!plan.error;
       if (plan.error) { setChildren(out, h('p', { class: 'notice warn' }, plan.error)); return; }
       setChildren(out,
-        h('p', {}, h('strong', {}, `${plan.added.length} new, ${plan.updated.length} already on the list`), ` · ${plan.active} active, ${plan.inactive} inactive`),
-        plan.updated.length > 0 && h('p', { class: 'muted small' }, 'For people already on the list only active or inactive, membership type and member since are updated. Their own details stay as they keep them.'),
+        h('p', {}, h('strong', {}, `${plan.added.length} new, ${plan.updated.length} already on the list`)),
+        plan.updated.length > 0 && h('p', { class: 'muted small' }, 'For people already on the list only membership type and member since are updated. Their own details stay as they keep them.'),
         plan.unknownTypes.length > 0 && h('p', { class: 'notice warn' }, `Not one of your membership types in Settings: ${plan.unknownTypes.join(', ')}. They are imported as written; add the type in Settings to set its fee.`),
         plan.bad.length > 0 && h('p', { class: 'notice warn' }, `${plan.bad.length} row(s) skipped: they need an email address and a name. First: ${plan.bad[0]}`),
         h('ul', { class: 'plain import-preview' }, plan.people.slice(0, 10).map(p => h('li', { class: 'row-between' },
           h('span', {}, h('strong', {}, p.name || p.email), ' ', h('span', { class: 'muted small' }, p.email)),
-          h('span', {}, h('span', { class: 'chip ' + (p.existing ? '' : 'ok') }, p.existing ? 'Update' : 'New'), ' ',
-            h('span', { class: 'chip ' + (p.active ? 'ok' : 'muted-chip') }, p.active ? 'Active' : 'Inactive'))))),
+          h('span', { class: 'chip ' + (p.existing ? '' : 'ok') }, p.existing ? 'Update' : 'New')))),
         plan.people.length > 10 && h('p', { class: 'muted small' }, `… and ${plan.people.length - 10} more`));
     };
     file.onchange = async () => { const f = file.files && file.files[0]; if (f) { box.value = await f.text(); check(); } };
     box.oninput = () => { importBtn.disabled = true; };
-    asActive.onchange = () => { if (plan) check(); };
     checkBtn.onclick = check;
     importBtn.onclick = busy(importBtn, guard(async () => {
       check();
       if (!plan || plan.error) return;
       const res = await applyMembers(store, plan, { newPid, today: todayLocal() });
       for (const p of plan.people) if (store.saveMembershipLink) {
-        const u = { ...(p.existing || {}), email: p.email, membership: p.membership || (p.existing && p.existing.membership) || '', active: p.active, memberSince: p.memberSince || (p.existing && p.existing.memberSince) || todayLocal() };
+        const u = { ...(p.existing || {}), email: p.email, membership: p.membership || (p.existing && p.existing.membership) || '', active: true, memberSince: p.memberSince || (p.existing && p.existing.memberSince) || todayLocal() };
         store.saveMembershipLink(p.email, membershipLink(store.org, u)).catch(e => console.error('membership link', e));
       }
       toast(`${res.added} member(s) added, ${res.updated} updated`, 'ok');
@@ -858,9 +859,8 @@ export async function viewUmpires(ctx) {
     }));
     return h('div', { class: 'import-step' },
       h('h3', {}, '1. Membership file'),
-      h('p', { class: 'muted' }, 'Your list of members, with a heading row. Columns are found by name: First name, Last name (or Name), Email, Mobile, Membership type, Member since and Status (Active or Inactive). Copy it out of Excel or Google Sheets and paste it, or choose a CSV file. You can bring in your active and inactive members as one file or two.'),
+      h('p', { class: 'muted' }, 'Your list of members, with a heading row. Columns are found by name: First name, Last name (or Name), Email, Mobile, Membership type and Member since. Copy it out of Excel or Google Sheets and paste it, or choose a CSV file. Everyone in it becomes a member; whether they are an Active umpire follows the availability they give or you bring in next.'),
       box, h('p', {}, file),
-      h('label', {}, 'People with no Status in the file are', asActive),
       h('p', {}, checkBtn, ' ', importBtn), out);
   }
 
@@ -883,11 +883,11 @@ export async function viewUmpires(ctx) {
       holder);
   }
 
-  // The list: waiting for approval first, then everyone else, by last name. One click on a tag changes
-  // it; ticked rows can be changed together. Suspending is done on the member's profile.
+  // The list: waiting for approval first, then everyone else, by last name. Approve or reject here
+  // (one at a time or ticked together); suspending is done on the member's profile.
   const FILTERS = [['all', 'All'], ['active', 'Active umpires'], ['inactive', 'Inactive members'], ['applied', 'Waiting for approval'],
     ['suspended', 'Suspended'], ['rejected', 'Rejected'], ['nonmember', 'Not members']];
-  const inFilter = u => { const st = memberStatus(u); return ui.filter === 'all' ? !['rejected', 'nonmember'].includes(st) : st === ui.filter; };
+  const inFilter = u => { const st = statusOf(u); return ui.filter === 'all' ? !['rejected', 'nonmember'].includes(st) : st === ui.filter; };
   const change = (list, kind) => guard(async () => {
     for (const u of list) {
       Object.assign(u, MEMBER_CHANGE[kind](u));
@@ -900,16 +900,14 @@ export async function viewUmpires(ctx) {
   })();
   // What a bulk action can be applied to.
   const CAN = {
-    active: u => ['member', 'applied'].includes(membershipOf(u)) && !u.active,
-    inactive: u => ['member', 'applied'].includes(membershipOf(u)) && (u.active || membershipOf(u) === 'applied'),
     approve: u => ['applied', 'rejected', 'nonmember'].includes(membershipOf(u)),
     reject: u => membershipOf(u) === 'applied',
   };
 
   const draw = () => {
-    const by = s2 => members.filter(u => memberStatus(u) === s2);
+    const by = s2 => members.filter(u => statusOf(u) === s2);
     const active = by('active'), inactive = by('inactive');
-    const counts = Object.fromEntries(FILTERS.map(([k]) => [k, k === 'all' ? members.filter(u => !['rejected', 'nonmember'].includes(memberStatus(u))).length : by(k).length]));
+    const counts = Object.fromEntries(FILTERS.map(([k]) => [k, k === 'all' ? members.filter(u => !['rejected', 'nonmember'].includes(statusOf(u))).length : by(k).length]));
     const filters = FILTERS.filter(([k]) => k === 'all' || k === 'active' || k === 'inactive' || counts[k] > 0);
     if (!filters.some(f => f[0] === ui.filter)) ui.filter = 'all';
     const q = ui.q.trim().toLowerCase();
@@ -918,14 +916,11 @@ export async function viewUmpires(ctx) {
     for (const pid of [...ui.picked]) if (!shown.some(u => u.pid === pid)) ui.picked.delete(pid);
     const picked = shown.filter(u => ui.picked.has(u.pid));
 
-    // Umpiring: click to switch between Active umpire and Inactive member (members only).
+    // Umpiring: from this season's availability (Available to at least one date = Active umpire).
     const umpiringCell = u => {
-      const m = membershipOf(u);
-      if (m === 'applied') return h('span', { class: 'muted small' }, u.wantsToUmpire === false ? 'Wants: member only' : 'Wants to umpire');
-      if (m !== 'member') return h('span', { class: 'muted' }, '—');
-      return h('button', { type: 'button', class: 'chip tagbtn ' + (u.active ? 'ok' : 'muted-chip'), title: u.active ? 'Click to make them an Inactive member' : 'Click to make them an Active umpire',
-        onclick: () => change([u], u.active ? 'inactive' : 'active') }, u.active ? 'Active umpire' : 'Inactive member',
-        !u.active && u.wantsToUmpire ? h('span', { class: 'sr' }, ' (asked to umpire)') : null);
+      if (membershipOf(u) !== 'member') return h('span', { class: 'muted' }, '\u2014');
+      const on = statusOf(u) === 'active';
+      return h('span', { class: 'chip ' + (on ? 'ok' : 'muted-chip'), title: on ? 'Available to at least one date this season' : 'No date marked Available this season' }, on ? 'Active umpire' : 'Inactive member');
     };
     // Membership: Approve for someone waiting; otherwise where they stand.
     const membershipCell = u => {
@@ -942,21 +937,21 @@ export async function viewUmpires(ctx) {
     const COLS = [all, 'Name', 'Umpiring', 'Membership', 'Membership type'];
     setChildren(wrap,
       h('h1', {}, 'Members'),
-      h('p', { class: 'muted' }, 'Active umpires give their availability and are appointed. Inactive members are members who do not umpire; they are kept for your communications. Click a tag to change it.'),
+      h('p', { class: 'muted' }, 'Active umpires are members who said Available to at least one date this season. Everyone else (no answer, or Not available to everything) is an Inactive member, kept for your communications. It follows their availability by itself.'),
       h('p', { class: 'member-mail' }, emailBtn('Email active members', active), ' ', emailBtn('Email inactive members', inactive)),
       h('section', { class: 'card' },
         h('div', { class: 'member-tools' }, search,
           h('select', { 'aria-label': 'Show', onchange: e => { ui.filter = e.target.value; draw(); } },
             filters.map(([k, label]) => h('option', { value: k, selected: ui.filter === k }, `${label} (${counts[k]})`)))),
         picked.length > 0 && h('div', { class: 'bulk-bar' }, h('strong', {}, `${picked.length} selected`),
-          bulk('active', 'Make active umpires'), bulk('inactive', 'Make inactive members'), bulk('approve', 'Approve', 'primary'), bulk('reject', 'Reject', 'danger'),
+          bulk('approve', 'Approve', 'primary'), bulk('reject', 'Reject', 'danger'),
           h('button', { type: 'button', class: 'link', onclick: () => { ui.picked.clear(); draw(); } }, 'Clear')),
         shown.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'board members' },        // stacks into cards on a phone
           h('thead', {}, h('tr', {}, COLS.map(c => h('th', {}, c)))),
-          h('tbody', {}, shown.map(u => { const st = memberStatus(u); return h('tr', { class: st === 'applied' ? 'needs' : st === 'active' ? '' : 'inactive', 'data-pid': u.pid },
+          h('tbody', {}, shown.map(u => { const st = statusOf(u); return h('tr', { class: st === 'applied' ? 'needs' : st === 'active' ? '' : 'inactive', 'data-pid': u.pid },
             h('td', {}, h('input', { type: 'checkbox', 'aria-label': 'Select', checked: ui.picked.has(u.pid),
               onchange: e => { e.target.checked ? ui.picked.add(u.pid) : ui.picked.delete(u.pid); draw(); } })),
-            h('td', {}, profileLink(u), !u.active && u.wantsToUmpire && membershipOf(u) === 'member' ? h('span', { class: 'chip pu tag' }, 'Asked to umpire') : null),
+            h('td', {}, profileLink(u)),
             h('td', {}, umpiringCell(u)),
             h('td', {}, membershipCell(u)),
             h('td', {}, ['member', 'suspended'].includes(membershipOf(u)) ? membershipTypeCell(u) : '')); }))))
