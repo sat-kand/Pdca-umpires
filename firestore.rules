@@ -107,7 +107,7 @@ service cloud.firestore {
 
       // Officers may rename it and set its Play Cricket link, never its plan.
       allow update: if isPlatformAdmin()
-        || (isOrgAdmin(orgId) && onlyChanges(['name', 'playCricketId', 'notifyEmail', 'membership', 'playerUmpire', 'updatedAt']));
+        || (isOrgAdmin(orgId) && onlyChanges(['name', 'playCricketId', 'notifyEmail', 'membership', 'playerUmpire', 'groups', 'gradeGroups', 'gradeUmpires', 'weekStart', 'updatedAt']));
       allow delete: if false;
 
       // Officers of this association.

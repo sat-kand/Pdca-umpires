@@ -294,3 +294,9 @@ a.member-link:hover { text-decoration-color: currentColor; }
 .member-profile .assoc-card details { border-top: 1px solid var(--line); padding: .6rem 0 .2rem; }
 .member-profile .assoc-card summary { cursor: pointer; font-weight: 600; min-height: 32px; }
 .member-profile .assoc-card input[type=date] { max-width: 11rem; }
+/* Allocate: one section per week */
+.week { margin: 1.4rem 0 .4rem; }
+.week-head { display: flex; align-items: baseline; gap: .7rem; flex-wrap: wrap; margin-bottom: .5rem; }
+.week-head h2 { margin: 0; font-size: 1.2rem; }
+.continuing { margin: 0 0 .6rem; font-size: .9rem; }
+.continuing li { margin: .15rem 0; }

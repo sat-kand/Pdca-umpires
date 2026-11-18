@@ -1,3 +1,4 @@
+import { applyOrg } from './org-setup.js';
 import { viewMember, viewMyProfile } from './views-member.js';
 import { CONFIG, DEMO_ORG } from './config.js';
 import { h, setChildren, spinner, toast } from './ui.js';
@@ -30,6 +31,7 @@ async function loadUser(user) {
     }
     if (!id && S.store.mode === 'demo') id = DEMO_ORG.id;      // the demo has one built-in association: nobody needs a link to try it
     S.org = id ? await S.store.useOrg(id) : null;
+    applyOrg(S.org);
     if (id && !S.org) { localStorage.removeItem(ORG_KEY); if (localStorage.getItem(JOIN_KEY)) toast('That association link is not valid.', 'err'); }
   } catch (e) { console.warn('association load failed', e); }
   const joining = localStorage.getItem(JOIN_KEY);

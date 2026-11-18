@@ -226,9 +226,9 @@ test('same-length competition is shown by round with Day 1 / Day 2; mixed length
   assert.deepEqual(buildCalendar(games), [
     { comp: 'senior', label: 'Round 9', dates: [X, Y] },
     { comp: 'senior', label: 'Round 10', dates: [Z, W] },
+    { comp: 'junior', dates: [X, Y] },
     { comp: 't20', label: 'Round 1', dates: [Y] },
     { comp: 't20', label: 'Round 2', dates: [Z] },
-    { comp: 'junior', dates: [X, Y] },
   ]);
 });
 

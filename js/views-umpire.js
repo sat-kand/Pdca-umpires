@@ -3,7 +3,7 @@
 import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
 import { recordWithdrawal } from './withdrawals.js';
 import { PLAYER_UMPIRE_COMPS } from './player-umpire.js';
-import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName } from './logic.js';
+import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS } from './logic.js';
 
 export function viewLogin(ctx) {
   const { store } = ctx;
@@ -95,7 +95,7 @@ export async function viewMy(ctx) {
   modes.regular = true;                          // Full umpire is a heading; each competition is ticked on its own
   // Which competitions they give availability for. Before they have said, the ones they have
   // answered in, or all of them for someone new.
-  const ALL_COMPS = ['senior', 'junior', 't20'];
+  const ALL_COMPS = COMPS.map(c => c.key);           // the association's groups, in its order
   if (!Array.isArray(modes.comps)) {
     const answered = ALL_COMPS.filter(k => Object.keys((existing && existing.days) || {}).some(x => x.startsWith(k + ':')));
     modes.comps = answered.length ? answered : [...ALL_COMPS];
@@ -248,7 +248,7 @@ export async function viewMy(ctx) {
       try { lists = (await store.listFixtureLists()).filter(l => PLAYER_UMPIRE_COMPS.includes(l.comp) && (l.end || '') >= today && (l.games || []).length).sort((a, b) => (a.start || '').localeCompare(b.start || '')); }
       catch (e) { console.error(e); lists = []; }
     }
-    const order = ['senior', 'junior', 't20'];
+    const order = COMPS.map(c => c.key);
     const compsHere = order.filter(k => lists.some(l => l.comp === k));
     if (!compsHere.includes(ui.comp)) ui.comp = compsHere[0] || '';
     const roundsHere = lists.filter(l => l.comp === ui.comp);

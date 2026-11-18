@@ -46,6 +46,7 @@ export function normaliseMatch(m, grade, comp) {
   return {
     id: m.id,
     comp: comp.name,
+    compId: comp.id || '',
     grade: grade.name,
     roundName: (m.round && m.round.name) || '',
     matchType: m.matchType || '',

@@ -4,7 +4,7 @@ import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './u
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
   slotOptions, recount, summarise, formatSummary, publishState, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
-  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot,
+  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot, umpiresForGrade, suggestUmpires, guessGroup, DEFAULT_GROUPS,
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
@@ -14,7 +14,7 @@ import { membershipTypes, feeFor, money, renewalText } from './views-org.js';
 import { membershipLink } from './views-member.js';
 const profileLink = u => h('a', { class: 'member-link', href: `#/admin/member/${encodeURIComponent(u.pid)}`, title: 'Open profile' }, u.name);
 import { planImport, applyImport } from './import-availability.js';
-import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, TILE_ORDER, addDays } from './rounds.js';
+import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, addDays, weekOf, upcomingRounds } from './rounds.js';
 
 // A finished round can still be changed for this many days after its last game (an umpire replaced on
 // the morning, say). After that it is a record: Availability and Report only, no Assign board.
@@ -42,10 +42,12 @@ function tabs(rid, active, locked = false) {
 // listed on the board, and the slot totals follow. `onDone` runs after saving.
 async function openGradesModal({ store, round, chosenGames = new Set(), onDone }) {
   const [games, settings] = await Promise.all([store.listGames(round.id), store.getSettings()]);
-  const live = games.filter(g => !g.removed && compKeyOf(g) === (round.comp || 'senior'));
+  // Grades the association set to 0 umpires (Blast, under-11s, ...) are never offered.
+  const live = games.filter(g => !g.removed && compKeyOf(g) === (round.comp || 'senior') && umpiresForGrade(g.grade) !== 0);
   const grades = [...new Set(live.map(g => g.grade))].sort(compareGrades);
   const count = gr => live.filter(g => g.grade === gr).length;
-  const perGame = g => ((g.slots || 0) || 1);                                          // umpires per game: what the board has, else 1
+  // Umpires per game: what the board has, else what the association set for the grade, else 1.
+  const perGame = g => ((g.slots || 0) || umpiresForGrade(g.grade) || 1);
   // A game turned on only because a player umpire chose it does not count as selecting its grade.
   const want = Object.fromEntries(grades.map(gr => [gr, live.some(g => g.grade === gr && isPicked(g) && !g.puOnly)]));
   const hasPu = g => Object.values(g.alloc || {}).some(arr => (arr || []).some(a => a && a.pu));
@@ -119,23 +121,38 @@ export async function viewAdminHome(ctx) {
 
   const empty = c => h('div', { class: 'card comp-tile empty' }, h('h2', {}, c.label), h('p', { class: 'muted' }, state.syncing ? 'Loading fixtures…' : 'No upcoming games'));
 
-  function tile(r) {
+  const startDay = Number.isInteger(store.org && store.org.weekStart) ? store.org.weekStart : 1;
+  // A tile shows only its own week's days; a two-day game's second day next week is a note, not a date.
+  function tile(r, week) {
     const c = COMPS.find(x => x.key === r.comp) || { label: compLabel(r.comp) };
     const st = r.stats || { needed: 0, filled: 0 };
     const picked = r.picked || 0;
+    const end = addDays(week, 6);
+    const here = (r.dates || []).filter(d => d >= week && d <= end);
+    const later = (r.dates || []).filter(d => d > end);
     return h('div', { class: 'card comp-tile' },
       h('a', { class: 'tile-body', href: `#/admin/round/${r.id}` },
         h('h2', {}, c.label),
-        h('div', { class: 'tile-round' }, fmtRange(r.dates || [])),
-        h('div', { class: 'muted' }, r.formats || ''),
+        h('div', { class: 'tile-round' }, here.map(d => fmtDay(d)).join(' & ')),
+        h('div', { class: 'muted' }, r.formats || '', later.length ? ` \u00b7 continues ${later.map(fmtDay).join(' & ')}` : ''),
         h('div', { class: 'tile-stats' },
-          h('span', { class: 'chip' }, `${picked} grade${picked === 1 ? '' : 's'}`),
-          h('span', { class: 'chip ' + (st.needed && st.filled >= st.needed ? 'ok' : 'warn') }, `${st.filled}/${st.needed} slots filled`),
-          (p => h('span', { class: 'chip ' + p.cls }, p.short))(publishState(r)))));
+          picked
+            ? [h('span', { class: 'chip ' + (st.needed && st.filled >= st.needed ? 'ok' : 'warn') }, `${st.filled} / ${st.needed} filled`), ' ',
+               (p => h('span', { class: 'chip ' + p.cls }, p.short))(publishState(r))]
+            : h('span', { class: 'chip warn' }, 'Choose grades'))));
   }
+  const weekName = w => {
+    const now = weekOf(today, startDay);
+    return w === now ? 'This week' : w === addDays(now, 7) ? 'Next week' : w < now ? 'Started last week' : `Week of ${fmtDay(w)}`;
+  };
+  // Second days of two-day games that started in an earlier week, shown under the week they fall in.
+  const continuing = week => upcomingRounds(state.rounds, today)
+    .filter(r => weekOf(r.start, startDay) < week && (r.dates || []).some(d => d >= week && d <= addDays(week, 6)))
+    .map(r => h('li', {}, h('a', { href: `#/admin/round/${r.id}` }, `${compLabel(r.comp)}: two-day games from ${fmtDay(r.start)}`),
+      ` continue ${(r.dates || []).filter(d => d >= week && d <= addDays(week, 6)).map(fmtDay).join(' & ')} (allocated there)`));
 
   function draw() {
-    const shown = visibleRounds(state.rounds, today, state.more);
+    const shown = visibleRounds(state.rounds, today, state.more, startDay);
     // Finished rounds that were worked on (something allocated, or published), newest first.
     const past = state.rounds.filter(r => (r.end || '') < today && (r.published || ((r.stats || {}).filled || 0) > 0)).sort((x, y) => (y.start || '').localeCompare(x.start || ''));
     setChildren(wrap,
@@ -153,9 +170,12 @@ export async function viewAdminHome(ctx) {
           d.shown.map((g, i) => [i ? ', ' : '', h('a', { href: `#/admin/round/${g.roundId}` }, `${g.label} (${fmtDay(g.date)})`)])))),
         h('p', { class: 'muted' }, 'Those slots are now empty and the games are flagged on the board.'),
         h('button', { class: 'btn small', type: 'button', onclick: async ev => { ev.currentTarget.disabled = true; await dismissWithdrawals(store, state.dropouts); state.dropouts = []; draw(); } }, 'Got it')),
-      shown.sets.map((set, i) => [i > 0 && h('hr', { class: 'set-break' }), h('div', { class: 'cards' }, set.map(tile))]),
-      COMPS.some(c => !currentRound(state.rounds, c.key, today)) && h('div', { class: 'cards' }, [...COMPS].sort((a, b) => TILE_ORDER.indexOf(a.key) - TILE_ORDER.indexOf(b.key)).filter(c => !currentRound(state.rounds, c.key, today)).map(empty)),
-      shown.hasMore && h('div', { class: 'load-more' }, h('button', { class: 'btn', type: 'button', onclick: () => { state.more++; draw(); } }, 'Load more')),
+      shown.sets.map(set => h('section', { class: 'week' },
+        h('div', { class: 'week-head' }, h('h2', {}, weekName(set.week)), h('span', { class: 'muted' }, `${fmtDay(set.week)} – ${fmtDay(addDays(set.week, 6))}`)),
+        (c => c.length > 0 && h('ul', { class: 'plain continuing muted' }, c))(continuing(set.week)),
+        h('div', { class: 'cards' }, set.map(r => tile(r, set.week))))),
+      COMPS.some(c => !currentRound(state.rounds, c.key, today)) && h('div', { class: 'cards' }, COMPS.filter(c => !currentRound(state.rounds, c.key, today)).map(empty)),
+      shown.hasMore && h('div', { class: 'load-more' }, h('button', { class: 'btn', type: 'button', onclick: () => { state.more++; draw(); } }, 'Load next week')),
       h('details', { class: 'card past-rounds', open: state.pastOpen, ontoggle: ev => { state.pastOpen = ev.currentTarget.open; } },
         h('summary', {}, `Past allocations (${past.length})`),
         !past.length && h('p', { class: 'muted' }, 'Nothing here yet. A round moves here once its last day has passed, if it was published or had umpires allocated.'),
@@ -513,7 +533,7 @@ export async function viewSeasonAvailability(ctx) {
   // rest are marked: they still appear, because their answers came in with the season's import.
   let people = umpires.slice().sort((a, b) => Number(b.active !== false) - Number(a.active !== false) || compareMembers(a, b));
   const members = () => people.filter(u => u.active !== false);
-  const comps = [...COMPS].sort((a, b) => TILE_ORDER.indexOf(a.key) - TILE_ORDER.indexOf(b.key)).filter(c => season.calendar.some(e => (e.comp || 'senior') === c.key));
+  const comps = COMPS.filter(c => season.calendar.some(e => (e.comp || 'senior') === c.key));
   const wrap = h('div');
   const ui = { comp: comps[0].key, past: false, q: '', on: null };       // on = show only umpires available on this date
   const ICON = { yes: '\u2713', no: '\u2717', none: '' };

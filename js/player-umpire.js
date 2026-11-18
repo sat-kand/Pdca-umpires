@@ -10,8 +10,14 @@
 
 import { fmtDay, gradeShort, summarise } from './logic.js';
 
-// In PDCA a player umpire may only take Senior games.
+// The groups whose games player umpires may choose. In PDCA: Senior only. An association can set its own
+// (org.playerUmpire.groups); otherwise its 'senior' group if it has one.
 export const PLAYER_UMPIRE_COMPS = ['senior'];
+export function setPlayerUmpireGroups(org, groupKeys) {
+  const wanted = (org && org.playerUmpire && Array.isArray(org.playerUmpire.groups) && org.playerUmpire.groups.length)
+    ? org.playerUmpire.groups : ['senior'];
+  PLAYER_UMPIRE_COMPS.splice(0, PLAYER_UMPIRE_COMPS.length, ...wanted.filter(k => groupKeys.includes(k)));
+}
 
 export const pickKey = (roundId, gameId, date) => `${roundId}|${gameId}|${date}`;
 const splitKey = k => { const [roundId, gameId, date] = k.split('|'); return { roundId, gameId, date }; };

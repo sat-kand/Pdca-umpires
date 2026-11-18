@@ -19,7 +19,7 @@ export function membershipLink(org, u) {
 const pct = x => `${Math.round(x * 100)}%`;
 // A date with its year, for things that can be years ago: "1 Oct 2014".
 const fmtLong = d => (d ? new Date(`${d}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
-const ORDER = ['senior', 'junior', 't20'];
+const ORDER = { map: f => COMPS.map(c => c.key).map(f) };   // the association's groups, in its order
 const ymd = iso => (iso || '').slice(0, 10);
 
 // The same page serves a member looking at their own profile (`self`): read-only, only what was

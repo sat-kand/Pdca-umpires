@@ -2,7 +2,8 @@
 // Every association has its own umpires, officers, fixtures and allocations.
 
 import { h, toast, busy, copyText, setChildren } from './ui.js';
-import { emailKey } from './logic.js';
+import { emailKey, COMPS, DEFAULT_GROUPS, guessGroup, suggestUmpires, compareGrades, gradeShort } from './logic.js';
+import { applyOrg } from './org-setup.js';
 
 // Used when the tool's owner sets up an association; it then edits its own list in Settings.
 export const DEFAULT_TYPES = [
@@ -121,7 +122,7 @@ export async function viewOrgSettings(ctx) {
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
     return h('form', { class: 'card', onsubmit: busy(saveBtn, async e => {
       e.preventDefault();
-      await store.saveOrg({ playerUmpire: { enabled: on.checked, title: title.value.trim(), description: text.value.trim() }, updatedAt: new Date().toISOString() });
+      await store.saveOrg({ playerUmpire: { ...p, enabled: on.checked, title: title.value.trim(), description: text.value.trim() }, updatedAt: new Date().toISOString() });
       await ctx.refreshUser();
       toast('Saved', 'ok');
       await draw();
@@ -131,6 +132,73 @@ export async function viewOrgSettings(ctx) {
     h('p', { class: 'muted small' }, 'When this is off, members only see "Full umpire". Games already chosen stay where they are.'),
     h('label', {}, 'What it is called (leave empty for "Player umpire")', title),
     h('label', {}, 'What members are told (leave empty to show nothing)', text),
+    saveBtn);
+  }
+
+  // Groups and grades: which grades are allocated together (Allocate tiles, availability, reports), and
+  // how many umpires each grade needs. Suggested from the fixtures; the officer adjusts once.
+  async function groupsCard() {
+    const org = store.org;
+    let lists = [];
+    try { lists = store.listFixtureLists ? await store.listFixtureLists() : []; } catch (e) { console.error(e); }
+    const seen = new Map();
+    for (const l of lists) for (const g of l.games || []) if (!seen.has(g.grade)) seen.set(g.grade, g.comp || '');
+    for (const gr of Object.keys(org.gradeGroups || {})) if (!seen.has(gr)) seen.set(gr, '');
+    const grades = [...seen.keys()].sort(compareGrades);
+    const ui = {
+      groups: ((org.groups && org.groups.length) ? org.groups : DEFAULT_GROUPS).map(g => ({ ...g })),
+      gradeGroups: { ...(org.gradeGroups || {}) },
+      gradeUmpires: { ...(org.gradeUmpires || {}) },
+    };
+    const groupOf = gr => ui.gradeGroups[gr] && ui.groups.some(g => g.key === ui.gradeGroups[gr]) ? ui.gradeGroups[gr]
+      : (ui.groups.some(g => g.key === guessGroup(seen.get(gr))) ? guessGroup(seen.get(gr)) : ui.groups[0].key);
+    const umpOf = gr => (gr in ui.gradeUmpires ? ui.gradeUmpires[gr] : suggestUmpires(gr, seen.get(gr)));
+    const box = h('div');
+    const draw2 = () => {
+      const used = k => grades.some(gr => groupOf(gr) === k);
+      setChildren(box,
+        h('h3', {}, 'Groups'),
+        h('ul', { class: 'plain group-list' }, ui.groups.map((g, i) => h('li', { class: 'row-gap' },
+          h('input', { value: g.name, 'aria-label': `Group ${i + 1} name`, oninput: e => {
+            g.name = e.target.value;                        // rename it in the grade drop-downs as you type
+            box.querySelectorAll(`option[value="${g.key}"]`).forEach(o => { o.textContent = g.name || '(no name)'; });
+          } }),
+          h('span', { class: 'muted small' }, `${grades.filter(gr => groupOf(gr) === g.key).length} grades`),
+          ui.groups.length > 1 && !used(g.key) && h('button', { class: 'link', type: 'button', onclick: () => { ui.groups.splice(i, 1); draw2(); } }, 'Remove')))),
+        h('button', { class: 'btn small', type: 'button', onclick: () => { ui.groups.push({ key: 'g' + Date.now().toString(36), name: 'New group' }); draw2(); } }, 'Add group'),
+        h('h3', {}, 'Grades'),
+        !grades.length ? h('p', { class: 'muted' }, 'Grades appear here once fixtures have been loaded on Allocate.')
+          : h('div', { class: 'table-wrap' }, h('table', { class: 'board grades-table' },
+            h('thead', {}, h('tr', {}, ['Grade', 'Competition', 'Group', 'Umpires'].map(c => h('th', {}, c)))),
+            h('tbody', {}, grades.map(gr => h('tr', { class: umpOf(gr) === 0 ? 'inactive' : '' },
+              h('td', {}, h('span', { class: 'chip grade' }, gradeShort(gr)), ' ', h('span', { class: 'muted small' }, gr)),
+              h('td', { class: 'muted small' }, seen.get(gr) || ''),
+              h('td', {}, h('select', { 'aria-label': `Group for ${gr}`, onchange: e => { ui.gradeGroups[gr] = e.target.value; draw2(); } },
+                ui.groups.map(g => h('option', { value: g.key, selected: groupOf(gr) === g.key }, g.name || '(no name)')))),
+              h('td', {}, h('select', { 'aria-label': `Umpires for ${gr}`, onchange: e => { ui.gradeUmpires[gr] = Number(e.target.value); draw2(); } },
+                [0, 1, 2].map(n => h('option', { value: n, selected: umpOf(gr) === n }, n === 0 ? 'None' : String(n)))))))))),
+        h('p', { class: 'row-gap' },
+          h('button', { class: 'link', type: 'button', onclick: () => { ui.gradeGroups = {}; ui.gradeUmpires = {}; draw2(); } }, 'Use the suggestions')));
+    };
+    draw2();
+    const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
+    return h('form', { class: 'card groups-card', onsubmit: busy(saveBtn, async e => {
+      e.preventDefault();
+      const groups = ui.groups.map(g => ({ key: g.key, name: (g.name || '').trim() || 'Group' }));
+      const gradeGroups = Object.fromEntries(grades.map(gr => [gr, groupOf(gr)]));
+      const gradeUmpires = Object.fromEntries(grades.map(gr => [gr, umpOf(gr)]));
+      await store.saveOrg({ groups, gradeGroups, gradeUmpires, updatedAt: new Date().toISOString() });
+      applyOrg(store.org);
+      // Rebuild the weeks on the next visit to Allocate, with games in their new groups.
+      const season = await store.getSeason();
+      if (season) await store.saveSeason({ ...season, updatedAt: '1970-01-01T00:00:00.000Z' });
+      toast('Saved. Allocate will regroup the fixtures next time it opens.', 'ok');
+      await draw();
+    }) },
+    h('h2', {}, 'Groups and grades'),
+    h('p', { class: 'muted' }, 'A group is a set of grades you allocate together, such as Seniors, Juniors or Friday Girls. Each has its own tile on Allocate, and members give their availability per group. Grades set to "None" never need umpires and are left off the board.'),
+    box,
+    h('p', { class: 'muted small' }, 'Moving a grade to another group moves its upcoming games there. Members\' availability is kept per group, so check it after moving grades.'),
     saveBtn);
   }
 
@@ -163,6 +231,7 @@ export async function viewOrgSettings(ctx) {
       h('p', { class: 'muted small' }, 'Where to email when an umpire pulls out of a published game.'),
       save),
 
+      await groupsCard(),
       membershipCard(),
       playerUmpireCard(),
 

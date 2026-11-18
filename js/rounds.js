@@ -4,7 +4,7 @@
 
 import { CONFIG } from './config.js';
 import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures, mergeFixtures } from './fixtures.js';
-import { buildCalendar, compKeyOf, summarise, COMPS } from './logic.js';
+import { buildCalendar, compKeyOf, summarise, COMPS, groupOrder } from './logic.js';
 
 // Bump when the information saved on each round changes shape, so stored rounds are rebuilt on the next visit.
 export const SCHEMA = 5;
@@ -18,23 +18,22 @@ export function defaultSlotsFn(settings) {
   return g => (settings && settings.slotsByGrade && settings.slotsByGrade[g.grade]) || 0;
 }
 
-// A competition's rounds, soonest first. Each is the games whose first day falls in one week, the week starting at the
-// earliest game not yet covered. A week, not a round number, because grades in the same competition (Juniors especially)
-// number their rounds differently. A two-day round and the one-day games that start on its second Saturday are
-// therefore two windows, so each can be given its own umpires.
-export function roundWindows(games, today, max = 12) {
+// The first day of the week a date falls in. Weeks run Monday to Sunday unless the association says
+// otherwise (startDay: 0 = Sunday ... 6 = Saturday).
+export const weekOf = (iso, startDay = 1) => {
+  const d = new Date(iso + 'T00:00:00Z').getUTCDay();
+  return addDays(iso, -((d - startDay + 7) % 7));
+};
+
+// A group's rounds, soonest first: one per calendar week, holding the games whose FIRST day is in that
+// week (Friday nights, Saturdays and Sundays together). A two-day game belongs to the week it starts in,
+// where both its days are allocated; its second day is shown in the next week as "continuing".
+// A week, not a round number, because grades number their rounds differently and associations play
+// on different days.
+export function roundWindows(games, today, max = 12, startDay = 1) {
   const live = games.filter(g => !g.removed && lastDay(g) >= today);
-  const out = [];
-  let after = '';
-  while (out.length < max) {
-    const rest = live.filter(g => g.days[0].date > after);
-    if (!rest.length) break;
-    const from = rest.map(g => g.days[0].date).sort()[0];
-    const to = addDays(from, 6);
-    out.push({ from, to, games: rest.filter(g => g.days[0].date <= to) });
-    after = to;
-  }
-  return out;
+  const weeks = [...new Set(live.map(g => weekOf(g.days[0].date, startDay)))].sort().slice(0, max);
+  return weeks.map(from => ({ from, to: addDays(from, 6), games: live.filter(g => weekOf(g.days[0].date, startDay) === from) }));
 }
 
 export const nextRoundWindow = (games, today) => roundWindows(games, today, 1)[0] || null;
@@ -67,44 +66,26 @@ export const upcomingRounds = (rounds, today) => rounds
 // A competition's soonest unfinished round.
 export const currentRound = (rounds, key, today) => upcomingRounds(rounds, today).find(r => r.comp === key) || null;
 
-// The order tiles are shown in.
-export const TILE_ORDER = ['senior', 'junior', 't20'];
+// The order tiles are shown in: the association's group order.
+export const tileOrder = groupOrder;
 
-// The Sunday that ends the weekend a date falls in (a Saturday takes the Sunday after it).
-const weekendEnd = iso => addDays(iso, (7 - new Date(iso + 'T00:00:00Z').getUTCDay()) % 7);
-
-// Rounds grouped into sets: the appointment work for one stretch of play, soonest first.
-// A set starts with the earliest round left over. It takes every round that starts in that weekend. If something in
-// it runs into later weekends (a two-day round), it also takes the one-day rounds that start in those weekends; a
-// further two-day round starts the next set.
-export function roundSets(rounds, today) {
-  const left = upcomingRounds(rounds, today);
-  const order = k => TILE_ORDER.indexOf(k);
-  const sets = [];
-  while (left.length) {
-    const first = left.shift();
-    const set = [first];
-    const anchorEnd = weekendEnd(first.start);
-    let end = weekendEnd(first.end);
-    for (let changed = true; changed;) {
-      changed = false;
-      for (let i = 0; i < left.length; i++) {
-        const r = left[i];
-        if (r.start <= anchorEnd || (r.start <= end && r.start === r.end)) {
-          set.push(r); left.splice(i--, 1); changed = true;
-          const e = weekendEnd(r.end); if (e > end) end = e;
-        }
-      }
-    }
-    sets.push(set.sort((a, b) => a.start.localeCompare(b.start) || order(a.comp) - order(b.comp)));   // by date, then Senior, Junior, T20
+// Rounds grouped by the week they start in, soonest first; within a week, in the association's group
+// order. Each set carries its week (`set.week`, its first day).
+export function roundSets(rounds, today, startDay = 1) {
+  const by = new Map();
+  for (const r of upcomingRounds(rounds, today)) {
+    const w = weekOf(r.start, startDay);
+    if (!by.has(w)) by.set(w, []);
+    by.get(w).push(r);
   }
-  return sets;
+  return [...by.keys()].sort().map(w => Object.assign(
+    by.get(w).sort((a, b) => groupOrder(a.comp) - groupOrder(b.comp) || a.start.localeCompare(b.start)), { week: w }));
 }
 
 // Which sets to show. At first enough sets for every competition that plays within the fortnight to appear once;
 // each `more` adds the next set.
-export function visibleRounds(rounds, today, more = 0) {
-  const sets = roundSets(rounds, today);
+export function visibleRounds(rounds, today, more = 0, startDay = 1) {
+  const sets = roundSets(rounds, today, startDay);
   if (!sets.length) return { sets: [], hasMore: false };
   const horizon = addDays(sets[0][0].start, 13);
   const needed = new Set(sets.flat().filter(r => r.start <= horizon).map(r => r.comp));
@@ -172,13 +153,24 @@ export async function saveSeasonAndRounds(store, { season, games, comps = [], to
   const settings = await store.getSettings();
   const existing = await store.listRounds();
   const made = [];
+  const startDay = (store.org && Number.isInteger(store.org.weekStart)) ? store.org.weekStart : 1;
+  const ROUND_ID = /^[a-z0-9_-]+-(\d{4}-\d{2}-\d{2})$/;
   for (const { key } of COMPS) {
     const list = games.filter(g => compKeyOf(g) === key);
-    const compIds = comps.filter(c => compKeyOf(c.name) === key).map(c => c.id);
-    for (const win of roundWindows(list, today)) {
+    const compIds = [...new Set(list.map(g => g.compId).filter(Boolean))].concat(comps.filter(c => compKeyOf(c.name) === key).map(c => c.id));
+    for (const win of roundWindows(list, today, 12, startDay)) {
       const id = `${key}-${win.from}`;
-      const have = existing.find(r => r.id === id);
-      if (have) { await applyFresh(store, have, win.games, settings); made.push(id); continue; }
+      // Keep the round already made for this group and week (rounds made before weeks were used were
+      // named after their first game's date), so its allocations carry over.
+      const have = existing.find(r => r.id === id)
+        || existing.find(r => r.comp === key && !made.includes(r.id) && (r.end || '') >= today
+          && ROUND_ID.test(r.id) && weekOf(r.start || r.id.match(ROUND_ID)[1], startDay) === win.from);
+      if (have) {
+        await applyFresh(store, have, win.games, settings);
+        if ((have.source || {}).type === 'playcricket') await store.saveRound({ id: have.id, source: { ...have.source, comps: compIds, from: win.from, to: win.to } });
+        made.push(have.id);
+        continue;
+      }
       const fullGames = win.games.map(g => ({ ...g, slots: defaultSlotsFn(settings)(g), alloc: {} }));
       const round = buildRound({ key, win, games: fullGames, season, compIds, source });
       await store.saveRound(round);
@@ -186,6 +178,12 @@ export async function saveSeasonAndRounds(store, { season, games, comps = [], to
       if (store.saveFixtureList) await store.saveFixtureList(id, fixtureList(round, fullGames));
       made.push(id);
     }
+  }
+  // Upcoming rounds no longer made (their grades moved to another group, or the group was removed):
+  // their games are marked as gone, so nothing is shown twice. Allocations stay with the games.
+  for (const r of existing) {
+    if (made.includes(r.id) || !ROUND_ID.test(r.id) || (r.end || '') < today) continue;
+    await applyFresh(store, r, [], settings);
   }
   return made;
 }
@@ -196,6 +194,7 @@ export async function refreshRound(store, round, settings, { fetchFn } = {}) {
   if (src.type !== 'playcricket') return null;
   const api = makeApi(CONFIG.apiBase, fetchFn);
   const comps = (await fetchCompetitions(api, playCricketId(store), src.seasonId)).filter(c => (src.comps || []).includes(c.id));
-  const fresh = await loadFixtures({ api, comps, from: src.from, to: src.to });
+  // Only this group's games: a competition can feed more than one group.
+  const fresh = (await loadFixtures({ api, comps, from: src.from, to: src.to })).filter(g => compKeyOf(g) === round.comp);
   return applyFresh(store, round, fresh, settings);
 }

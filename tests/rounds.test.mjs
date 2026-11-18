@@ -26,7 +26,7 @@ function fakeStore() {
   };
 }
 
-test('nextRoundWindow: the week starting at the earliest game that has not finished', () => {
+test('nextRoundWindow: the calendar week (Monday to Sunday) of the earliest game that has not finished', () => {
   const games = [
     game('1', SEN, 'Senior A Grade', ['2026-11-14', '2026-11-15'], 'Round 4'),   // finished
     game('2', SEN, 'Senior A Grade', ['2026-11-21', '2026-11-22']),
@@ -34,7 +34,8 @@ test('nextRoundWindow: the week starting at the earliest game that has not finis
     game('4', SEN, 'Senior A Grade', ['2026-11-28', '2026-11-29'], 'Round 6'),
   ];
   const w = nextRoundWindow(games, '2026-11-16');
-  assert.equal(w.from, '2026-11-21');
+  assert.equal(w.from, '2026-11-16');
+  assert.equal(w.to, '2026-11-22');
   assert.deepEqual(w.games.map(g => g.id), ['2', '3']);
 });
 
@@ -87,12 +88,12 @@ test('saveSeasonAndRounds creates one next round per competition, with nothing p
     game('j2', JUN, 'U13 Gold', ['2026-11-22'], 'Round 3'),
   ];
   const made = await saveSeasonAndRounds(store, { season: { id: 's', name: 'Summer' }, games, comps: [{ id: 'c1', name: SEN }, { id: 'c2', name: JUN }], today: '2026-11-16' });
-  assert.deepEqual(made.sort(), ['junior-2026-11-21', 'senior-2026-11-21', 't20-2026-11-22']);
-  const sen = store.db.rounds['senior-2026-11-21'];
+  assert.deepEqual(made.sort(), ['junior-2026-11-16', 'senior-2026-11-16', 't20-2026-11-16']);
+  const sen = store.db.rounds['senior-2026-11-16'];
   assert.deepEqual([sen.comp, sen.title, sen.start, sen.end, sen.picked, sen.stats.needed], ['senior', 'Round 5', '2026-11-21', '2026-11-22', 0, 0]);
   assert.deepEqual(sen.source.comps, ['c1']);
   assert.equal(store.db.season.calendar.length > 0, true);
-  assert.equal((await store.listGames('senior-2026-11-21')).every(g => g.slots === 0), true);
+  assert.equal((await store.listGames('senior-2026-11-16')).every(g => g.slots === 0), true);
 });
 
 test('picking grades drives the slot total: 5 grades x 3 games = 15 slots', () => {
@@ -110,7 +111,7 @@ test('the next round remembers the grades ticked last time, and applyFresh keeps
   await store.saveSettings({ slotsByGrade: { 'Senior A Grade': 1, 'Senior B02': 2, 'Senior B03': 0 } });
   const g1 = game('s1', SEN, 'Senior A Grade', ['2026-11-21']), g2 = game('s2', SEN, 'Senior B02', ['2026-11-21']), g3 = game('s3', SEN, 'Senior B03', ['2026-11-21']);
   await saveSeasonAndRounds(store, { season: { id: 's', name: 'S' }, games: [g1, g2, g3], today: '2026-11-16' });
-  const id = 'senior-2026-11-21';
+  const id = 'senior-2026-11-16';
   assert.deepEqual((await store.listGames(id)).map(g => [g.grade, g.slots]).sort(), [['Senior A Grade', 1], ['Senior B02', 2], ['Senior B03', 0]]);
 
   // officer allocates someone, then the ground changes and a new game appears
@@ -159,60 +160,90 @@ test('tile format line uses Play Cricket\'s own match types', async () => {
   assert.equal(summarise([G('One Day'), G('Two Day', 1)]).formats, 'Two Day');                  // only the picked grades count
 });
 
-test('roundWindows: a two-day round and the one-day games on its second Saturday are separate windows', () => {
+test('roundWindows: a two-day game belongs to the week it starts; the one-day games on its second Saturday are the next week', () => {
   const G = (id, days) => ({ id, grade: 'g' + id, roundName: 'Round 1', matchType: days.length > 1 ? 'Two Day' : 'One Day', days: days.map(date => ({ date })) });
   const games = [G('m', ['2026-11-21', '2026-11-28']), G('w', ['2026-11-28']), G('m2', ['2026-12-05', '2026-12-12'])];
   const w = roundWindows(games, '2026-11-16');
-  assert.deepEqual(w.map(x => x.from), ['2026-11-21', '2026-11-28', '2026-12-05']);
+  assert.deepEqual(w.map(x => x.from), ['2026-11-16', '2026-11-23', '2026-11-30']);
   assert.deepEqual(w.map(x => x.games.map(g => g.id)), [['m'], ['w'], ['m2']]);
   assert.equal(roundWindows(games, '2026-11-16', 2).length, 2);
   assert.equal(roundWindows(games, '2026-12-20').length, 0);
 });
 
-test('visibleRounds: rounds are grouped into sets; enough sets show for every competition, Load more adds one', () => {
-  const R = (comp, start, end = start) => ({ id: `${comp}-${start}`, comp, start, end, dates: [start, end] });
+test('roundWindows: Friday night, Saturday and Sunday games are one week; a week can start on another day', () => {
+  const G = (id, date) => ({ id, grade: 'g', roundName: 'R', matchType: 'T20', days: [{ date }] });
+  const games = [G('fri', '2026-11-20'), G('sat', '2026-11-21'), G('sun', '2026-11-22'), G('nextfri', '2026-11-27')];
+  assert.deepEqual(roundWindows(games, '2026-11-16').map(x => x.games.map(g => g.id)), [['fri', 'sat', 'sun'], ['nextfri']]);
+  // weeks starting on Saturday: Friday belongs to the week before
+  assert.deepEqual(roundWindows(games, '2026-11-16', 12, 6).map(x => x.games.map(g => g.id)), [['fri'], ['sat', 'sun', 'nextfri']]);
+});
+
+test('visibleRounds: one set per week, in group order; enough weeks show for every group; Load more adds a week', () => {
+  const R = (comp, start, end = start) => ({ id: `${comp}-${start}`, comp, start, end, dates: [...new Set([start, end])] });
   const rounds = [
-    R('t20', '2026-11-15'),                                              // part of the weekend that is finishing
-    R('senior', '2026-11-21', '2026-11-28'), R('senior', '2026-11-28'),   // two-day round + one-day games on its second Saturday
-    R('junior', '2026-11-21'), R('t20', '2026-11-22'), R('t20', '2026-11-29'),   // Sunday T20 after the second Saturday: same weekend
+    R('senior', '2026-11-21', '2026-11-28'), R('t20', '2026-11-22'), R('junior', '2026-11-21'),
+    R('senior', '2026-11-28'), R('t20', '2026-11-29'),
     R('senior', '2026-12-05', '2026-12-12'), R('junior', '2026-12-05'),
   ];
-  const sets = v => v.sets.map(set => set.map(r => r.id));
-  assert.deepEqual(roundSets(rounds, '2026-11-15').map(x => x.length), [1, 5, 2]);
-  const v0 = visibleRounds(rounds, '2026-11-15');
-  assert.deepEqual(sets(v0), [['t20-2026-11-15'], ['senior-2026-11-21', 'junior-2026-11-21', 't20-2026-11-22', 'senior-2026-11-28', 't20-2026-11-29']], 'the 15th is one set, the 21st the next; then Load more');
+  const sets = roundSets(rounds, '2026-11-16');
+  assert.deepEqual(sets.map(x => x.week), ['2026-11-16', '2026-11-23', '2026-11-30']);
+  assert.deepEqual(sets[0].map(r => r.id), ['senior-2026-11-21', 'junior-2026-11-21', 't20-2026-11-22'], 'Senior, Junior, T20');
+  const v0 = visibleRounds(rounds, '2026-11-16');
+  assert.equal(v0.sets.length, 1, 'every group plays in the first week');
   assert.equal(v0.hasMore, true);
-  const v1 = visibleRounds(rounds, '2026-11-15', 1);
-  assert.equal(v1.sets.length, 3);
-  assert.equal(v1.hasMore, false);
-  // everything one-day and all competitions playing this weekend: a single set, three tiles
-  const oneDay = [R('senior', '2026-11-21'), R('t20', '2026-11-21'), R('junior', '2026-11-21'), R('senior', '2026-11-28')];
-  assert.deepEqual(sets(visibleRounds(oneDay, '2026-11-16')), [['senior-2026-11-21', 'junior-2026-11-21', 't20-2026-11-21']]);
-  assert.equal(visibleRounds(oneDay, '2026-11-16').hasMore, true);
+  assert.equal(visibleRounds(rounds, '2026-11-16', 2).hasMore, false);
   assert.deepEqual(visibleRounds([], '2026-11-16'), { sets: [], hasMore: false });
 });
 
-test('a Saturday set takes the Sunday that follows; later weekends are new sets', () => {
-  const R = (comp, start, end = start) => ({ id: `${comp}-${start}`, comp, start, end, dates: [start, end] });
-  const sets = roundSets([R('senior', '2026-11-21'), R('junior', '2026-11-21'), R('t20', '2026-11-22'), R('senior', '2026-11-28')], '2026-11-16');
-  assert.deepEqual(sets.map(x => x.map(r => r.id)), [['senior-2026-11-21', 'junior-2026-11-21', 't20-2026-11-22'], ['senior-2026-11-28']]);
-});
-
-test('sets on the real PDCA fixtures (16 Nov 2026): one-day weekends, a two-day Junior round, a two-day Senior round', () => {
+test('weeks on the real PDCA fixtures (16 Nov 2026): no tile ever spans two weeks', () => {
   const real = [['senior', '2026-11-21', '2026-11-21'], ['senior', '2026-11-28', '2026-11-28'], ['senior', '2026-12-05', '2026-12-12'], ['senior', '2026-12-12', '2026-12-12'], ['senior', '2027-01-09', '2027-01-09'],
     ['junior', '2026-11-21', '2026-11-21'], ['junior', '2026-11-28', '2026-12-05'], ['junior', '2026-12-05', '2026-12-05'], ['junior', '2026-12-12', '2026-12-12'],
     ['t20', '2026-11-22', '2026-11-22'], ['t20', '2026-11-29', '2026-11-29'], ['t20', '2026-12-06', '2026-12-06'], ['t20', '2026-12-13', '2026-12-13']]
-    .map(([comp, start, end]) => ({ id: `${comp}-${start}`, comp, start, end, dates: [start, end] }));
+    .map(([comp, start, end]) => ({ id: `${comp}-${start}`, comp, start, end, dates: [...new Set([start, end])] }));
   const ids = roundSets(real, '2026-11-16').map(set => set.map(r => r.id));
   assert.deepEqual(ids, [
-    ['senior-2026-11-21', 'junior-2026-11-21', 't20-2026-11-22'],                                                                  // Sat 21 + Sun 22
-    ['senior-2026-11-28', 'junior-2026-11-28', 't20-2026-11-29', 'junior-2026-12-05', 't20-2026-12-06'],                            // Junior two-day 28 Nov/5 Dec takes the one-day games on its second weekend
-    ['senior-2026-12-05', 'senior-2026-12-12', 'junior-2026-12-12', 't20-2026-12-13'],                                              // Senior two-day 5/12 Dec + the one-day games on its second weekend
+    ['senior-2026-11-21', 'junior-2026-11-21', 't20-2026-11-22'],
+    ['senior-2026-11-28', 'junior-2026-11-28', 't20-2026-11-29'],       // the Junior two-day game continues on 5 Dec: shown there as continuing
+    ['senior-2026-12-05', 'junior-2026-12-05', 't20-2026-12-06'],
+    ['senior-2026-12-12', 'junior-2026-12-12', 't20-2026-12-13'],
     ['senior-2027-01-09'],
   ]);
-  const v = visibleRounds(real, '2026-11-16');
-  assert.equal(v.sets.length, 1, 'all three competitions play in the first set, so only it shows until Load more');
-  assert.equal(v.hasMore, true);
+});
+
+test('custom groups: grades are allocated in the groups the association chose', async () => {
+  const { setGroups, compKeyOf, COMPS, umpiresForGrade, suggestUmpires } = await import('../js/logic.js');
+  try {
+    setGroups({ groups: [{ key: 'sat', name: 'Saturday Seniors' }, { key: 'girls', name: 'Friday Girls' }, { key: 'jun', name: 'Juniors' }],
+      gradeGroups: { '.1st Grade': 'sat', 'Girls League': 'girls', 'U13 - 1': 'jun' }, gradeUmpires: { 'U10 - 1': 0 } });
+    assert.deepEqual(COMPS.map(c => c.label), ['Saturday Seniors', 'Friday Girls', 'Juniors']);
+    assert.equal(compKeyOf({ grade: 'Girls League', comp: 'BCDCA - GIRL\'S LEAGUE' }), 'girls');
+    assert.equal(compKeyOf({ grade: 'Unknown', comp: 'Something' }), 'sat', 'a grade not set yet goes to the first group');
+    assert.equal(umpiresForGrade('U10 - 1'), 0);
+    assert.equal(umpiresForGrade('U13 - 1'), undefined);
+    const store = fakeStore();
+    const made = await saveSeasonAndRounds(store, { season: { id: 's', name: 'S' }, today: '2026-11-16', games: [
+      game('g1', 'BCDCA - GIRL\'S LEAGUE', 'Girls League', ['2026-11-20']),
+      game('s1', 'BCDCA - Senior Competition', '.1st Grade', ['2026-11-21']),
+      game('j1', 'BCDCA - Junior Competition', 'U13 - 1', ['2026-11-21']),
+    ] });
+    assert.deepEqual(made.sort(), ['girls-2026-11-16', 'jun-2026-11-16', 'sat-2026-11-16']);
+  } finally { setGroups(null); }
+  assert.deepEqual([suggestUmpires('U10 - 1'), suggestUmpires('Cricket Blast Competition'), suggestUmpires('U15 - 2'), suggestUmpires('.1st Grade')], [0, 0, 1, 2]);
+});
+
+test('moving a grade to another group takes its upcoming games out of the old group\'s round', async () => {
+  const { setGroups } = await import('../js/logic.js');
+  const store = fakeStore();
+  const games = [game('a', SEN, 'Senior A Grade', ['2026-11-21']), game('w', SEN, 'Senior Women', ['2026-11-21'])];
+  try {
+    await saveSeasonAndRounds(store, { season: { id: 's', name: 'S' }, games, today: '2026-11-16' });
+    setGroups({ groups: [{ key: 'senior', name: 'Senior' }, { key: 'women', name: 'Women' }], gradeGroups: { 'Senior Women': 'women' } });
+    await saveSeasonAndRounds(store, { season: { id: 's', name: 'S' }, games, today: '2026-11-16' });
+    const old = await store.listGames('senior-2026-11-16');
+    assert.equal(old.find(g => g.id === 'w').removed, true);
+    assert.equal(old.find(g => g.id === 'a').removed, false);
+    assert.deepEqual((await store.listGames('women-2026-11-16')).map(g => g.id), ['w']);
+  } finally { setGroups(null); }
 });
 
 test('association helpers: Play Cricket id from a link, association id', async () => {
