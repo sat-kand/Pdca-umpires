@@ -110,6 +110,7 @@ In the Firebase console create the PDCA association as described under *Associat
 ```
 npm test                   # unit tests for the allocation logic and fixture import (Node 20+, no dependencies)
 python3 tests/e2e_demo.py  # browser test of the whole flow in demo mode (needs python playwright + Chrome)
+python3 tests/mobile_check.py   # every page at phone size (390px): saves screenshots and reports anything cut off or off screen
 ```
 
 `js/logic.js` holds all the allocation rules, `js/fixtures.js` the import, `js/store-*.js` the two back-ends (Firebase and demo), `js/views-*.js` the screens.

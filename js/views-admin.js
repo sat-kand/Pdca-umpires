@@ -469,7 +469,7 @@ export async function viewBoard(ctx, rid) {
         h('ul', {}, warnings.map(w => h('li', {}, `${gradeShort(w.g.grade)} ${w.g.home.name} v ${w.g.away.name}, ${fmtDay(w.d.date)} — ${w.text}`)))),
       sections.map(s => h('section', { class: 'card' },
         h('h2', {}, `${s.label} – ${fmtRange(s.dates)}`),
-        h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
+        h('div', { class: 'table-wrap' }, h('table', { class: 'board alloc-board' },        // stacks into cards on a phone
           h('thead', {}, h('tr', {}, ['Grade', 'Fixture', 'Ground', 'Allocation', 'Umpires'].map(c => h('th', {}, c)))),
           h('tbody', {}, s.games.map(g => gameRow(g, busyMap, loads))))))),
       !sections.length && h('p', { class: 'muted' }, 'No grades selected yet. Press Select grades to choose the grades that need umpires.'),
@@ -760,10 +760,10 @@ export async function viewReport(ctx, rid) {
         h('p', { class: 'muted' }, 'Download the PDF, then attach it to the email draft.')]),
     h('div', { class: 'report' }, sections.map(s => h('section', { class: 'report-section' },
       h('h2', {}, `${s.label} – ${fmtRange(s.dates)}`),
-      h('table', { class: 'report-table' },
+      h('div', { class: 'table-wrap' }, h('table', { class: 'report-table' },
         h('thead', {}, h('tr', {}, ['', 'HOME TEAM', 'AWAY TEAM', 'GROUND', 'UMPIRES'].map(c => h('th', {}, c)))),
         h('tbody', {}, s.games.map(g => h('tr', {}, h('td', {}, gradeShort(g.grade)), h('td', {}, g.home.name.toUpperCase()), h('td', {}, g.away.name.toUpperCase()),
-          h('td', {}, g.ground.toUpperCase()), h('td', { class: slotCount(g) && /—/.test(umpireText(g)) ? 'gap' : '' }, umpireText(g))))))))));
+          h('td', {}, g.ground.toUpperCase()), h('td', { class: slotCount(g) && /—/.test(umpireText(g)) ? 'gap' : '' }, umpireText(g)))))))))));
 }
 
 // ---------------------------------------------------------------------------
@@ -842,7 +842,7 @@ export async function viewUmpires(ctx) {
       h('div', { class: 'row-between' }, h('h1', {}, 'Members'), h('a', { class: 'btn', href: '#/admin' }, '\u2190 Allocate')),
       h('p', { class: 'member-mail' }, emailBtn('Email active members', activeList), ' ', emailBtn('Email inactive members', inactiveList)),
       pending.length > 0 && h('p', { class: 'notice warn' }, `${pending.length} member(s) are waiting for approval. Tick "Active" to approve them.`),
-      h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'board members' },
+      h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'board members' },        // stacks into cards on a phone
         h('thead', {}, h('tr', {}, COLS.map(c => h('th', {}, c)))),
         h('tbody', {}, members.map(u => { const n = nameParts(u); return h('tr', { class: u.active ? '' : u.deactivated ? 'inactive' : 'needs', 'data-pid': u.pid },
           h('td', {}, h('input', { type: 'checkbox', checked: !!u.active, 'aria-label': 'Active', onchange: e => save(u, { active: e.target.checked, deactivated: !e.target.checked }, true) })),

@@ -151,7 +151,7 @@ export async function viewOrgSettings(ctx) {
     h('label', { class: 'inline' }, on, ' Let members choose their own games to umpire'),
     h('p', { class: 'muted small' }, 'In these groups:'),
     h('div', { class: 'row-gap' }, groupBoxes.map(([k, b]) => h('label', { class: 'inline' }, b, ' ', COMPS.find(c => c.key === k).label))),
-    h('p', { class: 'muted small' }, 'When this is off, members only see "Full umpire". Games already chosen stay where they are.'),
+    h('p', { class: 'muted small' }, 'When this is off, members only give their availability. Games already chosen stay where they are.'),
     h('label', {}, 'What it is called (leave empty for "Player umpire")', title),
     h('label', {}, 'What members are told (leave empty to show nothing)', text),
     saveBtn), saveBtn, 'playerUmpire');

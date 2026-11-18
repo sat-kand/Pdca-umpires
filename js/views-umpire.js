@@ -338,7 +338,7 @@ export async function viewMy(ctx) {
     availCard.hidden = !modes.regular || !modes.comps.some(k => compsOffered.includes(k));
     for (const [k, el] of Object.entries(sectionEl)) el.hidden = !modes.comps.includes(k);
     const n = modes.comps.filter(k => compsOffered.includes(k)).length;
-    availIntro.textContent = 'Tap an answer for each date, then Save.' + (n > 1 ? ' Each competition is answered separately.' : '');
+    availIntro.textContent = 'Tap an answer for each date, then Save.' + (n > 1 ? ' Each group is answered separately.' : '');
     drawPlayer();
   }
 

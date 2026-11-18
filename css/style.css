@@ -320,3 +320,33 @@ a.member-link:hover { text-decoration-color: currentColor; }
 .week-head h2 { margin: 0; font-size: 1.2rem; }
 .continuing { margin: 0 0 .6rem; font-size: .9rem; }
 .continuing li { margin: .15rem 0; }
+
+/* ---------- phones: tables that are lists of things become one card per row ---------- */
+@media (max-width: 640px) {
+  .alloc-board thead, .grades-table thead, table.members thead { display: none; }
+  .alloc-board, .alloc-board tbody, .grades-table, .grades-table tbody, table.members, table.members tbody { display: block; width: 100%; }
+  .alloc-board tr, .grades-table tr, table.members tr { display: grid; gap: .3rem .6rem; padding: .75rem 0; border-bottom: 1px solid var(--line); }
+  .alloc-board td, .grades-table td, table.members td { display: block; padding: 0; border: 0; min-width: 0; }
+  .alloc-board td select, .grades-table td select { width: 100%; max-width: none; }
+
+  /* Assign board: grade and fixture, the ground under the fixture, then the allocation and umpires full width. */
+  .alloc-board tr { grid-template-columns: auto 1fr; }
+  .alloc-board td:nth-child(3) { grid-column: 2; }
+  .alloc-board td:nth-child(4), .alloc-board td:nth-child(5) { grid-column: 1 / -1; }
+  .alloc-board td:nth-child(5)::before { content: 'Umpires needed'; display: block; font-size: .78rem; color: var(--muted); margin-bottom: .15rem; }
+
+  /* Settings grades: the grade and competition, then Group and Umpires side by side. */
+  .grades-table tr { grid-template-columns: 2fr 1fr; }
+  .grades-table td:nth-child(1), .grades-table td:nth-child(2) { grid-column: 1 / -1; }
+  .grades-table td:nth-child(3)::before { content: 'Group'; } .grades-table td:nth-child(4)::before { content: 'Umpires'; }
+  .grades-table td:nth-child(3)::before, .grades-table td:nth-child(4)::before { display: block; font-size: .78rem; color: var(--muted); margin-bottom: .15rem; }
+
+  /* Members: the Active tick beside the name, the rest under the name. */
+  table.members tr { grid-template-columns: auto 1fr; align-items: center; }
+  table.members td:nth-child(n+3) { grid-column: 2; }
+  table.members td:nth-child(4)::before { content: 'Member since '; color: var(--muted); font-size: .85rem; }
+  table.members td:nth-child(5)::before { content: 'Membership'; display: block; color: var(--muted); font-size: .78rem; margin-bottom: .15rem; }
+
+  /* Membership types: the name on its own line, fee and Remove under it. */
+  .type-row { flex-wrap: wrap; } .type-row input:first-child { flex: 1 1 100%; max-width: none; }
+}
