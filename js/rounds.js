@@ -7,7 +7,7 @@ import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures, mergeFixtures }
 import { buildCalendar, compKeyOf, summarise, COMPS, groupOrder } from './logic.js';
 
 // Bump when the information saved on each round changes shape, so stored rounds are rebuilt on the next visit.
-export const SCHEMA = 6;   // 6: rounds by calendar week and group
+export const SCHEMA = 7;   // 6: rounds by calendar week and group; 7: every week of the season
 export const STALE_MS = 12 * 60 * 60 * 1000;   // refetch the fixtures at most twice a day on its own
 
 export const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
@@ -30,7 +30,7 @@ export const weekOf = (iso, startDay = 1) => {
 // where both its days are allocated; its second day is shown in the next week as "continuing".
 // A week, not a round number, because grades number their rounds differently and associations play
 // on different days.
-export function roundWindows(games, today, max = 12, startDay = 1) {
+export function roundWindows(games, today, max = Infinity, startDay = 1) {
   const live = games.filter(g => !g.removed && lastDay(g) >= today);
   const weeks = [...new Set(live.map(g => weekOf(g.days[0].date, startDay)))].sort().slice(0, max);
   return weeks.map(from => ({ from, to: addDays(from, 6), games: live.filter(g => weekOf(g.days[0].date, startDay) === from) }));
@@ -158,7 +158,7 @@ export async function saveSeasonAndRounds(store, { season, games, comps = [], to
   for (const { key } of COMPS) {
     const list = games.filter(g => compKeyOf(g) === key);
     const compIds = [...new Set(list.map(g => g.compId).filter(Boolean))].concat(comps.filter(c => compKeyOf(c.name) === key).map(c => c.id));
-    for (const win of roundWindows(list, today, 12, startDay)) {
+    for (const win of roundWindows(list, today, Infinity, startDay)) {      // every week left in the season
       const id = `${key}-${win.from}`;
       // Keep the round already made for this group and week (rounds made before weeks were used were
       // named after their first game's date), so its allocations carry over.

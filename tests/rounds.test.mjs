@@ -303,3 +303,15 @@ test('publish state: never published, published, changed since publishing', asyn
   assert.equal(fmtWhen('not a date'), '');
   assert.match(fmtWhen('2026-11-16T02:14:00Z'), /, 16 Nov$/);
 });
+
+test('every week left in the season gets its round, however long the season', async () => {
+  const store = fakeStore();
+  const games = [];
+  for (let i = 0; i < 20; i++) {           // 20 Saturdays from 21 Nov to early April
+    const d = new Date(Date.UTC(2026, 10, 21 + 7 * i)).toISOString().slice(0, 10);
+    games.push(game('s' + i, SEN, 'Senior A Grade', [d]));
+  }
+  const made = await saveSeasonAndRounds(store, { season: { id: 's', name: 'S' }, games, today: '2026-11-16' });
+  assert.equal(made.length, 20);
+  assert.ok(made.includes('senior-2027-03-29'), 'the last week of the season is there too');
+});
