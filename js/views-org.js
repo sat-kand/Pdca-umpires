@@ -169,7 +169,7 @@ export async function viewOrgSettings(ctx) {
       h('div', { class: 'card' }, h('h2', {}, 'Link for umpires'),
         h('p', { class: 'muted' }, 'Send this link to your umpires. They sign in, add their details, and wait for you to approve them on the Members page.'),
         h('p', {}, h('code', { class: 'join-link' }, link)),
-        h('button', { class: 'btn', type: 'button', onclick: async () => { toast(await copyText(link) ? 'Link copied' : 'Could not copy', 'ok'); } }, 'Copy link')),
+        h('button', { class: 'btn', type: 'button', onclick: async () => { { const ok = await copyText(link); toast(ok ? 'Link copied' : 'Could not copy', ok ? 'ok' : 'err'); }; } }, 'Copy link')),
 
       h('div', { class: 'card' }, h('h2', {}, 'Appointments officers'),
         h('ul', { class: 'plain officers' }, admins.map(e => h('li', { class: 'row-between' }, h('span', {}, e),

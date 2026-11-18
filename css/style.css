@@ -109,7 +109,7 @@ td.av { text-align: center; font-weight: 700; } td.av.ok { color: var(--green); 
 
 /* toasts */
 #toasts { position: fixed; right: 1rem; bottom: 1rem; display: grid; gap: .5rem; z-index: 50; max-width: min(92vw, 380px); }
-.toast { background: #1c2a22; color: #fff; padding: .6rem .9rem; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.25); white-space: pre-line; } .toast.err { background: var(--red); }
+.toast { background: #1c2a22; color: #fff; padding: .6rem .9rem; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.25); white-space: pre-line; } .toast.err { background: #b3261e; } .toast.ok { background: #1e6b45; } .toast.warn { background: #f5b43c; color: #2b1d00; }
 
 @media (max-width: 640px) {
   .opts { width: 100%; } .opt { flex: 1; min-width: 0; }

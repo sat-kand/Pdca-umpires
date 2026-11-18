@@ -332,7 +332,7 @@ export async function viewBoard(ctx, rid) {
 
   async function doUpdateFixtures() {
     const res = await refreshRound(store, B.round, B.settings);
-    if (!res) { toast('This sample round has no live fixture source.'); return; }
+    if (!res) { toast('This sample round has no live fixture source.', 'warn'); return; }
     B.games = res.all;
     const fresh = await store.getRound(rid);
     Object.assign(B.round, fresh);
@@ -394,7 +394,7 @@ export async function viewBoard(ctx, rid) {
       const kept = { ...seasonLoads(otherStats) };
       for (const g of B.games) for (const d of g.days) for (const a of allocFor(g, d.date)) if (a) kept[a.p] = (kept[a.p] || 0) + 1;
       const changes = autoAllocate({ games: B.games, umpires: B.umpires, availByEmail: B.availByEmail, baseLoads: seasonLoads(otherStats), claimOf, reliability: reliabilityOf({ kept, dropped }) });
-      if (!changes.length) { toast('No empty slots could be filled with umpires who said "Available".'); return; }
+      if (!changes.length) { toast('No empty slots could be filled with umpires who said "Available".', 'warn'); return; }
       const ids = new Set(changes.map(c => c.gameId));
       const updated = [];
       for (const g of B.games) if (ids.has(g.id)) {
@@ -490,7 +490,7 @@ export async function viewAvailabilityOverview(ctx, rid) {
           h('td', {}))))))),
     h('div', { class: 'card' }, h('h2', {}, `Haven't replied (${missing.length})`),
       missing.length ? [h('p', {}, missing.map(u => u.name).join(', ')),
-        h('button', { class: 'btn', type: 'button', onclick: async () => { toast(await copyText(emails.join(', ')) ? 'Emails copied' : 'Could not copy', 'ok'); } }, 'Copy their emails'), ' ',
+        h('button', { class: 'btn', type: 'button', onclick: async () => { { const ok = await copyText(emails.join(', ')); toast(ok ? 'Emails copied' : 'Could not copy', ok ? 'ok' : 'err'); }; } }, 'Copy their emails'), ' ',
         h('a', { class: 'btn', href: `mailto:?bcc=${encodeURIComponent(emails.join(','))}&subject=${encodeURIComponent('Availability needed: ' + round.title)}&body=${encodeURIComponent('Please check your availability for ' + round.title + ' (' + fmtRange(round.dates) + ') and tap Save.\n\n' + location.origin + location.pathname)}` }, 'Open reminder email')]
         : h('p', { class: 'muted' }, 'Everyone has replied.')));
 }
@@ -657,7 +657,7 @@ export async function viewSeasonAvailability(ctx) {
           search,
           h('span', { class: 'chip ' + (missing.length ? 'warn' : 'ok') }, `${mem.length - missing.length} of ${mem.length} members have answered`),
           others.length > 0 && h('span', { class: 'chip' }, `${others.length} non-member${others.length === 1 ? '' : 's'}`),
-          missing.length > 0 && h('button', { class: 'btn small', type: 'button', onclick: async () => { toast(await copyText(emails.join(', ')) ? 'Emails copied' : 'Could not copy', 'ok'); } }, 'Copy emails of the rest'),
+          missing.length > 0 && h('button', { class: 'btn small', type: 'button', onclick: async () => { { const ok = await copyText(emails.join(', ')); toast(ok ? 'Emails copied' : 'Could not copy', ok ? 'ok' : 'err'); }; } }, 'Copy emails of the rest'),
           ui.on && h('button', { class: 'chip ok', type: 'button', onclick: () => { ui.on = null; draw(); } }, `Available ${fmtDay(ui.on)} \u2715`),
           hasPast && h('label', { class: 'inline right' }, (() => { const cb = h('input', { type: 'checkbox', checked: ui.past }); cb.onchange = () => { ui.past = cb.checked; draw(); }; return cb; })(), ' Show past dates')),
         !dates.length ? h('p', { class: 'muted' }, 'No upcoming dates in this competition.')
@@ -701,10 +701,10 @@ export async function viewReport(ctx, rid) {
     try { saveReportPdf({ heading, dates: round.dates || [], sections }); toast('PDF saved to your downloads', 'ok'); }
     catch (e) { console.error(e); toast('Could not make the PDF: ' + (e.message || e), 'err'); }
   } }, 'Download PDF');
-  const copyEmails = h('button', { class: 'btn', type: 'button', onclick: async () => toast((await copyText(emails.join(', '))) ? `${emails.length} email addresses copied` : 'Could not copy', 'ok') }, `Copy umpire emails (${emails.length})`);
+  const copyEmails = h('button', { class: 'btn', type: 'button', onclick: async () => { const ok = (await copyText(emails.join(', '))); toast(ok ? `${emails.length} email addresses copied` : 'Could not copy', ok ? 'ok' : 'err'); } }, `Copy umpire emails (${emails.length})`);
   const draft = h('button', { class: 'btn', type: 'button', onclick: async () => {
     const url = `mailto:?bcc=${encodeURIComponent(emails.join(','))}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    if (url.length > 1900) { await copyText(emails.join(', ')); toast('Too many addresses for a draft, so the emails were copied. Paste them into BCC.'); location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; }
+    if (url.length > 1900) { await copyText(emails.join(', ')); toast('Too many addresses for a draft, so the emails were copied. Paste them into BCC.', 'warn'); location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; }
     else location.href = url;
   } }, 'Open email draft');
 
@@ -792,7 +792,7 @@ export async function viewUmpires(ctx) {
       const url = `mailto:?bcc=${encodeURIComponent(emails.join(','))}&subject=${encodeURIComponent(subject)}`;
       if (url.length > 1900) {
         await copyText(emails.join(', '));
-        toast('Too many addresses for a draft, so they were copied. Paste them into BCC.');
+        toast('Too many addresses for a draft, so they were copied. Paste them into BCC.', 'warn');
         location.href = `mailto:?subject=${encodeURIComponent(subject)}`;
       } else location.href = url;
     } }, `${label} (${list.length})`);

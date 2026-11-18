@@ -70,7 +70,7 @@ function drawHeader() {
       h('button', { class: 'link', type: 'button', onclick: async ev => {
         await S.store.useOrg(S.org ? S.org.id : DEMO_ORG.id);      // works for anyone in the demo, signed in or not
         const b = ev.currentTarget; b.disabled = true; b.textContent = 'Loading real PDCA fixtures…';
-        try { const r = await seedDemo(S.store); toast(r.live ? `Loaded the real PDCA fixtures (${r.games} games) and sample umpires` : 'Play Cricket not reachable: loaded made-up sample fixtures'); } finally { if (S.user) await loadUser(S.user); render(); }
+        try { const r = await seedDemo(S.store); toast(r.live ? `Loaded the real PDCA fixtures (${r.games} games) and sample umpires` : 'Play Cricket not reachable: loaded made-up sample fixtures', r.live ? 'ok' : 'err'); } finally { if (S.user) await loadUser(S.user); render(); }
       } }, 'Load sample data'), ' · ',
       h('button', { class: 'link', type: 'button', onclick: () => { if (confirm('Erase all demo data in this browser?')) { localStorage.removeItem(ORG_KEY); S.store.demoReset(); location.hash = '#/'; } } }, 'Reset')),
     h('div', { class: 'bar' },
