@@ -4,11 +4,11 @@
 
 import { CONFIG } from './config.js';
 import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures, mergeFixtures } from './fixtures.js';
-import { buildCalendar, compKeyOf, summarise, COMPS, groupOrder, suggestGroups, suggestUmpires, firstGroup } from './logic.js';
+import { buildCalendar, compKeyOf, summarise, COMPS, groupOrder, suggestGroups, suggestUmpires, firstGroup, needsUmpires } from './logic.js';
 import { applyOrg } from './org-setup.js';
 
 // Bump when the information saved on each round changes shape, so stored rounds are rebuilt on the next visit.
-export const SCHEMA = 7;   // 6: rounds by calendar week and group; 7: every week of the season
+export const SCHEMA = 8;   // 6: rounds by calendar week and group; 7: every week of the season; 8: grades set to None leave no dates
 export const STALE_MS = 12 * 60 * 60 * 1000;   // refetch the fixtures at most twice a day on its own
 
 export const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
@@ -33,7 +33,8 @@ export const weekOf = (iso, startDay = 1) => {
 // on different days.
 export function roundWindows(games, today, max = Infinity, startDay = 1) {
   const live = games.filter(g => !g.removed && lastDay(g) >= today);
-  const weeks = [...new Set(live.map(g => weekOf(g.days[0].date, startDay)))].sort().slice(0, max);
+  // Only weeks with games that need umpires; a grade set to None does not make a week of its own.
+  const weeks = [...new Set(live.filter(needsUmpires).map(g => weekOf(g.days[0].date, startDay)))].sort().slice(0, max);
   return weeks.map(from => ({ from, to: addDays(from, 6), games: live.filter(g => weekOf(g.days[0].date, startDay) === from) }));
 }
 
@@ -46,7 +47,8 @@ export function majorityRound(games) {
   return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], undefined, { numeric: true }))[0][0] || 'Next round';
 }
 
-const datesOf = games => [...new Set(games.flatMap(g => g.days.map(d => d.date)))].sort();
+// A round's dates are the days of its games that need umpires.
+const datesOf = games => { const need = games.filter(needsUmpires); return [...new Set((need.length ? need : games).flatMap(g => g.days.map(d => d.date)))].sort(); };
 
 export function buildRound({ key, win, games, season, compIds = [], source = null }) {
   const dates = datesOf(games);

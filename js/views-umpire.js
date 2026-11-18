@@ -3,7 +3,7 @@
 import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
 import { recordWithdrawal } from './withdrawals.js';
 import { PLAYER_UMPIRE_COMPS } from './player-umpire.js';
-import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS, groupNeedsUmpires } from './logic.js';
+import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS, groupNeedsUmpires, needsUmpires } from './logic.js';
 
 export function viewLogin(ctx) {
   const { store } = ctx;
@@ -252,7 +252,10 @@ export async function viewMy(ctx) {
     if (!puOn || !modes.player) { setChildren(playerBody); return; }
     if (!lists) {
       setChildren(playerBody, h('p', { class: 'muted' }, 'Loading the fixtures\u2026'));
-      try { lists = (await store.listFixtureLists()).filter(l => PLAYER_UMPIRE_COMPS.includes(l.comp) && groupNeedsUmpires(l.comp) && (l.end || '') >= today && (l.games || []).length).sort((a, b) => (a.start || '').localeCompare(b.start || '')); }
+      try {
+        lists = (await store.listFixtureLists()).map(l => ({ ...l, games: (l.games || []).filter(needsUmpires) }))   // no grades set to None
+          .filter(l => PLAYER_UMPIRE_COMPS.includes(l.comp) && groupNeedsUmpires(l.comp) && (l.end || '') >= today && l.games.length).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+      }
       catch (e) { console.error(e); lists = []; }
     }
     const order = COMPS.map(c => c.key);

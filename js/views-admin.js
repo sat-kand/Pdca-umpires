@@ -141,7 +141,8 @@ export async function viewAdminHome(ctx) {
           ? h('ul', { class: 'plain tile-starts' }, r.starts.map(s => h('li', {},
             h('strong', { class: 'tile-round' }, fmtDay(s.date)), ' ',
             h('span', { class: 'muted' }, `${s.n} ${s.type ? s.type + ' ' : ''}game${s.n === 1 ? '' : 's'}`
-              + (s.later.length ? `, ${s.later.length === 1 ? 'day 2' : 'then'} ${s.later.map(d => fmtDay(d).replace(/ /g, '\u00a0')).join(' & ')}` : '')))))
+              + (s.later.length ? `, ${s.later.length === 1 ? 'day 2' : 'then'} ${s.later.map(d => fmtDay(d).replace(/ /g, '\u00a0')).join(' or ')}` : '')
+              + (s.noLater ? ` (${s.noLater} with no day 2 in Play Cricket yet)` : '')))))
           : [h('div', { class: 'tile-round' }, here.map(d => fmtDay(d)).join(' & ')),
             h('div', { class: 'muted' }, r.formats || '', later.length ? ` \u00b7 continues ${later.map(fmtDay).join(' & ')}` : '')],
         h('div', { class: 'tile-stats' },

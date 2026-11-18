@@ -249,6 +249,8 @@ export function compareGames(a, b) {
 
 // A game is "picked" when the officer has chosen its grade for umpires (slots > 0).
 // A grade the association set to None needs no umpires, whatever slots its games were given before.
+// Whether a game's grade needs umpires at all (not set to None).
+export const needsUmpires = game => umpiresForGrade(game.grade) !== 0;
 export const isPicked = game => (game.slots || 0) > 0 && umpiresForGrade(game.grade) !== 0;
 
 export function slotCount(game) { return game.removed || umpiresForGrade(game.grade) === 0 ? 0 : (game.slots || 0); }
@@ -376,7 +378,7 @@ export function recount(games) {
 
 // What a round tile shows: slots filled / needed, and how many grades were picked.
 export function summarise(games) {
-  const live = games.filter(g => !g.removed);
+  const live = games.filter(g => !g.removed && needsUmpires(g));     // grades set to None are left out of the tile
   const picked = live.filter(isPicked);
   // The round is named after the grades being umpired (all grades until some are picked). A grade playing a
   // different round number (Women, say) is listed under `other` instead of leaving the title inconsistent.
@@ -389,17 +391,21 @@ export function summarise(games) {
 }
 
 // When games start and, for games of more than one day, when their other days are: one line per start
-// day, format and later days, e.g. { date: '2026-11-21', n: 6, type: 'Two Day', later: ['2026-11-28'] }.
+// day and format, e.g. { date: '2026-11-21', n: 6, type: 'Two Day', later: ['2026-11-28'], noLater: 0 }.
+// `noLater` counts games of that kind with only one day listed in Play Cricket so far.
 export function startSummary(games) {
   const by = new Map();
   for (const g of games) {
     const ds = (g.days || []).map(d => d.date).sort();
     if (!ds.length) continue;
-    const k = [ds[0], g.matchType || '', ds.slice(1).join(',')].join('|');
-    if (!by.has(k)) by.set(k, { date: ds[0], n: 0, type: g.matchType || '', later: ds.slice(1) });
-    by.get(k).n++;
+    const k = ds[0] + '|' + (g.matchType || '');
+    if (!by.has(k)) by.set(k, { date: ds[0], n: 0, type: g.matchType || '', later: [], single: 0 });
+    const e = by.get(k);
+    e.n++;
+    if (ds.length > 1) e.later = [...new Set([...e.later, ...ds.slice(1)])].sort(); else e.single++;
   }
-  return [...by.values()].sort((a, b) => a.date.localeCompare(b.date) || (a.later[0] || '').localeCompare(b.later[0] || '') || a.type.localeCompare(b.type));
+  return [...by.values()].map(({ single, ...e }) => ({ ...e, noLater: e.later.length ? single : 0 }))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.type.localeCompare(b.type));
 }
 
 // Sum of appointments per umpire across stats from other rounds + this one.
@@ -511,7 +517,8 @@ export function umpireText(game) {
 // { comp, dates } entry with no label.
 export function buildCalendar(games) {
   const byComp = new Map();
-  for (const g of games) { const k = compKeyOf(g); if (!byComp.has(k)) byComp.set(k, []); byComp.get(k).push(g); }
+  // No dates for grades that need no umpires.
+  for (const g of games.filter(needsUmpires)) { const k = compKeyOf(g); if (!byComp.has(k)) byComp.set(k, []); byComp.get(k).push(g); }
   const out = [];
   for (const { key } of COMPS) {
     const list = byComp.get(key);

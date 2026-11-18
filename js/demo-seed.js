@@ -49,8 +49,8 @@ export const demoGames = ([D1, D2]) => { const two = [D1, D2]; return [
   fx(16, 'U12 Gold', 'Kings Langley', 'Wenty Leagues', 'Pearce Reserve', [D1], 'Round 2', 'One Day', JUN),
   fx(17, 'U12 Gold', 'Parramatta', 'GLCC', 'Darling Street', [D1], 'Round 2', 'One Day', JUN),
   fx(18, 'U14 Blue', 'Winston Hills', 'Baulkham Hills', 'Bella Vista Oval', [D1, D2], 'Round 2', 'Two Day', JUN),   // juniors mix two-day and one-day games
-  fx(19, 'U10 Red', 'Greystanes', 'Box Hill Bears', 'Roberta Street Park', [D2], 'Round 3', 'One Day', JUN),
-  fx(20, 'U10 Red', 'Seven Hills', 'Hills Barbarians', 'Harold West Reserve', [D2], 'Round 3', 'One Day', JUN),
+  fx(19, 'U12 Blue', 'Greystanes', 'Box Hill Bears', 'Roberta Street Park', [D2], 'Round 3', 'One Day', JUN),
+  fx(20, 'U12 Blue', 'Seven Hills', 'Hills Barbarians', 'Harold West Reserve', [D2], 'Round 3', 'One Day', JUN),
   fx(21, 'T20 Mens', 'Wenty Leagues', 'Kings Langley', 'Monty Bennett', [D2], 'Round 1', 'T20', T20),
   fx(22, 'T20 Mens', 'GLCC', 'Parramatta CCC', 'McCredie Park', [D2], 'Round 1', 'T20', T20),
 ]; };

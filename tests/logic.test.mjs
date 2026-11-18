@@ -382,10 +382,10 @@ test('nothing is built in: no group or umpire count is guessed from words like J
 test('startSummary: Saturday and Sunday starts are separate lines, each with its own day 2', async () => {
   const { startSummary } = await import('../js/logic.js');
   const g = (sat, d2, type = 'Two Day') => ({ matchType: type, days: [{ date: sat }, ...(d2 ? [{ date: d2 }] : [])] });
-  assert.deepEqual(startSummary([g('2026-11-21', '2026-11-28'), g('2026-11-21', '2026-11-28'), g('2026-11-22', '2026-11-29'), g('2026-11-21', null, 'One Day')]), [
-    { date: '2026-11-21', n: 1, type: 'One Day', later: [] },
-    { date: '2026-11-21', n: 2, type: 'Two Day', later: ['2026-11-28'] },
-    { date: '2026-11-22', n: 1, type: 'Two Day', later: ['2026-11-29'] },
+  assert.deepEqual(startSummary([g('2026-11-21', '2026-11-28'), g('2026-11-21', '2026-11-28'), g('2026-11-22', '2026-11-29'), g('2026-11-21', null, 'One Day'), g('2026-11-21', null)]), [
+    { date: '2026-11-21', n: 1, type: 'One Day', later: [], noLater: 0 },
+    { date: '2026-11-21', n: 3, type: 'Two Day', later: ['2026-11-28'], noLater: 1 },   // one listed with no day 2 yet: same line
+    { date: '2026-11-22', n: 1, type: 'Two Day', later: ['2026-11-29'], noLater: 0 },
   ]);
 });
 
