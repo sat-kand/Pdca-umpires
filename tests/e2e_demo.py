@@ -137,7 +137,8 @@ def reload(page):
 
 
 def sign_out(page):
-    page.click("button:has-text('Sign out')")
+    page.click(".who-name")                       # Sign out is in the account menu, top right
+    page.click(".who-menu button:has-text('Sign out')")
     page.wait_for_selector("#login-email")
 
 
@@ -1398,7 +1399,13 @@ with sync_playwright() as p:
     sign_out(page)
     sign_in(page, "umpire2@demo.test", open_form=False)
     page.click(".who-name")
-    check(page.locator(".who-menu .nav-link").all_inner_texts() == ["My profile", "My availability"], "under their name: My profile and My availability")
+    check([t.strip() for t in page.locator(".who-menu .nav-link").all_inner_texts()] == ["My profile", "My availability", "Sign out"], "the account menu: My profile, My availability, then Sign out")
+    page.set_viewport_size({"width": 390, "height": 800})
+    box = page.locator(".who-menu .menu-items").bounding_box()
+    check(box["x"] >= 0 and box["x"] + box["width"] <= 390, f"on a phone the menu stays on screen ({box})")
+    page.set_viewport_size({"width": 1280, "height": 900})
+    page.click(".who-name")
+    page.click(".who-name")
     page.click(".who-menu .nav-link:has-text('My profile')")
     page.wait_for_selector(".member-profile")
     me = page.inner_text(".member-profile")

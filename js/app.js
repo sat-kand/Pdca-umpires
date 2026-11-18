@@ -65,6 +65,10 @@ const ROUTES = [
   [/^\/admin\/round\/([^/]+)\/report$/, rid => viewReport(ctx, rid), true],
 ];
 
+// A menu closes when you tap anywhere else, or press Escape.
+document.addEventListener('click', e => { for (const m of document.querySelectorAll('details.menu[open]')) if (!m.contains(e.target)) m.open = false; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') for (const m of document.querySelectorAll('details.menu[open]')) m.open = false; });
+
 function drawHeader() {
   const demo = S.store.mode === 'demo';
   const link = (href, label) => h('a', { href, class: 'nav-link' }, label);
@@ -82,11 +86,19 @@ function drawHeader() {
         // Members, Settings and the association picker sit together, out of the way of the weekly work.
         h('details', { class: 'menu' }, h('summary', { class: 'nav-link' }, 'My Organisation'),
           h('div', { class: 'menu-items' }, link('#/admin/members', 'Members'), link('#/admin/past', 'Past allocations'), link('#/admin/settings', 'Settings'), link('#/associations', 'Your associations')))),
-      S.user && h('div', { class: 'who' },
-        // Their own things sit under their name: profile and availability.
-        h('details', { class: 'menu who-menu' }, h('summary', { class: 'who-name' }, (S.umpire && S.umpire.name) || S.user.email),
-          h('div', { class: 'menu-items' }, link('#/profile', 'My profile'), link('#/my', 'My availability'))),
-        h('button', { class: 'btn small', type: 'button', onclick: async () => { await S.store.signOut(); location.hash = '#/'; } }, 'Sign out'))),
+      // The account menu, top right as on most sites: their name, then profile, availability and Sign out.
+      S.user && (() => {
+        const name = (S.umpire && S.umpire.name) || S.user.email;
+        const initials = name.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+        return h('div', { class: 'who' },
+          h('details', { class: 'menu who-menu' },
+            h('summary', { class: 'who-name', 'aria-label': 'Account menu' }, h('span', { class: 'avatar' }, initials), h('span', { class: 'who-label' }, name)),
+            h('div', { class: 'menu-items' },
+              h('div', { class: 'menu-head' }, h('strong', {}, name), name !== S.user.email && h('span', { class: 'muted small' }, S.user.email)),
+              link('#/profile', 'My profile'), link('#/my', 'My availability'),
+              h('hr'),
+              h('button', { class: 'nav-link menu-signout', type: 'button', onclick: async () => { await S.store.signOut(); location.hash = '#/'; } }, 'Sign out'))));
+      })()),
     S.org && S.org.plan === 'suspended' && h('div', { class: 'demo-banner' }, 'This association has been set to read-only, so changes cannot be saved.'));
 }
 
