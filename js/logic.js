@@ -414,23 +414,27 @@ export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy
 }
 
 export function recount(games) {
-  let needed = 0, filled = 0, gamesNeeding = 0;
+  let needed = 0, filled = 0, gamesNeeding = 0, gamesFilled = 0;   // games: a two-day game counts once, and is
+                                                                    // filled only when every place on every day is
   const byUmpire = {};                 // games per umpire: a two-day game counts once
   const seenGame = new Set();
   for (const g of games) {
     const n = slotCount(g);
     if (!n) continue;
     gamesNeeding++;
+    let full = true;
     for (const d of g.days) {
       const a = allocFor(g, d.date);
+      if (a.filter(Boolean).length < n) full = false;
       needed += n;
       for (const s of a) if (s) {
         filled++;
         if (!seenGame.has(s.p + '|' + g.id)) { seenGame.add(s.p + '|' + g.id); byUmpire[s.p] = (byUmpire[s.p] || 0) + 1; }
       }
     }
+    if (full) gamesFilled++;
   }
-  return { games: gamesNeeding, needed, filled, byUmpire };
+  return { games: gamesNeeding, gamesFilled, needed, filled, byUmpire };
 }
 
 // What a round tile shows: slots filled / needed, and how many grades were picked.

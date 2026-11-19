@@ -151,7 +151,9 @@ export async function viewAdminHome(ctx) {
             h('div', { class: 'muted' }, r.formats || '', later.length ? ` \u00b7 continues ${later.map(fmtDay).join(' & ')}` : '')],
         h('div', { class: 'tile-stats' },
           picked
-            ? [h('span', { class: 'chip ' + (st.needed && st.filled >= st.needed ? 'ok' : 'warn') }, `${st.filled} / ${st.needed} filled`), ' ',
+            // Games, not places: a two-day game is one game, filled only when every place on both days is.
+            ? [h('span', { class: 'chip' }, `${picked} grade${picked === 1 ? '' : 's'} selected`), ' ',
+               (n => h('span', { class: 'chip ' + (st.games && n >= st.games ? 'ok' : 'warn') }, `${n} / ${st.games || 0} filled`))(st.gamesFilled ?? 0), ' ',
                (p => h('span', { class: 'chip ' + p.cls }, p.short))(publishState(r))]
             : h('span', { class: 'chip warn' }, 'Choose grades'))));
   }

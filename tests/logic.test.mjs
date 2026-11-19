@@ -410,3 +410,11 @@ test('a two-day game counts once: per umpire loads and grouped lists', async () 
   assert.equal(gameCount(pulls), 1);
   assert.deepEqual(byGame(pulls)[0].dates, ['2026-11-28', '2026-12-05']);
 });
+
+test('games filled: a two-day game is one game, filled only when every place on both days is', async () => {
+  const { recount } = await import('../js/logic.js');
+  const two = (id, a1, a2) => ({ id, grade: 'Senior A Grade', slots: 1, days: [{ date: '2026-11-28' }, { date: '2026-12-05' }], alloc: { '2026-11-28': a1 ? [{ p: a1 }] : [], '2026-12-05': a2 ? [{ p: a2 }] : [] } });
+  const one = (id, a) => ({ id, grade: 'Senior B02', slots: 1, days: [{ date: '2026-11-28' }], alloc: { '2026-11-28': a ? [{ p: a }] : [] } });
+  const r = recount([two('a', 'u1', 'u1'), two('b', 'u2', null), one('c', 'u3'), one('d', null)]);
+  assert.deepEqual([r.gamesFilled, r.games, r.filled, r.needed], [2, 4, 4, 6]);
+});
