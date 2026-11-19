@@ -26,7 +26,7 @@ The **Members** page is the association's list of people. Each person has two th
 - **Membership**, set by the officer: **Waiting for approval** (applied through the join link in Settings; they can already give availability), **Member**, **Suspended** (on the profile only; a suspended member is not appointed or asked for availability) or **Rejected**. *Not a member* is someone whose availability came in with a spreadsheet only.
 - **Umpiring**, never set by hand and separate for each association: a member is an **Active umpire** once they have said Available to at least one date this season (or chosen a game as a player umpire). With no answers, or Not available to everything, they are an **Inactive member**, kept for the association's communications (*Email inactive members*).
 
-The list shows Umpiring and Membership, with search and a *Show* filter. People waiting for approval are always at the top, then everyone by last name. Click **Approve** to make an applicant a Member; tick rows to approve or reject several at once. Approving, rejecting and suspending are also on the member's profile, with member since. Members keep their own details (name, date of birth, address, mobile, accreditation); officers set membership, membership type and member since.
+The list shows Umpiring and Membership, with search and a *Show* filter. People waiting for approval are always at the top, then everyone by last name. Anyone who has given availability can be picked on the Assign board; people who are not members (yet) are listed under *Available Non-Member*, and suspended or rejected people are never offered. Click **Approve** to make an applicant a Member; tick rows to approve or reject several at once. Approving, rejecting and suspending are also on the member's profile, with member since. Members keep their own details (name, date of birth, address, mobile, accreditation); officers set membership, membership type and member since.
 
 ### Moving an association to Third Umpire
 
@@ -61,7 +61,7 @@ Only an active member can be appointed, so the availability grid marks anyone el
 
 ## Membership and alerts (Settings)
 
-- **Membership**: the **renewal day** — a day and a month, with no year, because membership falls due on the same day every year (PDCA: 30 June) — and the **membership types** the association offers, each with its own fee (Ordinary, Junior, Life, or whatever it uses). Members are given one of these on the Members page. Members who have not renewed by that day are meant to lose their membership; registration, renewal and payment are not built yet.
+- **Membership**: the **membership types** the association offers, each with its own fee (Ordinary, Junior, Life, or whatever it uses). Members are given one of these on the Members page. Renewal and payment are not built yet.
 - **Send alerts to**: where to email when an umpire pulls out.
 
 ### Turning down an appointment

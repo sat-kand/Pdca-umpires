@@ -397,9 +397,9 @@ export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy
       && !((busy[availKey(compKeyOf(game), dt)] || {})[u.pid] || []).filter(id => id !== game.id).length;
     const okDays = days.filter(freeOn);
     const bothDays = days.length > 1 && okDays.length === days.length;
-    // Someone whose membership is not active can still be allocated, but they are kept in a group of
-    // their own so the officer chooses them on purpose.
-    const member = u.active !== false || canUmpire(u);
+    // Someone who is not a member (yet) can still be allocated if they are available, but they are kept
+    // in a group of their own ("Available Non-Member") so the officer chooses them on purpose.
+    const member = canUmpire(u);
     const group = avoid ? 'avoid'
       : chosen ? 'chosen'
       : !member ? (st === 'yes' ? 'nonmember' : 'avoid')

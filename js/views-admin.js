@@ -10,7 +10,7 @@ import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
 import { applyPlayerUmpires, claimsFrom } from './player-umpire.js';
 const puEnabled = store => !!(store.org && store.org.playerUmpire && store.org.playerUmpire.enabled);
-import { membershipTypes, feeFor, money, renewalText } from './views-org.js';
+import { membershipTypes, feeFor, money } from './views-org.js';
 import { membershipLink } from './views-member.js';
 const profileLink = u => h('a', { class: 'member-link', href: `#/admin/member/${encodeURIComponent(u.pid)}`, title: 'Open profile' }, u.name);
 import { planImport, applyImport } from './import-availability.js';
@@ -20,6 +20,8 @@ import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSy
 // A finished round can still be changed for this many days after its last game (an umpire replaced on
 // the morning, say). After that it is a record: Availability and Report only, no Assign board.
 const EDIT_DAYS_AFTER = 4;
+// Suspended or rejected: not offered for games and left off availability sheets.
+const barred = u => ['suspended', 'rejected'].includes(membershipOf(u));
 const homeMembers = { filter: 'all', q: '', picked: new Set(), importOpen: false, comp: '', avail: { importOpen: true } };   // kept while the page is open
 const editableUntil = r => addDays(r.end || r.start || '', EDIT_DAYS_AFTER);
 const isLocked = (r, today = todayLocal()) => !!(r && (r.end || r.start)) && editableUntil(r) < today;
@@ -236,7 +238,10 @@ export async function viewBoard(ctx, rid) {
   const [games, umpires, availList, rounds, settings] = await Promise.all([
     store.listGames(rid), store.listUmpires(), store.listAvailability((round.season && round.season.id) || 'manual'), store.listRounds(), store.getSettings(),
   ]);
-  const B = { ui: { grades: false, warns: false }, round, games, umpires, settings, availByEmail: Object.fromEntries(availList.map(a => [a.email, a])) };
+  // Anyone with availability can be picked (non-members in a group of their own); suspended or rejected
+  // people are never offered, whatever their availability says.
+  const pickable = umpires.filter(u => !barred(u));
+  const B = { ui: { grades: false, warns: false }, round, games, umpires: pickable, settings, availByEmail: Object.fromEntries(availList.map(a => [a.email, a])) };
   const { claimOf, chosenGames } = claimsFrom(availList, umpires, puEnabled(store));   // games player umpires chose: they come first
   // A game is a player umpire game only while someone has chosen it or is in it as one. Tidy up any
   // left marked from a choice that has since been given back.
@@ -494,7 +499,8 @@ export async function viewAvailabilityOverview(ctx, rid) {
   if (isLocked(round)) { location.replace(`#/admin/round/${rid}/report`); return h('div'); }
   const [umpires, availList, allGames] = await Promise.all([store.listUmpires(), store.listAvailability((round.season && round.season.id) || 'manual'), store.listGames(rid)]);
   const by = Object.fromEntries(availList.map(a => [a.email, a]));
-  const active = umpires.filter(canUmpire).sort(compareMembers);
+  // Members, then people who are not members (yet) but gave availability; never suspended or rejected.
+  const active = umpires.filter(u => canUmpire(u) || (!barred(u) && by[u.email] && Object.keys(by[u.email].days || {}).length)).sort(compareMembers);
   // Every playing date of the round, whether or not its grades are selected yet: availability is
   // about the day, and is what helps decide which grades to cover.
   const cols = roundColumns(allGames);
@@ -515,7 +521,7 @@ export async function viewAvailabilityOverview(ctx, rid) {
     const yes = s.filter(x => x === 'yes').length;
     return cols.length && yes === cols.length ? 0 : yes ? 1 : s.includes('no') ? 3 : 4;
   };
-  const ordered = [...active].sort((a, b) => rank(a) - rank(b) || compareMembers(a, b));
+  const ordered = [...active].sort((a, b) => Number(!canUmpire(a)) - Number(!canUmpire(b)) || rank(a) - rank(b) || compareMembers(a, b));
 
   return h('div', {},
     h('div', { class: 'row-between' }, h('h1', {}, roundHeading(round)), h('span', { class: 'muted' }, fmtRange(round.dates))),
@@ -524,7 +530,7 @@ export async function viewAvailabilityOverview(ctx, rid) {
       h('div', { class: 'summary' }, cols.map(c => { const n = counts(c); return h('span', { class: 'chip' }, `${colName(c)}: ${n.yes} available · ${n.no} not available · ${n.none} no reply${n.pu ? ` · ${n.pu} player umpire${n.pu === 1 ? '' : 's'}` : ''}`); })),
       h('div', { class: 'table-wrap' }, h('table', { class: 'board' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Umpire'), cols.map(c => h('th', {}, colName(c))), h('th', {}, ''))),
-        h('tbody', {}, ordered.map(u => h('tr', {}, h('td', {}, profileLink(u)),
+        h('tbody', {}, ordered.map(u => h('tr', { class: canUmpire(u) ? '' : 'nonmember' }, h('td', {}, profileLink(u), !canUmpire(u) && h('span', { class: 'chip warn tag' }, 'Non-member')),
           cols.map(c => {
             const p = pickOf(u.pid, c.date, c.comp);
             if (p) return h('td', { class: 'av pu', title: `Chose ${gradeShort(p.grade)}: ${p.label}` },
@@ -596,7 +602,7 @@ export async function viewSeasonAvailability(ctx) {
     const optedOut = u => { const m = (by[u.email] || {}).modes; return !!m && (m.regular === false || (Array.isArray(m.comps) && !m.comps.includes(ui.comp))); };
     const missing = mem.filter(u => !answered(u) && !optedOut(u));
     const emails = missing.map(u => u.email);
-    const others = people.filter(u => !canUmpire(u) && answered(u));
+    const others = people.filter(u => !canUmpire(u) && !barred(u) && answered(u));
     const q = ui.q.trim().toLowerCase();
     const shownPeople = [...mem, ...others];
     const rows = shownPeople.filter(u => (!q || u.name.toLowerCase().includes(q)) && (!ui.on || st(u, ui.on) === 'yes'));
@@ -639,7 +645,7 @@ export async function viewSeasonAvailability(ctx) {
         h('div', { class: 'summary' },
           search,
           h('span', { class: 'chip ' + (missing.length ? 'warn' : 'ok') }, `${mem.length - missing.length} of ${mem.length} members have answered`),
-          others.length > 0 && h('span', { class: 'chip' }, `${others.length} not active`),
+          others.length > 0 && h('span', { class: 'chip' }, `${others.length} non-member${others.length === 1 ? '' : 's'}`),
           missing.length > 0 && h('button', { class: 'btn small', type: 'button', onclick: async () => { { const ok = await copyText(emails.join(', ')); toast(ok ? 'Emails copied' : 'Could not copy', ok ? 'ok' : 'err'); }; } }, 'Copy emails of the rest'),
           ui.on && h('button', { class: 'chip ok', type: 'button', onclick: () => { ui.on = null; draw(); } }, `Available ${fmtDay(ui.on)} \u2715`),
           hasPast && h('label', { class: 'inline right' }, (() => { const cb = h('input', { type: 'checkbox', checked: ui.past }); cb.onchange = () => { ui.past = cb.checked; draw(); }; return cb; })(), ' Show past dates')),
@@ -956,7 +962,6 @@ export async function viewUmpires(ctx) {
             h('td', {}, membershipCell(u)),
             h('td', {}, ['member', 'suspended'].includes(membershipOf(u)) ? membershipTypeCell(u) : '')); }))))
           : h('p', { class: 'muted' }, members.length ? 'No one matches.' : 'No members yet. Bring in your membership list below, or send people the link from Settings so they can apply.')),
-      renewalText(store.org) && h('p', { class: 'muted' }, `Membership renews ${renewalText(store.org)}. Types and fees are set in Settings.`),
       h('details', { class: 'card import-card', open: ui.importOpen || !members.length, ontoggle: e => { ui.importOpen = e.currentTarget.open; } },
         h('summary', {}, 'Bring in your existing lists'),
         h('p', { class: 'muted' }, 'Moving to Third Umpire: bring in your membership file first, then each group’s availability. New members after that apply through the link in Settings and give their availability in the app.'),

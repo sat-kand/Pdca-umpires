@@ -92,12 +92,21 @@ export function demoAnswer(i, comp, k) {
   return (i + g * 3 + k * 5) % 4 === 0 ? 'no' : 'yes';
 }
 
+// Applicants waiting for approval (not counted among the sample umpires above).
+const APPLICANTS = [['Priya', 'Nair', 'applicant1@demo.test'], ['Tom', 'Walsh', 'applicant2@demo.test'], ['Lena', 'Okafor', 'applicant3@demo.test']];
+
 export async function seedDemo(store, { live = true, fetchFn } = {}) {
   for (const [i, [firstName, lastName]] of NAMES.entries()) {
     const email = `umpire${i + 1}@demo.test`;
     const had = await store.getUmpire(email);
     await store.saveUmpire({ pid: had ? had.pid : newPid(), email, name: `${firstName} ${lastName}`, firstName, lastName, phone: '', dob: '', address: '', accreditation: `L${(i % 3) + 1}-${2200 + i}`, active: true,
       memberSince: `${2016 + (i % 8)}-0${1 + (i % 9)}-15` });
+  }
+  // Three people who applied through the join link and are waiting to be approved; the first has
+  // already given availability, so they show as Available Non-Member on the board.
+  for (const [firstName, lastName, email] of APPLICANTS) {
+    const had = await store.getUmpire(email);
+    if (!had) await store.saveUmpire({ pid: newPid(), email, name: `${firstName} ${lastName}`, firstName, lastName, active: false, updatedAt: new Date().toISOString() });
   }
   // A few of them are (or were) members of other associations too, so the profile page has something to show.
   if (store.seedOtherMemberships) await store.seedOtherMemberships({
@@ -179,6 +188,12 @@ export async function seedDemo(store, { live = true, fetchFn } = {}) {
       r.dates.forEach(d => { idx[r.comp] = (idx[r.comp] || 0) + 1; days[`${r.comp}:${d}`] = demoAnswer(i, r.comp, idx[r.comp]); });
     }
     await store.saveAvailability({ seasonId: season.id, email, name: u.name, days, updatedAt: new Date().toISOString() });
+  }
+  {
+    const [firstName, lastName, email] = APPLICANTS[0];
+    const days = {};
+    for (const r of season.calendar) r.dates.forEach((d, k) => { days[`${r.comp}:${d}`] = k % 3 === 2 ? 'no' : 'yes'; });
+    await store.saveAvailability({ seasonId: season.id, email, name: `${firstName} ${lastName}`, days, updatedAt: new Date().toISOString() });
   }
   return { live: !!real, rounds: made.length, games: all.length };
 }

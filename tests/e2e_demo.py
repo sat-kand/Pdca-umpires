@@ -535,8 +535,9 @@ with sync_playwright() as p:
         ranks = page.locator("table.board tbody tr").evaluate_all("""l => l.map(tr => { const c = [...tr.querySelectorAll('td.av')];
             const ok = c.filter(td => td.classList.contains('ok')).length, no = c.filter(td => td.classList.contains('no')).length;
             const r = c.some(td => td.classList.contains('pu')) ? 2 : ok === c.length ? 0 : ok ? 1 : no ? 3 : 4;
-            return [r, tr.querySelector('td').innerText.trim().split(' ').slice(-1)[0].toLowerCase()]; })""")
-        check(ranks == sorted(ranks), "available every day, then some days, then player umpires, then not available, then no answer; last-name order within each")
+            return [tr.classList.contains('nonmember') ? 1 : 0, r, tr.querySelector('a.member-link').innerText.trim().split(' ').slice(-1)[0].toLowerCase()]; })""")
+        check(ranks == sorted(ranks), "members first (available every day, some days, player umpires, not available, no answer; by last name), then non-members who gave availability")
+        check(page.locator("tr.nonmember:has-text('Priya Nair') .chip:has-text('Non-member')").count() == 1, "an applicant who gave availability is listed as a Non-member")
     else:
         check(False, "sample data has a round with no grades selected")
     page.goto(BASE + "#/admin")
@@ -546,7 +547,7 @@ with sync_playwright() as p:
     page.click(".nav-link:has-text('Availability')")
     page.wait_for_selector(".season-grid table")
     check(page.locator(".tabs button.tab").all_inner_texts() == ["Senior", "T20", "Junior"], "dashboard has a tab per group")
-    check(page.locator(".season-grid tbody tr").count() == 10, "one row per active umpire")
+    check(page.locator(".season-grid tbody tr:not(.nonmember)").count() == 10, "one row per member")
     n_dates = page.locator(".season-grid .datebtn").count()
     check(n_dates == 12 and page.locator(".season-grid th.past").count() == 0, "Senior: one column per upcoming date, nothing greyed out to scroll past")
     check(page.locator(".season-grid thead", has_text="Round").count() == 0, "no round columns: every competition is laid out by date")
@@ -610,8 +611,9 @@ with sync_playwright() as p:
     check(page.locator("button:has-text('Email active members')").count() == 1 and page.locator("button:has-text('Email inactive members')").count() == 1,
           "buttons to draft an email to active or inactive members")
     names = page.locator("table.members tbody tr a.member-link").all_inner_texts()
-    check(names[:2] == ["Social Member", "New Umpire"] or names[:2] == ["New Umpire", "Social Member"], f"people waiting for approval are at the top ({names[:3]})")
-    rest = [n.split()[-1].lower() for n in names[2:]]
+    waiting = page.locator("table.members tbody tr.needs").count()
+    check(waiting == 5 and {"Social Member", "New Umpire", "Priya Nair", "Tom Walsh", "Lena Okafor"} == set(names[:5]), f"people waiting for approval (two new, three in the sample data) are at the top ({names[:5]})")
+    rest = [n.split()[-1].lower() for n in names[5:]]
     check(rest == sorted(rest), "then everyone by last name")
     check(row_of(page, "newbie@demo.test").locator("button:has-text('Approve')").count() == 1 and "Waiting for approval" not in row_of(page, "newbie@demo.test").locator("td").nth(2).inner_text(),
           "each person waiting has an Approve button")
@@ -693,17 +695,12 @@ with sync_playwright() as p:
     page.click("button:has-text('Add type')")
     page.locator(".type-row").last.locator("input").first.fill("Student member")
     page.locator(".type-row").last.locator("input[type=number]").fill("15")
-    check(page.locator(".daymonth select").count() == 2 and page.locator("input[type=date]").count() == 0, "the renewal date is a day and a month, with no year")
-    check(page.locator(".daymonth select").nth(0).input_value() == "30" and page.locator(".daymonth select").nth(1).input_value() == "06", "it starts on the association's own renewal day")
-    page.locator(".daymonth select").nth(1).select_option("02")
-    check(page.locator(".daymonth select").nth(0).locator("option").count() == 30, "February offers 29 days (plus the blank)")
-    page.locator(".daymonth select").nth(1).select_option("09")
-    page.locator(".daymonth select").nth(0).select_option("01")
+    check(page.locator(".daymonth select").count() == 0 and "renew" not in page.inner_text("form:has(.type-rows)").lower(), "no renewal date: it is not built yet")
     page.click("button:has-text('Save membership')")
     page.wait_for_selector(".toast:has-text('Membership saved')")
     reload(page)
     page.wait_for_selector(".type-rows")
-    check(page.locator(".type-row").count() == 4 and page.locator(".daymonth select").nth(0).input_value() == "01" and page.locator(".daymonth select").nth(1).input_value() == "09", "the renewal day and the new type are saved")
+    check(page.locator(".type-row").count() == 4, "the new type is saved")
     page.locator(".type-row").last.locator("button:has-text('Remove')").click()
     page.click("button:has-text('Save membership')")
     page.wait_for_selector(".toast:has-text('Membership saved')")
@@ -713,7 +710,7 @@ with sync_playwright() as p:
     page.click("nav .menu > summary")
     page.click(".menu-items .nav-link:has-text('Members')")
     page.wait_for_selector("table.members")
-    check("Membership renews 1 September each year" in page.inner_text("body"), "the Members page shows when membership falls due")
+    check("renews" not in page.inner_text("body"), "no renewal note on the Members page (not built yet)")
     sel = row_of(page, "umpire1@demo.test").locator("select")
     check(sel.locator("option").all_inner_texts() == ["\u2014", "Ordinary member", "Junior member", "Life member"], "the dropdown offers the types set up in Settings")
     sel.select_option("Junior member")
@@ -750,7 +747,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".season-grid tr.nonmember")
     check(page.locator(".season-grid tbody tr").count() == before_rows + 1 and page.locator("tr.nonmember:has-text('Sam Casual')").count() == 1,
           "the new person is in the sheet, marked Non-member")
-    check("1 not active" in page.inner_text(".summary"), "the summary counts them separately")
+    check("2 non-members" in page.inner_text(".summary"), "the summary counts non-members separately (the sample applicant and the new person)")
     d1 = date.fromisoformat(cal[0]["dates"][0]).strftime("%-d")
     imported = page.evaluate("""() => {
         const db = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca;
@@ -1548,6 +1545,16 @@ with sync_playwright() as p:
     u2 = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['umpire2@demo.test']")
     check(u2["suspended"] is True and u2["active"] is False and page.locator(".status-box .chip:has-text('Active umpire')").count() == 0,
           "suspending (on the profile only) stops them umpiring")
+    prof = page.evaluate("() => location.hash")
+    u2name = u2["name"]
+    page.goto(BASE + "#/admin")
+    page.wait_for_selector("a.tile-body")
+    page.locator("a.tile-body").first.click()
+    page.wait_for_selector("select.slot")
+    opts = page.locator("select.slot").first.evaluate("s => [...s.options].map(o => o.text)")
+    check(not any(u2name in o for o in opts), f"a suspended member is not offered on the Assign board, even with availability ({u2name})")
+    page.goto(BASE + prof)
+    page.wait_for_selector(".status-box button:has-text('Lift suspension')")
     page.click(".status-box button:has-text('Lift suspension')")
     page.wait_for_selector(".status-box .chip:has-text('Active umpire')")
     check(True, "lifting the suspension makes them a member again (Active umpire, from their availability)")
