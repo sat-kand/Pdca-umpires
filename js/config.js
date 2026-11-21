@@ -15,7 +15,7 @@ export const CONFIG = {
   // Supabase (the live back-end). Both values are public by design: the database is protected by
   // row-level security, not by hiding these. Leave blank for demo mode. Each environment
   // (dev, staging, prod) uses its own project.
-  supabase: { url: '', anonKey: '' },
+  supabase: { url: 'https://vziphltqtkuzlpltudqy.supabase.co', anonKey: 'sb_publishable_IxGIQNMptZZFoZNwCcv8dw_pX-L4k9C' },
 
   firebase: {
     apiKey: '',
