@@ -36,6 +36,11 @@ today = date.today()
 sat1 = today + timedelta(days=(5 - today.weekday()) % 7)   # next Saturday (or today)
 sat2 = sat1 + timedelta(days=7)
 D1, D2 = sat1.isoformat(), sat2.isoformat()
+# Labels the app prints for those dates (the sample data is always "this coming Saturday and the next").
+def _n(d): return f"{d.day} {d:%b}"
+S1, S2 = f"Sat, {_n(sat1)}", f"Sat, {_n(sat2)}"
+N2 = _n(sat2)
+P1, P2 = sat1 - timedelta(days=7), sat1 - timedelta(days=14)   # the two finished sample rounds
 
 # ---- fake Play Cricket service (same JSON shape as the live one) -------------
 def match(mid, rnd, mtype, days, home, away, venue):
@@ -164,8 +169,8 @@ with sync_playwright() as p:
           "one section per week: this week Senior and Junior; next week T20 and the Junior one-day games on the two-day games' second Saturday (groups in the order Play Cricket lists the competitions)")
     check(page.locator(".week-head h2").all_inner_texts()[:2] == ["This week", "Next week"], "weeks are headed This week, Next week")
     wk2 = page.locator("section.week").nth(1).inner_text()
-    check("two-day games from Sat, 21 Nov continue Sat, 28 Nov" in wk2, "next week lists the two-day games continuing from this week, instead of repeating them")
-    check("One Day" in tile("Junior", 1).inner_text() and "Two Day" not in tile("Junior", 1).inner_text() and re.search(r"28 NOV", tile("Junior", 1).inner_text().upper()) and "21/28" not in tile("Junior", 1).inner_text(), "the extra Junior tile has its own date and only One Day games")
+    check(f"two-day games from {S1} continue {S2}" in wk2, "next week lists the two-day games continuing from this week, instead of repeating them")
+    check("One Day" in tile("Junior", 1).inner_text() and "Two Day" not in tile("Junior", 1).inner_text() and re.search(N2.upper(), tile("Junior", 1).inner_text().upper()) and f"{sat1.day}/{sat2.day}" not in tile("Junior", 1).inner_text(), "the extra Junior tile has its own date and only One Day games")
     check(page.locator("button:has-text('Load next week')").count() == 1, "Load next week is offered: the sample season has later weeks")
     bx = page.locator(".load-more button").bounding_box()
     check(abs((bx["x"] + bx["width"] / 2) - 640) < 40, "it sits in the middle of the page")
@@ -196,8 +201,8 @@ with sync_playwright() as p:
     reload(page)
     page.wait_for_selector(".tile-round")
     sen_t = tile("Senior").inner_text().replace("\xa0", " ")
-    check(sen_t.upper().index("SAT, 21 NOV") < sen_t.upper().find("28 NOV") and "ROUND" not in sen_t.upper(), "tile lists each start day, not the round name")
-    check("Two Day games, day 2 Sat, 28 Nov" in sen_t, f"each start day says how many games and when their day 2 is: {sen_t!r}")
+    check(sen_t.upper().index(S1.upper()) < sen_t.upper().find(N2.upper()) and "ROUND" not in sen_t.upper(), "tile lists each start day, not the round name")
+    check(f"Two Day games, day 2 {S2}" in sen_t, f"each start day says how many games and when their day 2 is: {sen_t!r}")
     check("5 grades selected" in sen_t and "0 / 13 filled" in sen_t, f"Senior tile: 5 grades selected, 0 / 13 games filled (26 places, two-day games counted once): {sen_t!r}")
     check("Two Day" in sen_t and "Mens" not in sen_t and "Women" not in sen_t, "Senior tile shows Play Cricket's own match type: Two Day (no made-up grade groups)")
     check("T20" in tile("T20").inner_text().replace("T20\n", "", 1), "T20 tile shows the match type T20")
@@ -475,8 +480,8 @@ with sync_playwright() as p:
     page.wait_for_selector("h1:has-text('Past allocations')")
     check(page.locator(".past-row").count() == 3, "it is its own page under My Organisation: three finished rounds from the sample data")
     rows = page.locator(".past-row").all_inner_texts()
-    check("14 NOV" in rows[0].upper() and "Junior" in rows[0] and "Not published" in rows[0] and "1/2 slots filled" in rows[0], "newest first: Junior 14 Nov, part filled, not published")
-    check(any("7/14 NOV" in r.upper() and "Senior" in r and "8/8 slots filled" in r and "Published" in r for r in rows), "Senior 7/14 Nov: 8/8 slots filled, Published")
+    check(_n(P1).upper() in rows[0].upper() and "Junior" in rows[0] and "Not published" in rows[0] and "1/2 slots filled" in rows[0], "newest first: Junior 14 Nov, part filled, not published")
+    check(any(f"{P2.day}/{_n(P1)}".upper() in r.upper() and "Senior" in r and "8/8 slots filled" in r and "Published" in r for r in rows), "Senior 7/14 Nov: 8/8 slots filled, Published")
     page.screenshot(path="/tmp/past.png")
     page.locator(".past-row", has_text="Senior").click()
     page.wait_for_selector("a.tab:has-text('Report')")
@@ -1286,7 +1291,7 @@ with sync_playwright() as p:
     sign_in(page, "admin@demo.test")
     page.wait_for_selector(".tile-round")
     check(page.locator(".comp-tile h2").all_inner_texts() == ["Senior", "Junior", "Senior", "T20"], "no button needed: next rounds appear by themselves; Senior has a second tile for its one-day Women's game")
-    check("Two Day" in tile("Senior", 0).inner_text() and "28 NOV" in tile("Senior", 1).inner_text().upper() and "T20" in tile("Senior", 1).inner_text() and "Two Day" not in tile("Senior", 1).inner_text(), "second Senior tile: its own date and its own match type (T20 in the mock)")
+    check("Two Day" in tile("Senior", 0).inner_text() and N2.upper() in tile("Senior", 1).inner_text().upper() and "T20" in tile("Senior", 1).inner_text() and "Two Day" not in tile("Senior", 1).inner_text(), "second Senior tile: its own date and its own match type (T20 in the mock)")
     open_grades("Senior", 1)
     check(dlg.locator(".grade-row").count() == 1 and "Women" in dlg.locator(".grade-row").first.inner_text(), "its popup lists only the grade that plays then (Senior Women)")
     dlg.locator("button:has-text('Cancel')").click()
@@ -1298,7 +1303,7 @@ with sync_playwright() as p:
     while page.locator("button:has-text('Load next week')").count():
         page.click("button:has-text('Load next week')")
     check(page.locator(".comp-tile:has(h2:has-text('Senior'))").count() == 3, "all Senior weeks are reachable (three here)")
-    check("SAT, 21 NOV" in tile("Senior").inner_text().upper() and "day 2 Sat, 28 Nov" in tile("Senior").inner_text().replace("\xa0", " ") and "28 NOV" in tile("T20").inner_text().upper(),
+    check(S1.upper() in tile("Senior").inner_text().upper() and f"day 2 {S2}" in tile("Senior").inner_text().replace("\xa0", " ") and N2.upper() in tile("T20").inner_text().upper(),
           "each tile shows its own week's day, with a two-day game's second day as a note")
     check(page.locator("text=Updating fixtures").count() == 0, "loading finished")
     check("Choose grades" in tile("Senior").inner_text(), "nothing is picked until the officer picks grades")

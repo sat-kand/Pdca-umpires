@@ -94,3 +94,22 @@ select expect('other officer cannot see audit rows of pdca', rows_visible($$sele
 -- anon sees nothing
 reset role; set role anon;
 select denied('anon cannot read', $$select 1 from games$$);
+
+-- save_games and officer-created people (run as the owner first so the suspended association is open again)
+reset role;
+select as_user('owner@x.test');
+update associations set plan='trial' where id='pdca';
+set role authenticated;
+select as_user('off@x.test');
+insert into people (email, name) values ('new@x.test', 'New Member');
+insert into memberships (association_id,email,pid,active) values ('pdca','new@x.test','p9',true);
+select expect('officer can create a person record', rows_visible($$select 1 from people where email='new@x.test'$$) = 1);
+select expect('save_games saves a two-day game with an appointment', save_games('pdca','r-draft', $j$[
+  {"game":{"id":"g-new","grade":"Senior A Grade","format":"twoDay","slots":1,"home_name":"A","away_name":"B","extra":{}},
+   "days":[{"day_no":1,"date":"2026-12-05","start_time":"13:30","ground":"Park"},{"day_no":2,"date":"2026-12-06","start_time":"13:30","ground":"Park"}],
+   "appts":[{"date":"2026-12-05","slot_index":0,"pid":"p1","name":"U One"},{"date":"2026-12-06","slot_index":0,"pid":"p1","name":"U One"}]}]$j$::jsonb) = 1);
+select expect('draft round appointments are draft', (select count(*) from appointments where game_id='g-new' and status='draft') = 2);
+update rounds set published = true where association_id='pdca' and id='r-draft';
+select expect('publishing a round publishes its appointments', (select count(*) from appointments where game_id='g-new' and status='published') = 2);
+select as_user('u1@x.test');
+select denied('umpire cannot save games', $j$select save_games('pdca','r-draft','[{"game":{"id":"g-hack","slots":1},"days":[],"appts":[]}]'::jsonb)$j$);

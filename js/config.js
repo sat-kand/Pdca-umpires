@@ -12,6 +12,11 @@ export const CONFIG = {
 
   apiBase: 'https://grassrootsapiproxy.cricket.com.au',
 
+  // Supabase (the live back-end). Both values are public by design: the database is protected by
+  // row-level security, not by hiding these. Leave blank for demo mode. Each environment
+  // (dev, staging, prod) uses its own project.
+  supabase: { url: '', anonKey: '' },
+
   firebase: {
     apiKey: '',
     authDomain: '',
@@ -22,6 +27,7 @@ export const CONFIG = {
   },
 };
 
+export const SUPABASE_SDK = 'https://esm.sh/@supabase/supabase-js@2.45.4';
 export const FIREBASE_SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
 
 // The association the demo starts with (demo mode only; live associations are created in the app).

@@ -167,7 +167,10 @@ function restoreScroll(path) {
 async function boot() {
   setChildren(main, spinner('Starting…'));
   try {
-    if (CONFIG.firebase.apiKey) {
+    if (CONFIG.supabase && CONFIG.supabase.url) {
+      const { createSupabaseStore } = await import('./store-supabase.js');
+      S.store = await createSupabaseStore(CONFIG.supabase);
+    } else if (CONFIG.firebase.apiKey) {
       const { createFirebaseStore } = await import('./store-firebase.js');
       S.store = await createFirebaseStore(CONFIG.firebase);
     } else S.store = createDemoStore();
