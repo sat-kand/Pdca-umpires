@@ -122,6 +122,13 @@ export async function viewMy(ctx) {
   // Player umpiring, switched on (or given another group) after they last saved, with no games chosen.
   const isNewPlayer = () => isNewFor({ key: '\u0000', addedAt: pu.addedAt }, lastSaved) && !savedPicks.length;
   let picks = savedPicks.map(p => ({ ...p, dates: [...p.dates] }));
+  // Answers changed but not saved yet are kept in this browser, so they survive Close, a reload or coming back later.
+  const DRAFT = season && `pdca-avail-draft:${(store.org && store.org.id) || ''}:${season.id}:${u.email}`;
+  try {
+    const d = DRAFT && JSON.parse(localStorage.getItem(DRAFT) || 'null');
+    if (d && d.days) for (const [x, v] of Object.entries(d.days)) { if (v) days[x] = v; else delete days[x]; }
+    if (d && Array.isArray(d.picks)) picks = d.picks.filter(p => PLAYER_UMPIRE_COMPS.includes(p.comp));
+  } catch { /* no draft, or private mode */ }
 
   const keysFor = comp => [...new Set([...Object.keys(days), ...Object.keys(savedDays)].filter(x => x.startsWith(comp + ':')))];
   const pickSig = list => list.map(p => `${p.gameId}:${[...p.dates].sort().join('+')}`).sort().join('|');
@@ -361,12 +368,13 @@ export async function viewMy(ctx) {
     const chip = statusChips[k];
     const summary = h('span', { class: 'muted group-summary' });
     const hint = h('span', { class: 'muted' });
-    const cancelBtn = h('button', { class: 'btn', type: 'button' }, 'Cancel');
+    const cancelBtn = h('button', { class: 'btn', type: 'button' }, 'Close');
+    const discardBtn = h('button', { class: 'link discard', type: 'button' }, 'Discard changes');
     const saveBtn = h('button', { class: 'btn primary', type: 'button' }, `Save ${c.label}`);
     const body = h('div', { class: 'group-dates' }, h('div', { class: 'group-tools' }, markAll), tiles);
-    const foot = h('div', { class: 'group-foot' }, hint, h('span', { class: 'savebar-btns' }, cancelBtn, saveBtn));
+    const foot = h('div', { class: 'group-foot' }, h('span', {}, hint, ' ', discardBtn), h('span', { class: 'savebar-btns' }, cancelBtn, saveBtn));
     // One line: the group, what was answered, and its status. Tap the line to answer or change that group.
-    const head = h('div', { class: 'row-between comp-head', role: 'button', tabindex: '0' }, h('div', { class: 'comp-headline' }, h('h2', { class: 'comp-title' }, c.label), summary), chip);
+    const head = h('div', { class: 'row-between comp-head', role: 'button', tabindex: '0' }, h('div', { class: 'comp-headline' }, h('span', { class: 'chev', 'aria-hidden': 'true' }), h('h2', { class: 'comp-title' }, c.label), summary), chip);
     const el = h('li', { class: 'comp-section', 'data-comp': k }, head, body, foot);
     editing[k] = false;                                   // compact: a line each, opened with Edit
     const update = () => {
@@ -379,14 +387,16 @@ export async function viewMy(ctx) {
       const left = keys.filter(x => !days[x]).length;
       hint.textContent = left ? `${left} date${left > 1 ? 's' : ''} not answered yet` : 'All dates answered';
       saveBtn.disabled = !dirty;                          // nothing has changed since the last save
+      discardBtn.hidden = !dirty;
     };
-    const tap = () => { if (!editing[k]) { editing[k] = true; drawStatus(); } };
+    const tap = () => { editing[k] = !editing[k]; drawStatus(); };    // tapping the line opens or closes just this group
     head.onclick = tap;
     head.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tap(); } };
-    cancelBtn.onclick = () => {                           // put back what was saved for this group, and fold it away
+    cancelBtn.onclick = () => { editing[k] = false; drawStatus(); };   // folds away; the changes stay (Unsaved changes) until saved
+    discardBtn.onclick = () => {                          // put back what was saved for this group
       for (const x of keysFor(k)) { if (savedDays[x]) days[x] = savedDays[x]; else delete days[x]; paint(x); }
       keys.forEach(x => rowEl[x] && rowEl[x].classList.remove('missing'));
-      editing[k] = false; drawStatus();
+      drawStatus();
     };
     const save = busy(saveBtn, async () => {
       if (!dirtyOf(k)) return;
@@ -432,11 +442,12 @@ export async function viewMy(ctx) {
   const puTitle = (pu.title || '').trim() || 'Player umpire';
   const pSummary = h('div', { class: 'player-picks' });
   const pHint = h('span', { class: 'muted' });
-  const pCancel = h('button', { class: 'btn', type: 'button' }, 'Cancel');
+  const pCancel = h('button', { class: 'btn', type: 'button' }, 'Close');
+  const pDiscard = h('button', { class: 'link discard', type: 'button' }, 'Discard changes');
   const pSave = h('button', { class: 'btn primary', type: 'button' }, `Save ${puTitle}`);
-  const pFoot = h('div', { class: 'group-foot' }, pHint, h('span', { class: 'savebar-btns' }, pCancel, pSave));
+  const pFoot = h('div', { class: 'group-foot' }, h('span', {}, pHint, ' ', pDiscard), h('span', { class: 'savebar-btns' }, pCancel, pSave));
   const pCount = h('span', { class: 'muted group-summary' });
-  const pHead = h('div', { class: 'row-between comp-head', role: 'button', tabindex: '0' }, h('div', { class: 'comp-headline' }, h('h2', { class: 'comp-title' }, puTitle), pCount), statusChips.player);
+  const pHead = h('div', { class: 'row-between comp-head', role: 'button', tabindex: '0' }, h('div', { class: 'comp-headline' }, h('span', { class: 'chev', 'aria-hidden': 'true' }), h('h2', { class: 'comp-title' }, puTitle), pCount), statusChips.player);
   const playerCard = h('li', { class: 'comp-section player-card' }, pHead,
     (pu.description || '').trim() && h('p', { class: 'muted group-note' }, (pu.description || '').trim()),
     pSummary, playerBody, pFoot);
@@ -450,11 +461,13 @@ export async function viewMy(ctx) {
     pHead.classList.toggle('tap', !on); pHead.setAttribute('aria-expanded', String(on));
     pHint.textContent = `${picks.length} game${picks.length === 1 ? '' : 's'} chosen`;
     pSave.disabled = !dirty;
+    pDiscard.hidden = !dirty;
   };
-  const pOpen = () => { if (!playerEditing) { playerEditing = true; drawPlayer(); drawStatus(); } };
+  const pOpen = () => { playerEditing = !playerEditing; drawPlayer(); drawStatus(); };
   pHead.onclick = pOpen;
   pHead.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pOpen(); } };
-  pCancel.onclick = () => { picks = savedPicks.map(p => ({ ...p, dates: [...p.dates] })); playerEditing = false; drawPlayer(); drawStatus(); };
+  pCancel.onclick = () => { playerEditing = false; drawPlayer(); drawStatus(); };
+  pDiscard.onclick = () => { picks = savedPicks.map(p => ({ ...p, dates: [...p.dates] })); drawPlayer(); drawStatus(); };
   const savePlayer = busy(pSave, async () => {
     if (!picksChanged()) return;
     const nextPicks = picks.map(p => ({ ...p, dates: [...p.dates] }));
@@ -467,15 +480,20 @@ export async function viewMy(ctx) {
   });
   pSave.onclick = async () => { await savePlayer(); drawStatus(); };
 
-  const editAll = h('button', { class: 'btn', type: 'button' }, 'Edit availability');
-  editAll.onclick = () => { groupCards.forEach(g => g.open()); if (puOn) playerEditing = true; drawPlayer(); drawStatus(); };
-  drawStatus = () => { groupCards.forEach(g => g.update()); updatePlayer(); editAll.hidden = groupCards.every(g => g.isOpen()) && (!puOn || playerEditing); };
+  const saveDraft = () => {
+    if (!DRAFT) return;
+    const d = {};
+    for (const x of new Set([...Object.keys(days), ...Object.keys(savedDays)])) if (days[x] !== savedDays[x]) d[x] = days[x] || null;
+    const draft = { days: d, ...(pickSig(picks) !== pickSig(savedPicks) ? { picks } : {}) };
+    try { if (Object.keys(d).length || draft.picks) localStorage.setItem(DRAFT, JSON.stringify(draft)); else localStorage.removeItem(DRAFT); } catch { /* private mode */ }
+  };
+  drawStatus = () => { groupCards.forEach(g => g.update()); updatePlayer(); saveDraft(); };
   drawSummary = drawStatus;
   drawStatus();
   drawPlayer();
   // One compact card for the association: a line for each group (and player umpiring), each opened and saved on its own.
   root.append(h('section', { class: 'card avail-card' },
-    h('div', { class: 'row-between avail-head' }, h('div', {}, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, orgName)), editAll),
+    h('div', { class: 'avail-head' }, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, orgName)),
     groupCards.length ? h('ul', { class: 'plain group-list' }, groupCards.map(g => g.el), playerCard) : h('p', { class: 'muted' }, 'No upcoming dates.')));
   // The member's other associations: a summary card each, opened to edit there.
   const others = h('div', { class: 'other-orgs' });

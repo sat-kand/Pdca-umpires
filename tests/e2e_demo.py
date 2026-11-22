@@ -439,8 +439,8 @@ with sync_playwright() as p:
     sign_out(page)
     sign_in(page, "umpire1@demo.test", open_form=False)
     page.wait_for_selector(".comp-section")
-    check(page.locator(".tile:visible").count() == 0 and page.locator(".avail-head button:has-text('Edit availability')").count() == 1,
-          "answered groups are folded to one line each, with one Edit availability for the card")
+    check(page.locator(".tile:visible").count() == 0 and page.locator(".avail-head button").count() == 0,
+          "answered groups are folded to one line each; no button opens them all")
     unfold(page)
     page.wait_for_selector(".tile")
     check(page.locator("nav .nav-link").count() == 0, "umpire header has no officer navigation, only their name menu")
@@ -479,11 +479,22 @@ with sync_playwright() as p:
           "only Senior shows unsaved changes; Junior is still Submitted")
     check(sen.locator(".group-foot button.primary").is_enabled() and jun.locator(".group-foot button.primary").is_disabled()
           and "Save Senior" in sen.locator(".group-foot").inner_text(), "Senior has its own 'Save Senior' button; Junior's Save stays greyed out")
-    sen.locator(".group-foot button:has-text('Cancel')").click()
-    check(sen.locator(".tile:visible").count() == 0 and page.locator(".comp-section:has(h2:has-text('Senior')) .comp-head .chip").inner_text() == "\u2713 Submitted"
-          and sen.locator(".group-summary").is_visible(), "Cancel on Senior throws the change away and folds it back to Submitted")
-    sen.locator(".comp-head").click()
-    check("on" in sen_first.locator("button.opt.yes").get_attribute("class"), "opening Senior again shows the saved answer, not the discarded one")
+    check(jun.locator(".tile:visible").count() > 0, "(both open for this check)")
+    sen.locator(".group-foot button:has-text('Close')").click()
+    check(sen.locator(".tile:visible").count() == 0 and jun.locator(".tile:visible").count() > 0, "Close folds only Senior; Junior stays open")
+    check(page.locator(".comp-section:has(h2:has-text('Senior')) .comp-head .chip").inner_text() == "Unsaved changes", "closed, Senior still says Unsaved changes")
+    reload(page)
+    page.wait_for_selector(".comp-section")
+    sen = page.locator(".comp-section:has(h2:has-text('Senior'))")
+    jun = page.locator(".comp-section:has(h2:has-text('Junior'))")
+    check(sen.locator(".comp-head .chip").inner_text() == "Unsaved changes", "the unsaved change is kept in the browser after a reload")
+    if not sen.locator(".tile:visible").count():
+        sen.locator(".comp-head").click()
+    sen_first = sen.locator(".drow").first
+    check("on" in sen_first.locator("button.opt.no").get_attribute("class"), "and opening Senior shows the change, ready to save")
+    sen.locator(".group-foot button:has-text('Discard changes')").click()
+    check("on" in sen_first.locator("button.opt.yes").get_attribute("class") and sen.locator(".comp-head .chip").inner_text() == "\u2713 Submitted",
+          "Discard changes puts back the saved answer")
     sen_first.locator("button.opt.no").click()
     save(page)
     page.wait_for_selector(".comp-section:has(h2:has-text('Senior')) .comp-head .chip:has-text('Submitted')")
@@ -1117,9 +1128,13 @@ with sync_playwright() as p:
     page.locator(".player-card .comp-head").click()
     page.locator(".my-picks button:has-text('Remove')").first.click()
     check(page.locator(".player-card .comp-head .chip").inner_text() == "Unsaved changes", "removing a game shows Unsaved changes on the player card")
-    page.locator(".player-card .group-foot button:has-text('Cancel')").click()
+    page.locator(".player-card .group-foot button:has-text('Close')").click()
+    check(page.locator(".player-card .comp-head .chip").inner_text() == "Unsaved changes", "Close keeps the change: still Unsaved changes")
+    page.locator(".player-card .comp-head").click()
+    page.locator(".player-card .group-foot button:has-text('Discard changes')").click()
+    page.locator(".player-card .group-foot button:has-text('Close')").click()
     check(not dialogs and game_text.split(" ", 1)[1] in page.inner_text(".player-card .player-picks") and page.locator(".player-card .comp-head .chip").inner_text() == "\u2713 Submitted",
-          "Cancel asks nothing and puts the saved game back, still Submitted")
+          "Discard changes asks nothing and puts the saved game back, still Submitted")
     reload(page)
     page.wait_for_selector(".player-card:visible")
     check(game_text.split(" ", 1)[1] in page.inner_text(".player-card .player-picks"), "the chosen game is still there")
@@ -1295,14 +1310,15 @@ with sync_playwright() as p:
     check(len(sen_changed) in (1, 2), "only the Senior changes were sent")
     check(chip("Senior") == "\u2713 Submitted" and grp("Senior").locator(".tile:visible").count() == 0 and chip("Junior") == "Unsaved changes",
           "Senior folds back to Submitted; the unsent Junior change still shows")
-    # Cancel throws away one group's change and nothing else
-    grp("Junior").locator(".group-foot button:has-text('Cancel')").click()
-    check(chip("Junior") == "\u2713 Submitted" and grp("Junior").locator(".group-summary").is_visible(), "Cancel on Junior throws its change away: back to Submitted, not 'Unsaved'")
-    check(page.evaluate(AV)["days"] == saved1["days"], "and nothing was saved by cancelling")
+    # Discard changes throws away one group's change and nothing else
+    grp("Junior").locator(".group-foot button:has-text('Discard changes')").click()
+    grp("Junior").locator(".group-foot button:has-text('Close')").click()
+    check(chip("Junior") == "\u2713 Submitted" and grp("Junior").locator(".group-summary").is_visible(), "Discard changes on Junior throws its change away: back to Submitted")
+    check(page.evaluate(AV)["days"] == saved1["days"], "and nothing was saved by discarding")
     grp("Junior").locator(".comp-head").click()
     check(("on" in (grp("Junior").locator(".drow").first.locator("button.opt").nth(0).get_attribute("class") or "") or "on" in (grp("Junior").locator(".drow").first.locator("button.opt").nth(1).get_attribute("class") or "")) == bool(jun_was),
           "opening Junior again shows what was saved")
-    grp("Junior").locator(".group-foot button:has-text('Cancel')").click()
+    grp("Junior").locator(".group-foot button:has-text('Close')").click()
     # T20 has a date that was never answered: it must be answered before T20 can be saved
     grp("T20").locator(".comp-head").click()
     sen_row2 = grp("T20").locator(".drow").nth(1)
@@ -1439,10 +1455,11 @@ with sync_playwright() as p:
     r0 = fp.locator(".comp-section:visible .drow:visible").first
     was_yes = "on" in (r0.locator("button.opt.yes").get_attribute("class") or "")
     r0.locator("button.opt.no" if was_yes else "button.opt.yes").click()
-    fp.locator(".group-foot button:visible:has-text('Cancel')").first.click()
-    check(fp.locator(".tile:visible").count() == 0, "Cancel folds it away again")
+    fp.locator(".group-foot button:visible:has-text('Close')").first.click()
+    check(fp.locator(".tile:visible").count() == 0 and fp.locator(".comp-head .chip:has-text('Unsaved changes')").count() == 1, "Close folds it away, still marked Unsaved changes")
     fp.locator(".comp-section:not(.player-card) .comp-head").first.click()
-    check(("on" in (fp.locator(".comp-section:visible .drow:visible").first.locator("button.opt.yes").get_attribute("class") or "")) == was_yes, "and puts back what was saved")
+    fp.locator(".group-foot button:visible:has-text('Discard changes')").first.click()
+    check(("on" in (fp.locator(".comp-section:visible .drow:visible").first.locator("button.opt.yes").get_attribute("class") or "")) == was_yes, "Discard changes puts back what was saved")
     fresh.close()
 
     print("Associations: settings, officers, join link")
