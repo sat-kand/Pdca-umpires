@@ -74,9 +74,12 @@ export async function viewMy(ctx) {
   const { store, S } = ctx;
   const u = S.umpire;
   if (!u) {
-    return h('div', { class: 'card narrow' }, h('h1', {}, 'Add your umpire details'),
-      h('p', { class: 'muted' }, 'You are signed in as an appointments officer. To give your own availability, add your details first.'),
-      h('a', { class: 'btn primary', href: '#/profile' }, 'Add my details'));
+    const page = h('div', { class: 'narrow-page' }, h('section', { class: 'card avail-card' },
+      h('div', { class: 'avail-head' }, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, (store.org && store.org.name) || '')),
+      h('p', { class: 'muted' }, 'To give your own availability here, add your umpire details first.'),
+      h('a', { class: 'btn primary', href: '#/profile' }, 'Add my details')));
+    placeOtherOrgs(ctx, page, page.firstChild, S.user.email);
+    return page;
   }
   const [season, rounds] = await Promise.all([store.getSeason(), store.listRounds()]);
   const root = h('div', { class: 'narrow-page' });
@@ -86,7 +89,8 @@ export async function viewMy(ctx) {
   if (status === 'suspended' || status === 'rejected') {
     root.append(h('section', { class: 'card' }, h('h2', {}, (store.org && store.org.name) || 'Membership'),
       h('p', {}, status === 'suspended' ? 'Your membership is suspended at the moment. Contact the association if that is not right.' : 'Your application was not approved. Contact the association if you have questions.')));
-    root.append(...(await otherOrgCards(ctx, u.email, todayLocal())));
+    const here = root.lastChild;
+    placeOtherOrgs(ctx, root, here, u.email);
     return root;
   }
   if (status === 'applied') root.append(h('p', { class: 'notice warn' }, 'Your application is waiting for approval by the association. You can already give your availability.'));
@@ -325,7 +329,11 @@ export async function viewMy(ctx) {
   // A status for each group and for player umpiring.
   const statusChips = Object.fromEntries([...ALL_COMPS, 'player'].map(k => [k, h('span', { class: 'chip' })]));
   if (!season) {
-    root.append(h('section', { class: 'card' }, h('h2', {}, 'Availability'), h('p', { class: 'muted' }, 'The season dates have not been set up yet. Please check back soon.')));
+    const card = h('section', { class: 'card avail-card' },
+      h('div', { class: 'avail-head' }, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, orgName)),
+      h('p', { class: 'muted' }, 'No dates to answer yet.'));
+    root.append(card);
+    placeOtherOrgs(ctx, root, card, u.email);
     return root;
   }
   const paintChip = (c, changed, has, fresh = false) => {
@@ -376,7 +384,7 @@ export async function viewMy(ctx) {
     // One line: the group, what was answered, and its status. Tap the line to answer or change that group.
     const head = h('div', { class: 'row-between comp-head', role: 'button', tabindex: '0' }, h('div', { class: 'comp-headline' }, h('span', { class: 'chev', 'aria-hidden': 'true' }), h('h2', { class: 'comp-title' }, c.label), summary), chip);
     const el = h('li', { class: 'comp-section', 'data-comp': k }, head, body, foot);
-    editing[k] = false;                                   // compact: a line each, opened with Edit
+    editing[k] = S.openGroup === k;                       // compact: a line each; opened by a tap (or arriving from another association's card)
     const update = () => {
       const on = !!editing[k], dirty = dirtyOf(k), sent = sentOf(k);
       const yes = keys.filter(x => savedDays[x] === 'yes').length, no = keys.filter(x => savedDays[x] === 'no').length;
@@ -487,18 +495,18 @@ export async function viewMy(ctx) {
     const draft = { days: d, ...(pickSig(picks) !== pickSig(savedPicks) ? { picks } : {}) };
     try { if (Object.keys(d).length || draft.picks) localStorage.setItem(DRAFT, JSON.stringify(draft)); else localStorage.removeItem(DRAFT); } catch { /* private mode */ }
   };
+  if (S.openGroup === 'player' && puOn) playerEditing = true;
+  S.openGroup = '';
   drawStatus = () => { groupCards.forEach(g => g.update()); updatePlayer(); saveDraft(); };
   drawSummary = drawStatus;
   drawStatus();
   drawPlayer();
   // One compact card for the association: a line for each group (and player umpiring), each opened and saved on its own.
-  root.append(h('section', { class: 'card avail-card' },
+  const mineCard = h('section', { class: 'card avail-card' },
     h('div', { class: 'avail-head' }, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, orgName)),
-    groupCards.length ? h('ul', { class: 'plain group-list' }, groupCards.map(g => g.el), playerCard) : h('p', { class: 'muted' }, 'No upcoming dates.')));
-  // The member's other associations: a summary card each, opened to edit there.
-  const others = h('div', { class: 'other-orgs' });
-  root.append(others);
-  otherOrgCards(ctx, u.email, today).then(cards => setChildren(others, cards)).catch(e => console.warn('other associations', e));
+    groupCards.length ? h('ul', { class: 'plain group-list' }, groupCards.map(g => g.el), playerCard) : h('p', { class: 'muted' }, 'No dates to answer yet.'));
+  root.append(mineCard);
+  placeOtherOrgs(ctx, root, mineCard, u.email);
   return root;
 }
 
@@ -515,6 +523,18 @@ function summaryRow(label, sent, yes, no, fresh) {
 }
 
 // Summary cards for every other association this member belongs to, read with their member access there.
+// The member's other associations, each a compact card like this one, in the same order as the menu.
+// Tapping a group line switches to that association (staying on this page) with that group open.
+function placeOtherOrgs(ctx, root, current, email) {
+  const order = ((ctx.S && ctx.S.myOrgs) || []).map(o => o.id);
+  const here = ctx.store.org && ctx.store.org.id;
+  otherOrgCards(ctx, email, todayLocal()).then(cards => {
+    for (const { orgId, el } of cards) {
+      if (order.indexOf(orgId) > -1 && order.indexOf(orgId) < order.indexOf(here)) current.before(el); else root.append(el);
+    }
+  }).catch(e => console.warn('other associations', e));
+}
+
 async function otherOrgCards(ctx, email, today) {
   const { store } = ctx;
   if (!store.listMemberships || !store.memberView) return [];
@@ -529,24 +549,26 @@ async function otherOrgCards(ctx, email, today) {
       const groups = (org.groups && org.groups.length) ? org.groups : [{ key: 'all', name: 'All grades' }];
       const comps = season ? upcomingDates(season.calendar, today) : [];
       const saved = (avail && avail.days) || {};
-      const ticked = (avail && avail.modes && avail.modes.comps) || [];
+      const go = key => ctx.chooseOrg(m.orgId, { open: key });
+      const line = (key, title, summary, chip) => h('li', { class: 'comp-section' },
+        h('div', { class: 'row-between comp-head tap', role: 'button', tabindex: '0', 'aria-expanded': 'false', onclick: () => go(key),
+          onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(key); } } },
+          h('div', { class: 'comp-headline' }, h('span', { class: 'chev', 'aria-hidden': 'true' }), h('h2', { class: 'comp-title' }, title), summary && h('span', { class: 'muted group-summary' }, summary)), chip));
+      const chipOf = (sent, fresh) => h('span', { class: 'chip ' + (sent ? 'ok' : fresh ? 'new' : 'muted-chip') }, sent ? '✓ Submitted' : fresh ? 'Newly Added' : 'Not submitted');
       const items = groups.filter(g => comps.some(c => c.comp === g.key) && groupNeedsUmpires(g.key, org.gradeGroups, org.gradeUmpires)).map(g => {
         const keys = comps.filter(c => c.comp === g.key).flatMap(c => c.dates.map(d => availKey(g.key, d)));
         const sent = Object.keys(saved).some(x => x.startsWith(g.key + ':'));
-        return summaryRow(g.name, sent, keys.filter(x => saved[x] === 'yes').length, keys.filter(x => saved[x] === 'no').length,
-          !sent && isNewFor(g, avail) && !ticked.includes(g.key));
+        return line(g.key, g.name, sent ? `${keys.filter(x => saved[x] === 'yes').length} available · ${keys.filter(x => saved[x] === 'no').length} not available` : '',
+          chipOf(sent, !sent && isNewFor(g, avail)));
       });
       const pu = org.playerUmpire || {};
+      const puOn = !!(org.flags && org.flags.player_umpire) && pu.enabled && (pu.groups || []).length > 0;
       const nPicks = ((avail && avail.picks) || []).filter(p => (p.dates || []).some(d => d >= today)).length;
-      cards.push(h('section', { class: 'card my-summary other-org' },
-        h('div', { class: 'row-between' }, h('div', {}, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, org.name || m.orgName || m.orgId)),
-          h('button', { class: 'btn', type: 'button', onclick: () => ctx.chooseOrg(m.orgId) }, 'Open')),
-        !season ? h('p', { class: 'muted' }, 'The season dates have not been set up yet.')
-          : h('ul', { class: 'plain summary-list' }, items.length ? items : h('li', { class: 'muted' }, 'No upcoming dates.'),
-            pu.enabled && (pu.groups || []).length > 0 && h('li', { class: 'row-between' },
-              h('span', {}, h('strong', {}, (pu.title || '').trim() || 'Player umpire'), nPicks > 0 && h('span', { class: 'muted' }, ` \u00b7 ${nPicks} game${nPicks === 1 ? '' : 's'} chosen`)),
-              (fresh => h('span', { class: 'chip ' + (nPicks ? 'ok' : fresh ? 'new' : 'muted-chip') }, nPicks ? '\u2713 Submitted' : fresh ? 'Newly Added' : 'Not submitted'))(
-                !nPicks && isNewFor({ key: '\u0000', addedAt: pu.addedAt }, avail) && !(avail && avail.modes && avail.modes.player))))));
+      if (puOn) items.push(line('player', (pu.title || '').trim() || 'Player umpire', nPicks ? `${nPicks} game${nPicks === 1 ? '' : 's'} chosen` : '',
+        chipOf(nPicks > 0, !nPicks && isNewFor({ key: '\u0000', addedAt: pu.addedAt }, avail))));
+      cards.push({ orgId: m.orgId, el: h('section', { class: 'card avail-card other-org' },
+        h('div', { class: 'avail-head' }, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, org.name || m.orgName || m.orgId)),
+        items.length ? h('ul', { class: 'plain group-list' }, items) : h('p', { class: 'muted' }, 'No dates to answer yet.')) });
     } catch (e) { console.warn('association', m.orgId, e); }
   }
   return cards;

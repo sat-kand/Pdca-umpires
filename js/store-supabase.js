@@ -55,11 +55,18 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
     async getUmpire(email) { return rowToUmpire(await one(sb.from('memberships').select('*, people(*)').eq('association_id', id).eq('email', email))); },
     async saveUmpire(u) { await saveUmpire(id, u); },
     async getSeason() { return seasonOf(id); },
-    async getOrg() { return rowToOrg(await one(sb.from('associations').select('*').eq('id', id))); },
+    async getOrg() { const o = rowToOrg(await one(sb.from('associations').select('*').eq('id', id))); if (o) o.flags = await flagsOf(id); return o; },
     async listRounds() { return (await all(() => sb.from('rounds').select('*').eq('association_id', id).eq('published', true))).map(rowToRound); },
     async listGames(rid) { return gamesOf(id, rid); },
     async getAvailability(seasonId, email) { const r = await one(sb.from('availability').select('data').eq('association_id', id).eq('season_id', seasonId).eq('email', email)); return r ? r.data : null; },
   });
+  const flagsOf = async id => {
+    const [defs, own] = await Promise.all([
+      ok(sb.from('feature_flags').select('key, enabled_by_default')),
+      ok(sb.from('association_flags').select('key, enabled').eq('association_id', id)),
+    ]);
+    return Object.fromEntries([...(defs || []).map(f => [f.key, !!f.enabled_by_default]), ...(own || []).map(f => [f.key, !!f.enabled])]);
+  };
   const seasonOf = async id => { const r = await one(sb.from('seasons').select('data').eq('association_id', id).order('updated_at', { ascending: false })); return r ? r.data : null; };
 
   async function saveUmpire(aid, u) {
@@ -128,11 +135,7 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
       org = id ? rowToOrg(await one(sb.from('associations').select('*').eq('id', id))) : null;
       // Features the platform owner has switched on for this association (defaults, then the association's own).
       if (org) {
-        const [defs, own] = await Promise.all([
-          ok(sb.from('feature_flags').select('key, enabled_by_default')),
-          ok(sb.from('association_flags').select('key, enabled').eq('association_id', id)),
-        ]);
-        org.flags = Object.fromEntries([...(defs || []).map(f => [f.key, !!f.enabled_by_default]), ...(own || []).map(f => [f.key, !!f.enabled])]);
+        org.flags = await flagsOf(id);
       }
       return org;
     },

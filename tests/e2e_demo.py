@@ -1742,16 +1742,30 @@ with sync_playwright() as p:
     page.wait_for_selector(".avail-head")
     mine = page.locator(".avail-head").first
     check("Parramatta District Cricket Association" in mine.inner_text() and "My availability" in mine.inner_text(), "the heading says which association it is for")
-    check(page.locator(".comp-section:has(h2:has-text('Night Cricket')) .comp-head .chip").inner_text() == "Newly Added", "a group added after they answered shows as Newly Added")
+    cur = page.locator(".avail-card:not(.other-org)")
+    check(cur.locator(".comp-section:has(h2:has-text('Night Cricket')) .comp-head .chip").inner_text() == "Newly Added", "a group added after they answered shows as Newly Added")
     page.wait_for_selector(".other-org")
     other = page.locator(".other-org")
-    check(other.count() == 1 and "Second Association" in other.inner_text() and other.locator("button:has-text('Open')").count() == 1,
-          "their other association has its own summary card, with Open")
-    page.locator(".comp-section:has(h2:has-text('Night Cricket')) .comp-head").click()
-    check(page.locator(".comp-section:has(h2:has-text('Night Cricket')) .tile:visible").count() > 0, "the new group opens with Give availability, with its own Save")
-    other.locator("button:has-text('Open')").click()
-    page.wait_for_selector(".avail-head h2:has-text('Second Association')")
-    check(True, "Open switches to that association")
+    check(other.count() == 1 and "Second Association" in other.inner_text() and other.locator("button:has-text('Open')").count() == 0
+          and other.locator(".comp-head").count() >= 3, "their other association is a compact card like this one, a line per group, no Open button")
+    cur.locator(".comp-section:has(h2:has-text('Night Cricket')) .comp-head").click()
+    check(cur.locator(".comp-section:has(h2:has-text('Night Cricket')) .tile:visible").count() > 0, "the new group opens with its own Save")
+    other.locator(".comp-section:has(h2:has-text('Junior')) .comp-head").click()
+    page.wait_for_selector(".avail-card:not(.other-org) .avail-head h2:has-text('Second Association')")
+    check(page.url.endswith("#/my"), "tapping a line there switches association and stays on My availability")
+    cur = page.locator(".avail-card:not(.other-org)")
+    check(cur.locator(".comp-section:has(h2:has-text('Junior')) .tile:visible").count() > 0 and cur.locator(".tile:visible").count() == cur.locator(".comp-section:has(h2:has-text('Junior')) .tile:visible").count(),
+          "with that group (and only that group) open")
+    check(page.locator(".other-org h2:has-text('Parramatta')").count() == 1, "and Parramatta is still listed, as a compact card")
+    # an association with no dates yet: its card says so, and the others still show
+    page.evaluate("""() => { const k = 'pdca-umpires-demo-v2', db = JSON.parse(localStorage.getItem(k)); db.orgs.second.season = null; localStorage.setItem(k, JSON.stringify(db)); }""")
+    page.reload()
+    page.wait_for_selector(".avail-card")
+    page.wait_for_selector(".other-org")
+    check("No dates to answer yet." in page.locator(".avail-card:not(.other-org)").inner_text() and "season dates have not been set up" not in page.inner_text("main")
+          and page.locator(".other-org h2:has-text('Parramatta')").count() == 1, "an association with no dates says 'No dates to answer yet', and the other association still shows")
+    page.locator(".other-org .comp-head").first.click()
+    page.wait_for_selector(".avail-card:not(.other-org) .avail-head h2:has-text('Parramatta')")
 
     print("A group whose grades all need no umpires")
     sign_out(page)
@@ -1794,6 +1808,7 @@ with sync_playwright() as p:
     check(page.locator(".menu-items .menu-switch:has-text('Second Association')").count() == 1, "an officer of two associations can switch from the menu")
     page.locator(".menu-items .menu-switch:has-text('Second Association')").click()
     page.wait_for_timeout(800)
+    check(page.url.endswith("#/admin/settings") and page.locator("label:has-text('Name') input").first.input_value() == "Second Association", "switching keeps the page (Settings), now showing Second Association's")
     page.click("nav .menu > summary")
     check(page.locator(".menu-items .menu-head").first.inner_text() == "Second Association"
           and page.locator(".menu-items .menu-switch:has-text('Parramatta')").count() == 1, "now in Second Association, with a way back")

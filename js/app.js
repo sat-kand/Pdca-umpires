@@ -43,10 +43,16 @@ async function loadUser(user) {
   try { S.isAdmin = await S.store.isAdmin(user.email); } catch (e) { console.warn('admin check failed', e); }
   try { S.umpire = await S.store.getUmpire(user.email); } catch (e) { console.warn('umpire load failed', e); }
 }
-async function chooseOrg(id) {
+// Switching association keeps the page they are on, showing that association's content instead.
+async function chooseOrg(id, opts = {}) {
   localStorage.setItem(ORG_KEY, id); localStorage.setItem(JOIN_KEY, '1');
+  S.openGroup = opts.open || '';                        // a group to open on My availability
   if (S.user) await loadUser(S.user);
-  go('/');
+  const path = location.hash.slice(1) || '/';
+  if (path === '/associations' || path.startsWith('/join/')) return go('/');
+  if (path.startsWith('/admin') && !S.isAdmin) return go('/');      // not an officer there: their umpire page
+  if (path.startsWith('/admin/round/')) return go('/admin');        // a round belongs to the association it came from
+  render();
 }
 // Someone in more than one association (an officer of several, say) can switch at any time from the menu.
 function switchItems() {
