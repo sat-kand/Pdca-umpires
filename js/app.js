@@ -102,7 +102,7 @@ function drawHeader() {
     S.org && S.org.plan === 'suspended' && h('div', { class: 'demo-banner' }, 'This association has been set to read-only, so changes cannot be saved.'));
 }
 
-async function render() {
+async function render(quiet) {
   if (!S.store) return;
   const id = ++renderId;
   drawHeader();
@@ -111,7 +111,7 @@ async function render() {
   if (join) { if (S.user) await chooseOrg(decodeURIComponent(join[1])); else { localStorage.setItem(ORG_KEY, decodeURIComponent(join[1])); localStorage.setItem(JOIN_KEY, '1'); go('/'); } return; }
   if (S.user && S.org && S.isAdmin && path === '/') { go('/admin'); return; }
   shownPath = null;                                    // the spinner's scroll position is not anyone's
-  setChildren(main, spinner());
+  if (quiet !== true) setChildren(main, spinner());       // a refresh on returning to the tab keeps the page as it is until the new one is ready
   let view;
   try {
     if (!S.user) view = viewLogin(ctx);
@@ -180,7 +180,7 @@ async function boot() {
   window.addEventListener('hashchange', render);
   // Coming back to the officer's pages (another tab, the phone unlocked): redraw, so choices and
   // pull-outs made meanwhile are applied to the board without a manual refresh.
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && location.hash.startsWith('#/admin')) render(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && location.hash.startsWith('#/admin')) render(true); });
   try { await S.store.completeLink(async () => prompt('To finish signing in, please type the email address the link was sent to:')); }
   catch (e) { if (e && e.signInLink) S.linkProblem = e.message; else toast('Sign-in problem: ' + (e.message || e), 'err'); }
   S.store.onAuth(async user => {
