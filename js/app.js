@@ -182,7 +182,7 @@ async function boot() {
   // pull-outs made meanwhile are applied to the board without a manual refresh.
   document.addEventListener('visibilitychange', () => { if (!document.hidden && location.hash.startsWith('#/admin')) render(); });
   try { await S.store.completeLink(async () => prompt('To finish signing in, please type the email address the link was sent to:')); }
-  catch (e) { toast('Sign-in link problem: ' + (e.message || e), 'err'); }
+  catch (e) { if (e && e.signInLink) S.linkProblem = e.message; else toast('Sign-in problem: ' + (e.message || e), 'err'); }
   S.store.onAuth(async user => { await loadUser(user); render(); });
 }
 

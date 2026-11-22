@@ -6,18 +6,24 @@ import { PLAYER_UMPIRE_COMPS } from './player-umpire.js';
 import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS, groupNeedsUmpires, needsUmpires, membershipOf } from './logic.js';
 
 export function viewLogin(ctx) {
-  const { store } = ctx;
-  const email = h('input', { type: 'email', required: true, placeholder: 'you@example.com', autocomplete: 'email', id: 'login-email' });
+  const { store, S } = ctx;
+  let last = '';
+  try { last = (S && S.linkProblem && localStorage.getItem('pdca-last-email')) || ''; } catch { /* no storage */ }
+  const email = h('input', { type: 'email', required: true, placeholder: 'you@example.com', autocomplete: 'email', id: 'login-email', value: last });
   const msg = h('div');
-  const btn = h('button', { class: 'btn' + (store.signInGoogle ? '' : ' primary'), type: 'submit' }, store.mode === 'demo' ? 'Sign in (demo)' : 'Email me a sign-in link');
+  // A sign-in link that did not work: say why, and the way out is the form below (the address is filled in when we know it).
+  const problem = S && S.linkProblem ? h('p', { class: 'notice warn', role: 'alert' }, S.linkProblem) : h('span');
+  const btn = h('button', { class: 'btn' + (store.signInGoogle ? '' : ' primary'), type: 'submit' }, store.mode === 'demo' ? 'Sign in (demo)' : (last ? 'Email me a new link' : 'Email me a sign-in link'));
   const google = store.signInGoogle && h('button', { class: 'btn primary wide', type: 'button' }, 'Continue with Google');
   if (google) google.onclick = busy(google, async () => { await store.signInGoogle(); });
   const form = h('form', { class: 'card narrow', onsubmit: busy(btn, async e => {
     e.preventDefault();
     const r = await store.sendLink(emailKey(email.value));
+    if (r.sent) { if (S) S.linkProblem = ''; problem.remove(); }
     if (r.sent) msg.replaceChildren(h('p', { class: 'notice ok' }, `We've emailed a sign-in link to ${email.value}. Open it on this device to continue.`));
   }) },
   h('h1', {}, 'Sign in'),
+  problem,
   h('p', { class: 'muted' }, store.mode === 'demo'
     ? 'Demo mode: no email is sent. Type any address to continue. Use admin@demo.test for the appointments officer view, or umpire1@demo.test … umpire10@demo.test for sample umpires.'
     : 'Use the same email address the appointments officer has for you.'),

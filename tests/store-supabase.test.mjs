@@ -101,6 +101,8 @@ test('completeLink: the code is used once; a second start-up or an already signe
     url.search = '?code=def'; fail = true;                    // the exchange fails but a session exists (see fake getSession)
     assert.equal(await s.completeLink(), true);
     url.search = '?code=ghi'; c.auth.getSession = async () => ({ data: { session: null } });
-    await assert.rejects(s.completeLink(), /expired/);        // really expired
+    await assert.rejects(s.completeLink(), e => e.signInLink && /already been used or has expired/.test(e.message));   // used or too old
+    url.search = '?code=jkl'; c.auth.exchangeCodeForSession = async () => ({ error: { message: 'invalid request: both auth code and code verifier should be non-empty' } });
+    await assert.rejects(s.completeLink(), e => e.signInLink && /different browser or device/.test(e.message));          // opened elsewhere
   } finally { delete globalThis.location; delete globalThis.history; }
 });

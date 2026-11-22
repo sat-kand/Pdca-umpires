@@ -82,6 +82,7 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
       return () => data.subscription.unsubscribe();
     },
     async sendLink(email) {
+      try { localStorage.setItem('pdca-last-email', email); } catch { /* private mode: the form just starts empty */ }
       fail(await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: true } }));
       return { sent: true };
     },
@@ -95,7 +96,11 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
       if (error) {
         const { data } = await sb.auth.getSession();            // already signed in by an earlier attempt with this same link: not a problem
         if (data && data.session) return true;
-        throw new Error('That sign-in link has expired or was opened in a different browser. Request a new one.');
+        // Say what is most likely wrong: a link opened somewhere other than where it was asked for, or a link already used or too old.
+        const elsewhere = /verifier|flow state/i.test(error.message || '') && !/expired|used|invalid/i.test(error.message || '');
+        throw Object.assign(new Error(elsewhere
+          ? 'This sign-in link was opened in a different browser or device from the one you asked for it in. Open it in that same browser, or get a new link below.'
+          : 'This sign-in link has already been used or has expired. Each link works once, and for about an hour. Get a new one below.'), { signInLink: true });
       }
       return true;
     },
