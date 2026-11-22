@@ -142,3 +142,7 @@ The rules are in `supabase/migrations/0002_rls.sql` and tested by `supabase/test
 **Allocate works by calendar week** (Monday to Sunday, `org.weekStart` to change it). Each week lists one tile per group with only that week's games: Friday night, Saturday and Sunday together. A two-day game belongs to the week it starts in, where both days are allocated; its second day is shown under the next week as *continuing*. Tiles show the week's day(s), the match types, "continues …" for second days, and either *x / y filled* and the publish state, or *Choose grades* when none are selected yet. *Load next week* adds the following week.
 
 Changing groups rebuilds the weeks the next time Allocate opens; games keep their allocations.
+
+## Hosting (Cloudflare Pages)
+
+One Pages project per environment, each watching one branch (`dev`, `staging`, `main`). The build command is `npm run build` and the output folder is `dist`. The build points the site at that environment's Supabase project from two environment variables (both public values): `SUPABASE_URL` and `SUPABASE_ANON_KEY`. Each deployed address must also be added to that Supabase project's Authentication → URL Configuration. Secrets (the PlayHQ key) never go in Pages; they stay in Supabase.
