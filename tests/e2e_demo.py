@@ -160,8 +160,8 @@ def row_of(page, email):
 def unfold(page):
     """An umpire who has submitted sees a summary; most checks need the form, so open it."""
     page.wait_for_timeout(300)
-    for _ in range(6):                                  # each group has its own Edit
-        b = page.locator(".comp-section:not(.player-card) .comp-head button:visible:has-text('availability')")
+    for _ in range(8):                                  # open every group (not player umpiring), each with its own Save
+        b = page.locator(".comp-section:not(.player-card) .comp-head.tap")
         if not b.count():
             break
         b.first.click()
@@ -439,8 +439,8 @@ with sync_playwright() as p:
     sign_out(page)
     sign_in(page, "umpire1@demo.test", open_form=False)
     page.wait_for_selector(".comp-section")
-    check(page.locator(".tile:visible").count() == 0 and page.locator(".comp-section:not(.player-card) .comp-head button:has-text('Edit availability')").count() == 3,
-          "answered groups are folded, each with its own Edit availability")
+    check(page.locator(".tile:visible").count() == 0 and page.locator(".avail-head button:has-text('Edit availability')").count() == 1,
+          "answered groups are folded to one line each, with one Edit availability for the card")
     unfold(page)
     page.wait_for_selector(".tile")
     check(page.locator("nav .nav-link").count() == 0, "umpire header has no officer navigation, only their name menu")
@@ -482,7 +482,7 @@ with sync_playwright() as p:
     sen.locator(".group-foot button:has-text('Cancel')").click()
     check(sen.locator(".tile:visible").count() == 0 and page.locator(".comp-section:has(h2:has-text('Senior')) .comp-head .chip").inner_text() == "\u2713 Submitted"
           and sen.locator(".group-summary").is_visible(), "Cancel on Senior throws the change away and folds it back to Submitted")
-    sen.locator("button:has-text('Edit availability')").click()
+    sen.locator(".comp-head").click()
     check("on" in sen_first.locator("button.opt.yes").get_attribute("class"), "opening Senior again shows the saved answer, not the discarded one")
     sen_first.locator("button.opt.no").click()
     save(page)
@@ -1050,7 +1050,7 @@ with sync_playwright() as p:
     sign_in(page, "umpire4@demo.test")
     page.wait_for_selector(".player-card:visible")
     check(page.locator(".player-card .comp-head .chip").inner_text() == "Newly Added", "player umpiring switched on after they answered shows as Newly Added")
-    page.locator(".player-card button:has-text('Choose games')").click()
+    page.locator(".player-card .comp-head").click()
     check(page.locator(".player-card .comp-head .chip").inner_text() == "Not submitted", "once they open it, it reads Not submitted")
     check(page.locator(".player-card .group-note").count() == 0, "with no text set, no description is shown")
     check(page.locator(".player-card h2").inner_text() == "Player umpire", "with no name set, it is called Player umpire")
@@ -1074,7 +1074,7 @@ with sync_playwright() as p:
     check(page.locator(".pick-list").count() == 0, "choosing games is a second option: closed until they open it")
     check("Pick any Senior game you would like to umpire." in page.inner_text(".player-card"), "members see the officer's own wording")
     check(page.locator(".comp-section:not(.player-card)").count() == 3, "each group has its own card, and player umpiring has one too")
-    page.locator(".player-card button:has-text('Choose games')").click()
+    page.locator(".player-card .comp-head").click()
     page.wait_for_selector(".pick-list")
     order = page.evaluate("() => { const a = document.querySelector('.comp-section'), p = document.querySelector('.player-card'); return !!(a.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING); }")
     check(order, "the groups come before the player-umpire games")
@@ -1110,19 +1110,19 @@ with sync_playwright() as p:
     check(days_after == days_before, "choosing a game does not change their date answers, so the officer's Availability sheet is unaffected")
     reload(page)
     page.wait_for_selector(".player-card:visible")
-    check(game_text.split(" ", 1)[1] in page.inner_text(".player-card .group-summary") and page.locator(".player-card .comp-head .chip").inner_text() == "\u2713 Submitted",
+    check(game_text.split(" ", 1)[1] in page.inner_text(".player-card .player-picks") and page.locator(".player-card .comp-head .chip").inner_text() == "\u2713 Submitted",
           "the game is saved, and the card folds to a summary marked Submitted")
     dialogs = []
     page.on("dialog", lambda d: dialogs.append(d.message))
-    page.locator(".player-card button:has-text('Edit games')").click()
+    page.locator(".player-card .comp-head").click()
     page.locator(".my-picks button:has-text('Remove')").first.click()
     check(page.locator(".player-card .comp-head .chip").inner_text() == "Unsaved changes", "removing a game shows Unsaved changes on the player card")
     page.locator(".player-card .group-foot button:has-text('Cancel')").click()
-    check(not dialogs and game_text.split(" ", 1)[1] in page.inner_text(".player-card .group-summary") and page.locator(".player-card .comp-head .chip").inner_text() == "\u2713 Submitted",
+    check(not dialogs and game_text.split(" ", 1)[1] in page.inner_text(".player-card .player-picks") and page.locator(".player-card .comp-head .chip").inner_text() == "\u2713 Submitted",
           "Cancel asks nothing and puts the saved game back, still Submitted")
     reload(page)
     page.wait_for_selector(".player-card:visible")
-    check(game_text.split(" ", 1)[1] in page.inner_text(".player-card .group-summary"), "the chosen game is still there")
+    check(game_text.split(" ", 1)[1] in page.inner_text(".player-card .player-picks"), "the chosen game is still there")
 
     sign_out(page)
     sign_in(page, "admin@demo.test")
@@ -1200,7 +1200,7 @@ with sync_playwright() as p:
     if page.locator(".who").count(): sign_out(page)
     sign_in(page, "umpire4@demo.test")
     check(page.locator(".appt-game").filter(has_text=pu_fixture).count() == 0, "the game they gave back is no longer listed under My appointments")
-    page.locator(".player-card button:has-text('Edit games'), .player-card button:has-text('Choose games')").first.click()
+    page.locator(".player-card .comp-head").click()
     page.wait_for_selector(".chooser-pick select[aria-label=Round]")
     rsel = page.locator(".chooser-pick select[aria-label=Round]")
     pu_round = gave_round                                                    # the same week and grade as the game they gave back
@@ -1262,15 +1262,14 @@ with sync_playwright() as p:
     gsave = lambda n: grp(n).locator(".group-foot button.primary")
     flip = lambda row: row.locator("button.opt.no").click() if "on" not in (row.locator("button.opt.no").get_attribute("class") or "") else row.locator("button.opt.yes").click()
     check(page.locator(".comp-section:not(.player-card)").count() == 3 and page.locator(".tile:visible").count() == 0, "three group cards, each folded to a summary")
-    check("1 new date to answer" in grp("T20").locator(".group-summary").inner_text(), "T20's one unanswered date is called out in its summary")
-    check(page.locator(".comp-section:not(.player-card) .comp-head button:has-text('Edit availability')").count() == 3, "every group has its own Edit availability")
+    check(page.locator(".comp-section:not(.player-card) .comp-head").count() == 3 and "new date" not in page.inner_text(".avail-card"), "each group is one tappable line, with no 'new dates' wording")
     # Change Junior and Senior, in two separate cards
-    grp("Junior").locator("button:has-text('Edit availability')").click()
+    grp("Junior").locator(".comp-head").click()
     jrow = grp("Junior").locator(".drow").first
     jun_was = jrow.locator("button.opt.on").count()
     flip(jrow)
     check(chip("Junior") == "Unsaved changes" and chip("Senior") == "\u2713 Submitted" and gsave("Junior").is_enabled(), "a Junior change shows on Junior only, and Junior's own Save is live")
-    grp("Senior").locator("button:has-text('Edit availability')").click()
+    grp("Senior").locator(".comp-head").click()
     check(gsave("Senior").is_disabled(), "Senior is open but unchanged: its Save is greyed out")
     sen_row = grp("Senior").locator(".drow").first
     flip(sen_row)
@@ -1300,12 +1299,12 @@ with sync_playwright() as p:
     grp("Junior").locator(".group-foot button:has-text('Cancel')").click()
     check(chip("Junior") == "\u2713 Submitted" and grp("Junior").locator(".group-summary").is_visible(), "Cancel on Junior throws its change away: back to Submitted, not 'Unsaved'")
     check(page.evaluate(AV)["days"] == saved1["days"], "and nothing was saved by cancelling")
-    grp("Junior").locator("button:has-text('Edit availability')").click()
+    grp("Junior").locator(".comp-head").click()
     check(("on" in (grp("Junior").locator(".drow").first.locator("button.opt").nth(0).get_attribute("class") or "") or "on" in (grp("Junior").locator(".drow").first.locator("button.opt").nth(1).get_attribute("class") or "")) == bool(jun_was),
           "opening Junior again shows what was saved")
     grp("Junior").locator(".group-foot button:has-text('Cancel')").click()
     # T20 has a date that was never answered: it must be answered before T20 can be saved
-    grp("T20").locator("button:has-text('Edit availability')").click()
+    grp("T20").locator(".comp-head").click()
     sen_row2 = grp("T20").locator(".drow").nth(1)
     flip(sen_row2)
     gsave("T20").click()
@@ -1397,7 +1396,7 @@ with sync_playwright() as p:
     m.set_viewport_size({"width": 390, "height": 800})
     m.goto(BASE + "#/")
     m.wait_for_selector(".comp-section")
-    m.locator(".comp-section:not(.player-card) .comp-head button:visible").first.click()
+    m.locator(".comp-section:not(.player-card) .comp-head").first.click()
     m.wait_for_selector(".tile")
     overflow = m.evaluate("() => document.documentElement.scrollWidth > window.innerWidth + 1")
     check(not overflow, "availability page does not scroll sideways on a phone")
@@ -1434,7 +1433,7 @@ with sync_playwright() as p:
           "once submitted, each group folds into a short summary: how many dates available, Submitted")
     check(fp.locator(".player-card").count() == 0 or fp.locator(".player-card").is_hidden(),
           "player umpiring is off until the officer switches it on, so it is not listed")
-    fp.locator(".comp-section:not(.player-card) .comp-head button:has-text('Edit availability')").first.click()
+    fp.locator(".comp-section:not(.player-card) .comp-head").first.click()
     fp.wait_for_selector(".drow")
     check(fp.locator(".comp-section:not(.player-card) .comp-title").count() == 3 and fp.locator("button.opt.yes:visible").count() > 3, "Edit availability opens that group's date-by-date form")
     r0 = fp.locator(".comp-section:visible .drow:visible").first
@@ -1442,7 +1441,7 @@ with sync_playwright() as p:
     r0.locator("button.opt.no" if was_yes else "button.opt.yes").click()
     fp.locator(".group-foot button:visible:has-text('Cancel')").first.click()
     check(fp.locator(".tile:visible").count() == 0, "Cancel folds it away again")
-    fp.locator(".comp-section:not(.player-card) .comp-head button:has-text('Edit availability')").first.click()
+    fp.locator(".comp-section:not(.player-card) .comp-head").first.click()
     check(("on" in (fp.locator(".comp-section:visible .drow:visible").first.locator("button.opt.yes").get_attribute("class") or "")) == was_yes, "and puts back what was saved")
     fresh.close()
 
@@ -1731,7 +1730,7 @@ with sync_playwright() as p:
     other = page.locator(".other-org")
     check(other.count() == 1 and "Second Association" in other.inner_text() and other.locator("button:has-text('Open')").count() == 1,
           "their other association has its own summary card, with Open")
-    page.locator(".comp-section:has(h2:has-text('Night Cricket')) button:has-text('Give availability')").click()
+    page.locator(".comp-section:has(h2:has-text('Night Cricket')) .comp-head").click()
     check(page.locator(".comp-section:has(h2:has-text('Night Cricket')) .tile:visible").count() > 0, "the new group opens with Give availability, with its own Save")
     other.locator("button:has-text('Open')").click()
     page.wait_for_selector(".avail-head h2:has-text('Second Association')")

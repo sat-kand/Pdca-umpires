@@ -359,29 +359,30 @@ export async function viewMy(ctx) {
           g.rows.map(r => row(r.date, r.of > 1 ? `Day ${r.dayNo} · ${fmtDay(r.date)}` : fmtDay(r.date)))))
       : byMonth(c.dates).map(m => h('div', { class: 'tile' }, h('h3', {}, m.month), m.dates.map(date => row(date, fmtDay(date)))));
     const chip = statusChips[k];
-    const summary = h('p', { class: 'muted group-summary' });
-    const editBtn = h('button', { class: 'btn small', type: 'button' });
+    const summary = h('span', { class: 'muted group-summary' });
     const hint = h('span', { class: 'muted' });
     const cancelBtn = h('button', { class: 'btn', type: 'button' }, 'Cancel');
     const saveBtn = h('button', { class: 'btn primary', type: 'button' }, `Save ${c.label}`);
     const body = h('div', { class: 'group-dates' }, h('div', { class: 'group-tools' }, markAll), tiles);
     const foot = h('div', { class: 'group-foot' }, hint, h('span', { class: 'savebar-btns' }, cancelBtn, saveBtn));
-    const el = h('li', { class: 'comp-section', 'data-comp': k },
-      h('div', { class: 'row-between comp-head' }, h('div', { class: 'comp-headline' }, h('h2', { class: 'comp-title' }, c.label), chip), editBtn),
-      summary, body, foot);
+    // One line: the group, what was answered, and its status. Tap the line to answer or change that group.
+    const head = h('div', { class: 'row-between comp-head', role: 'button', tabindex: '0' }, h('div', { class: 'comp-headline' }, h('h2', { class: 'comp-title' }, c.label), summary), chip);
+    const el = h('li', { class: 'comp-section', 'data-comp': k }, head, body, foot);
     editing[k] = false;                                   // compact: a line each, opened with Edit
     const update = () => {
       const on = !!editing[k], dirty = dirtyOf(k), sent = sentOf(k);
-      const yes = keys.filter(x => savedDays[x] === 'yes').length, no = keys.filter(x => savedDays[x] === 'no').length, open = keys.filter(x => !savedDays[x]).length;
+      const yes = keys.filter(x => savedDays[x] === 'yes').length, no = keys.filter(x => savedDays[x] === 'no').length;
       paintChip(chip, dirty, sent, isNewGroup(k) && !sent);
-      summary.textContent = sent ? `${yes} available · ${no} not available` + (open ? ` · ${open} new date${open > 1 ? 's' : ''} to answer` : '') : 'Not answered yet.';
-      summary.hidden = on; body.hidden = !on; foot.hidden = !on; editBtn.hidden = on;
-      editBtn.textContent = sent ? 'Edit availability' : 'Give availability';
+      summary.textContent = sent ? `${yes} available · ${no} not available` : '';
+      summary.hidden = on; body.hidden = !on; foot.hidden = !on;
+      head.classList.toggle('tap', !on); head.setAttribute('aria-expanded', String(on));
       const left = keys.filter(x => !days[x]).length;
       hint.textContent = left ? `${left} date${left > 1 ? 's' : ''} not answered yet` : 'All dates answered';
       saveBtn.disabled = !dirty;                          // nothing has changed since the last save
     };
-    editBtn.onclick = () => { editing[k] = true; drawStatus(); };
+    const tap = () => { if (!editing[k]) { editing[k] = true; drawStatus(); } };
+    head.onclick = tap;
+    head.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tap(); } };
     cancelBtn.onclick = () => {                           // put back what was saved for this group, and fold it away
       for (const x of keysFor(k)) { if (savedDays[x]) days[x] = savedDays[x]; else delete days[x]; paint(x); }
       keys.forEach(x => rowEl[x] && rowEl[x].classList.remove('missing'));
@@ -424,34 +425,35 @@ export async function viewMy(ctx) {
       else toast(`${c.label} availability saved`);
     });
     saveBtn.onclick = async () => { await save(); drawStatus(); };   // busy() re-enables the button; put it back to how it should be
-    return { el, update };
+    return { el, update, open: () => { editing[k] = true; }, isOpen: () => !!editing[k] };
   });
 
   // Player umpiring: its own card, with its own Edit, Save and Cancel.
   const puTitle = (pu.title || '').trim() || 'Player umpire';
-  const pSummary = h('div', { class: 'group-summary' });
-  const pEditBtn = h('button', { class: 'btn small', type: 'button' });
+  const pSummary = h('div', { class: 'player-picks' });
   const pHint = h('span', { class: 'muted' });
   const pCancel = h('button', { class: 'btn', type: 'button' }, 'Cancel');
   const pSave = h('button', { class: 'btn primary', type: 'button' }, `Save ${puTitle}`);
   const pFoot = h('div', { class: 'group-foot' }, pHint, h('span', { class: 'savebar-btns' }, pCancel, pSave));
-  const playerCard = h('li', { class: 'comp-section player-card' },
-    h('div', { class: 'row-between comp-head' }, h('div', { class: 'comp-headline' }, h('h2', { class: 'comp-title' }, puTitle), statusChips.player), pEditBtn),
+  const pCount = h('span', { class: 'muted group-summary' });
+  const pHead = h('div', { class: 'row-between comp-head', role: 'button', tabindex: '0' }, h('div', { class: 'comp-headline' }, h('h2', { class: 'comp-title' }, puTitle), pCount), statusChips.player);
+  const playerCard = h('li', { class: 'comp-section player-card' }, pHead,
     (pu.description || '').trim() && h('p', { class: 'muted group-note' }, (pu.description || '').trim()),
     pSummary, playerBody, pFoot);
   playerCard.hidden = !puOn;
   const updatePlayer = () => {
     const on = playerEditing, n = savedPicks.length, dirty = picksChanged();
     paintChip(statusChips.player, dirty, n > 0, isNewPlayer() && !on);
-    setChildren(pSummary, n
-      ? h('ul', { class: 'plain muted small' }, savedPicks.map(p => h('li', {}, `${p.dates.map(fmtDay).join(' & ')} · ${gradeShort(p.grade)} · ${p.label}`)))
-      : h('p', { class: 'muted' }, 'No games chosen yet.'));
-    pSummary.hidden = on; playerBody.hidden = !on; pFoot.hidden = !on; pEditBtn.hidden = on;
-    pEditBtn.textContent = n ? 'Edit games' : 'Choose games';
+    setChildren(pSummary, n ? h('ul', { class: 'plain muted small' }, savedPicks.map(p => h('li', {}, `${p.dates.map(fmtDay).join(' & ')} · ${gradeShort(p.grade)} · ${p.label}`))) : null);
+    pCount.textContent = n ? `${n} game${n === 1 ? '' : 's'} chosen` : '';
+    pCount.hidden = on; pSummary.hidden = on || !n; playerBody.hidden = !on; pFoot.hidden = !on;
+    pHead.classList.toggle('tap', !on); pHead.setAttribute('aria-expanded', String(on));
     pHint.textContent = `${picks.length} game${picks.length === 1 ? '' : 's'} chosen`;
     pSave.disabled = !dirty;
   };
-  pEditBtn.onclick = () => { playerEditing = true; drawPlayer(); drawStatus(); };
+  const pOpen = () => { if (!playerEditing) { playerEditing = true; drawPlayer(); drawStatus(); } };
+  pHead.onclick = pOpen;
+  pHead.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pOpen(); } };
   pCancel.onclick = () => { picks = savedPicks.map(p => ({ ...p, dates: [...p.dates] })); playerEditing = false; drawPlayer(); drawStatus(); };
   const savePlayer = busy(pSave, async () => {
     if (!picksChanged()) return;
@@ -465,13 +467,15 @@ export async function viewMy(ctx) {
   });
   pSave.onclick = async () => { await savePlayer(); drawStatus(); };
 
-  drawStatus = () => { groupCards.forEach(g => g.update()); updatePlayer(); };
+  const editAll = h('button', { class: 'btn', type: 'button' }, 'Edit availability');
+  editAll.onclick = () => { groupCards.forEach(g => g.open()); if (puOn) playerEditing = true; drawPlayer(); drawStatus(); };
+  drawStatus = () => { groupCards.forEach(g => g.update()); updatePlayer(); editAll.hidden = groupCards.every(g => g.isOpen()) && (!puOn || playerEditing); };
   drawSummary = drawStatus;
   drawStatus();
   drawPlayer();
   // One compact card for the association: a line for each group (and player umpiring), each opened and saved on its own.
   root.append(h('section', { class: 'card avail-card' },
-    h('div', { class: 'avail-head' }, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, orgName)),
+    h('div', { class: 'row-between avail-head' }, h('div', {}, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, orgName)), editAll),
     groupCards.length ? h('ul', { class: 'plain group-list' }, groupCards.map(g => g.el), playerCard) : h('p', { class: 'muted' }, 'No upcoming dates.')));
   // The member's other associations: a summary card each, opened to edit there.
   const others = h('div', { class: 'other-orgs' });

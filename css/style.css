@@ -398,3 +398,16 @@ button.tagbtn:hover { outline: 2px solid currentColor; outline-offset: 1px; }
 .avail-head { margin: 0 0 .8rem; }
 .avail-head h2 { margin: .1rem 0 .3rem; }
 @media (max-width: 600px) { .group-foot { flex-direction: column; align-items: stretch; } .group-foot .savebar-btns { display: grid; grid-template-columns: 1fr 1fr; } }
+
+.comp-head.tap { cursor: pointer; }
+.comp-head .comp-headline { flex-wrap: nowrap; align-items: baseline; gap: .4rem; }
+.comp-head .group-summary { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.comp-head .chip { flex: none; }
+.avail-card .avail-head { align-items: flex-start; }
+.avail-card .avail-head .btn { flex: none; }
+@media (max-width: 600px) { .comp-head .comp-headline { flex-wrap: wrap; } .comp-head .group-summary { white-space: normal; } }
+.avail-card .row-between, .avail-card .comp-head { flex-wrap: nowrap; gap: .6rem; }
+.avail-card .comp-headline { flex: 1; min-width: 0; }
+.avail-card .avail-head > div { min-width: 0; }
+.avail-card .avail-head .btn { padding: .45rem .9rem; font-size: .9rem; }
+@media (max-width: 600px) { .avail-card .group-summary { font-size: .85rem; } .avail-card .comp-title { font-size: 1rem; } }
