@@ -422,3 +422,28 @@ button.tagbtn:hover { outline: 2px solid currentColor; outline-offset: 1px; }
 .group-foot .discard { color: var(--red, #a12622); font-size: .9rem; margin-left: .3rem; }
 .group-foot .discard[hidden] { display: none; }
 .menu-switch { background: none; border: 0; text-align: left; font: inherit; cursor: pointer; width: 100%; }
+
+/* Joining an association: the list, the form, the officer's requests */
+.org-list { list-style: none; margin: 0; padding: 0; }
+.org-row { display: flex; justify-content: space-between; align-items: center; gap: .5rem 1rem; flex-wrap: wrap; padding: .7rem 0; border-top: 1px solid var(--line); }
+.org-row:first-child { border-top: 0; padding-top: .2rem; }
+.org-name { overflow-wrap: anywhere; min-width: 0; }
+.org-main { display: flex; flex-direction: column; align-items: flex-start; gap: .3rem; min-width: 0; }
+.org-main .chip { margin-right: 0; }
+.org-actions { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; }
+.org-row .btn { white-space: nowrap; }
+.pending-card .chip { margin: 0; }
+.join-field-row { display: flex; justify-content: space-between; align-items: center; gap: .8rem; padding: .4rem 0; border-top: 1px solid var(--line); }
+.join-field-row select { flex: none; max-width: 55%; }
+.badge { display: inline-block; min-width: 1.25rem; padding: 0 .4rem; margin-left: .4rem; border-radius: 999px; background: var(--amber, #b45309); color: #fff;
+  font-size: .72rem; font-weight: 700; text-align: center; line-height: 1.25rem; }
+.join-banner a { margin-left: .2rem; }
+.request-list { list-style: none; margin: 0; padding: 0; }
+.request { display: flex; justify-content: space-between; align-items: flex-start; gap: .6rem 1rem; flex-wrap: wrap; padding: .8rem 0; border-top: 1px solid var(--line); }
+.request:first-child { border-top: 0; padding-top: .2rem; }
+.request-main { min-width: 0; flex: 1 1 16rem; overflow-wrap: anywhere; }
+.request-details { display: grid; grid-template-columns: max-content 1fr; gap: .15rem .9rem; margin: .45rem 0 0; font-size: .88rem; }
+.request-details dt { color: var(--muted, #666); }
+.request-details dd { margin: 0; overflow-wrap: anywhere; }
+.request-actions { display: flex; gap: .5rem; flex: none; }
+@media (max-width: 600px) { .request-actions { width: 100%; } .request-actions .btn { flex: 1; padding: .55rem; } }

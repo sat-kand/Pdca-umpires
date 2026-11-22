@@ -41,6 +41,7 @@ export function rowToUmpire(m) {
   const u = { pid: m.pid, email: m.email, active: !!m.active };
   for (const k of PERSON_F) if (p[snake(k)] != null) u[k] = p[snake(k)];
   for (const k of MEMBER_F) if (k !== 'active' && m[snake(k)] != null) u[k] = m[snake(k)];
+  if (m.created_at) u.createdAt = m.created_at;                    // when they asked to join (read only: never written back)
   return u;
 }
 
@@ -108,3 +109,7 @@ export const rowToWithdrawal = r => ({ ...(r.data || {}), id: r.id, email: r.ema
 export const rowToMembershipLine = m => ({ orgId: m.association_id, orgName: (m.associations && m.associations.name) || m.association_id, membership: m.membership || '', active: !!m.active, since: m.member_since || '' });
 
 export { camel, snake };
+
+// ----- where someone stands in each association (for the list of associations) -----
+// A membership row's flags, as the app's umpire object would carry them (membershipOf reads these).
+export const rowToStanding = m => ({ orgId: m.association_id, u: rowToUmpire({ ...m, pid: m.pid || '', email: m.email || '' }) });

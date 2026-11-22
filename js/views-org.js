@@ -3,7 +3,7 @@
 
 import { h, toast, busy, copyText, setChildren } from './ui.js';
 import { playerUmpireAllowed } from './player-umpire.js';
-import { emailKey, COMPS, DEFAULT_GROUPS, guessGroup, groupKeyOf, suggestGroupName, suggestUmpires, suggestGroups, compareGrades, gradeShort } from './logic.js';
+import { emailKey, joinSettings, JOIN_FIELDS, JOIN_LEVELS, COMPS, DEFAULT_GROUPS, guessGroup, groupKeyOf, suggestGroupName, suggestUmpires, suggestGroups, compareGrades, gradeShort } from './logic.js';
 import { applyOrg } from './org-setup.js';
 
 // Used when the tool's owner sets up an association; it then edits its own list in Settings.
@@ -44,18 +44,6 @@ export function orgIdFrom(name, rand = Math.random) {
 
 export const joinLink = id => `${location.origin}${location.pathname}#/join/${id}`;
 
-
-// The associations this person belongs to. Associations themselves are set up by the tool's owner.
-export async function viewAssociations(ctx) {
-  const { store, S } = ctx;
-  const mine = await store.listMyOrgs(S.user.email);
-  return h('div', {},
-    h('h1', {}, 'Your associations'),
-    mine.length
-      ? h('div', { class: 'cards' }, mine.map(o => h('button', { class: 'card comp-tile org-tile', type: 'button', onclick: () => ctx.chooseOrg(o.id) },
-        h('h2', {}, o.name), h('span', { class: 'muted' }, S.org && S.org.id === o.id ? 'Open now' : 'Open'))))
-      : h('p', { class: 'notice' }, 'You are not in an association yet. Open the link your appointments officer sent you, and they will approve you.'));
-}
 
 // Officers only: name, PlayHQ organisation, who the officers are, and the link umpires join with.
 export async function viewOrgSettings(ctx) {
@@ -106,6 +94,37 @@ export async function viewOrgSettings(ctx) {
     list,
     h('p', {}, h('button', { class: 'btn small', type: 'button', onclick: () => { rows.push({ name: '', fee: '' }); drawRows(); } }, 'Add type')),
     saveBtn), saveBtn, 'membership');
+  }
+
+  // New umpires: whether the association is listed for people who sign up, whether they must be approved
+  // before giving availability, and which personal details they are asked for when they join.
+  function joiningCard() {
+    const org = store.org;
+    const set = joinSettings(org);
+    const listed = h('input', { type: 'checkbox', checked: set.open });
+    const notRequired = h('input', { type: 'checkbox', checked: !set.membershipRequired });
+    const levels = JOIN_FIELDS.map(f => [f, h('select', { 'aria-label': `${f.label} when joining`, 'data-field': f.key },
+      JOIN_LEVELS.map(([v, label]) => h('option', { value: v, selected: set.fields[f.key] === v }, label)))]);
+    const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
+    return saveButton(h('form', { class: 'card joining-card', onsubmit: busy(saveBtn, async e => {
+      e.preventDefault();
+      await store.saveOrg({ joining: { open: listed.checked, membershipRequired: !notRequired.checked,
+        fields: Object.fromEntries(levels.map(([f, sel]) => [f.key, sel.value])) }, updatedAt: new Date().toISOString() });
+      saved.add('joining');
+      await ctx.refreshUser();
+      toast('Saved', 'ok');
+      await draw();
+    }) },
+    h('h2', {}, 'New umpires'),
+    h('p', { class: 'muted small' }, 'Someone who signs up chooses an association from the list. They give the details you ask for below (anything already on their profile is filled in), and you approve them on the Members page.'),
+    h('label', { class: 'inline' }, listed, ' Show this association in the list for new umpires'),
+    h('p', { class: 'muted small' }, 'Untick to stop new requests. People already in are not affected.'),
+    h('label', { class: 'inline' }, notRequired, ' Membership is not required to umpire'),
+    h('p', { class: 'muted small' }, 'When ticked, umpires give their availability as soon as they join, and you can allocate them before you approve them. When not ticked, they wait for your approval first.'),
+    h('h3', {}, 'Details to ask for'),
+    h('p', { class: 'muted small' }, 'Name and email are always asked for.'),
+    levels.map(([f, sel]) => h('div', { class: 'join-field-row' }, h('span', {}, f.label), sel)),
+    saveBtn), saveBtn, 'joining');
   }
 
   // Player umpires: whether members may choose their own games, in which groups, and the line they see about it.
@@ -260,10 +279,11 @@ export async function viewOrgSettings(ctx) {
 
       await groupsCard(),
       membershipCard(),
+      joiningCard(),
       playerUmpireCard(),
 
       h('div', { class: 'card' }, h('h2', {}, 'Link for umpires'),
-        h('p', { class: 'muted' }, 'Send this link to your umpires. They sign in, add their details, and wait for you to approve them on the Members page.'),
+        h('p', { class: 'muted' }, 'Send this link to your umpires. They sign in, give the details you ask for under New umpires, and wait for you to approve them on the Members page. They can also find you in the list of associations when they sign up.'),
         h('p', {}, h('code', { class: 'join-link' }, link)),
         h('button', { class: 'btn', type: 'button', onclick: async () => { { const ok = await copyText(link); toast(ok ? 'Link copied' : 'Could not copy', ok ? 'ok' : 'err'); }; } }, 'Copy link')),
 

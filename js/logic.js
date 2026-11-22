@@ -266,7 +266,45 @@ export function membershipOf(u) {
 export const MEMBERSHIP_LABEL = { applied: 'Waiting for approval', member: 'Member', suspended: 'Suspended', rejected: 'Rejected', nonmember: 'Not a member' };
 export const MEMBERSHIP_CHIP = { applied: 'warn', member: 'ok', suspended: 'no', rejected: 'muted-chip', nonmember: 'muted-chip' };
 // Whether someone can be appointed: a member in good standing.
-export const canUmpire = u => membershipOf(u) === 'member';
+export const canUmpire = u => { const m = membershipOf(u); return m === 'member' || (openUmpiring && m === 'applied'); };
+// An association can say membership is not needed to umpire (Settings -> New umpires): then someone who has asked to
+// join is treated as a member for availability and allocation, until the officer turns them down or suspends them.
+// Set whenever an association is opened (see org-setup.js), like its groups.
+let openUmpiring = false;
+export const setMembershipRequired = required => { openUmpiring = required === false; };
+
+// ----- joining an association -----
+// What an association asks of someone joining: the personal details (each Off, Optional or Required), whether
+// it is listed for new umpires, and whether they must be approved before giving availability. Name and email
+// are always asked for. Stored in the association's config as `joining`.
+export const JOIN_FIELDS = [
+  { key: 'phone', label: 'Mobile', type: 'tel', autocomplete: 'tel' },
+  { key: 'dob', label: 'Date of birth', type: 'date', autocomplete: 'bday' },
+  { key: 'address', label: 'Address', type: 'text', autocomplete: 'street-address' },
+  { key: 'accreditation', label: 'Umpire accreditation number', type: 'text' },
+  { key: 'accreditationProvider', label: 'Accreditation provider', type: 'text', list: 'acc-providers' },
+];
+export const JOIN_LEVELS = [['off', 'Do not ask'], ['optional', 'Ask (optional)'], ['required', 'Ask (required)']];
+export const DEFAULT_JOIN_FIELDS = { phone: 'required', dob: 'optional', address: 'optional', accreditation: 'optional', accreditationProvider: 'optional' };
+export function joinSettings(org) {
+  const j = (org && org.joining) || {};
+  const fields = {};
+  for (const f of JOIN_FIELDS) fields[f.key] = ['off', 'optional', 'required'].includes((j.fields || {})[f.key]) ? j.fields[f.key] : DEFAULT_JOIN_FIELDS[f.key];
+  return { open: j.open !== false, membershipRequired: j.membershipRequired !== false, fields };
+}
+// The details asked for, in order, with how they are asked.
+export const joinFieldsFor = org => JOIN_FIELDS.map(f => ({ ...f, level: joinSettings(org).fields[f.key] })).filter(f => f.level !== 'off');
+// Required details still blank, as labels. Names are always required.
+export function missingJoinDetails(org, d) {
+  const out = [];
+  if (!((d.firstName || '').trim())) out.push('First name');
+  if (!((d.lastName || '').trim())) out.push('Last name');
+  for (const f of joinFieldsFor(org)) if (f.level === 'required' && !String(d[f.key] || '').trim()) out.push(f.label);
+  return out;
+}
+// Where someone stands with an association they asked to join, in words for them.
+export const JOIN_STATUS_LABEL = { officer: 'Appointments officer', member: 'Member', applied: 'Waiting for approval', suspended: 'Suspended', rejected: 'Not approved', nonmember: 'Waiting for approval' };
+export const JOIN_STATUS_CHIP = { officer: 'ok', member: 'ok', applied: 'warn', suspended: 'no', rejected: 'muted-chip', nonmember: 'warn' };
 // Active umpire this season: Available to at least one date, or a game chosen as a player umpire.
 export const isActiveUmpire = (u, avail) => canUmpire(u) && !!avail
   && (Object.values(avail.days || {}).some(v => v === 'yes') || (avail.picks || []).length > 0);

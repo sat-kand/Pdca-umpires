@@ -3,7 +3,8 @@
 import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
 import { recordWithdrawal } from './withdrawals.js';
 import { PLAYER_UMPIRE_COMPS, playerUmpireAllowed } from './player-umpire.js';
-import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS, groupNeedsUmpires, needsUmpires, membershipOf } from './logic.js';
+import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS, groupNeedsUmpires, needsUmpires, membershipOf, joinSettings } from './logic.js';
+import { otherAssociationsCard, pendingCard } from './views-join.js';
 
 export function viewLogin(ctx) {
   const { store, S } = ctx;
@@ -94,7 +95,15 @@ export async function viewMy(ctx) {
     placeOtherOrgs(ctx, root, here, u.email);
     return root;
   }
-  if (status === 'applied') root.append(h('p', { class: 'notice warn' }, 'Your application is waiting for approval by the association. You can already give your availability.'));
+  // Asked to join and not approved yet: nothing to answer until an officer approves, unless the association
+  // says membership is not needed to umpire (then the form is open straight away).
+  if (status === 'applied' && joinSettings(store.org).membershipRequired) {
+    const card = pendingCard(ctx, u);
+    root.append(availTitle(), card);
+    placeOtherOrgs(ctx, root, card, u.email);
+    return root;
+  }
+  if (status === 'applied') root.append(h('p', { class: 'notice warn' }, 'Your membership is waiting for approval by the association. You can already give your availability.'));
 
   // ---- what the umpire has already answered (needed by the appointments below as well)
   const existing = season ? await store.getAvailability(season.id, u.email) : null;
@@ -530,23 +539,29 @@ function summaryRow(label, sent, yes, no, fresh) {
 function placeOtherOrgs(ctx, root, current, email) {
   const order = ((ctx.S && ctx.S.myOrgs) || []).map(o => o.id);
   const here = ctx.store.org && ctx.store.org.id;
-  otherOrgCards(ctx, email, todayLocal()).then(cards => {
+  const warn = e => console.warn('other associations', e);
+  const placed = otherOrgCards(ctx, email, todayLocal()).then(cards => {
     for (const { orgId, el } of cards) {
       if (order.indexOf(orgId) > -1 && order.indexOf(orgId) < order.indexOf(here)) current.before(el); else root.append(el);
     }
-  }).catch(e => console.warn('other associations', e));
+  }).catch(warn);
+  // Last: the associations still waiting for approval, and the ones they have not joined (with a Join button).
+  placed.then(() => otherAssociationsCard(ctx)).then(card => { if (card) root.append(card); }).catch(warn);
 }
 
 async function otherOrgCards(ctx, email, today) {
   const { store } = ctx;
-  if (!store.listMemberships || !store.memberView) return [];
-  const ms = (await store.listMemberships(email)).filter(m => m.orgId !== (store.org && store.org.id) && m.active !== false);
+  if (!store.listStandings || !store.memberView) return [];
+  // Members, and people who have asked to join an association that does not need to approve them first.
+  const ms = (await store.listStandings(email)).filter(st => st.orgId !== (store.org && store.org.id) && st.u
+    && ((membershipOf(st.u) === 'member' && st.u.active) || membershipOf(st.u) === 'applied')).map(st => ({ orgId: st.orgId, orgName: '', u: st.u }));
   const cards = [];
   for (const m of ms) {
     try {
       const view = store.memberView(m.orgId);
       const [org, season] = await Promise.all([view.getOrg ? view.getOrg() : null, view.getSeason()]);
       if (!org) continue;
+      if (membershipOf(m.u) === 'applied' && joinSettings(org).membershipRequired) continue;     // still waiting: shown under Other associations
       const avail = season ? await view.getAvailability(season.id, email) : null;
       const groups = (org.groups && org.groups.length) ? org.groups : [{ key: 'all', name: 'All grades' }];
       const comps = season ? upcomingDates(season.calendar, today, groups.map(g => ({ key: g.key, label: g.name }))) : [];   // that association's groups, not the open one's

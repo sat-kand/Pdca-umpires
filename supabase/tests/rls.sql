@@ -68,8 +68,7 @@ select expect('officer edit of person changed nothing', (select coalesce(phone,'
 update memberships set active=false where email='u2@x.test' and association_id='pdca';
 select expect('officer can deactivate a member', not (select active from memberships where email='u2@x.test' and association_id='pdca'));
 select denied('officer cannot change plan', $$update associations set plan='suspended' where id='pdca'$$);
-update associations set playhq_org_id='abc' where id='pdca';
-select expect('officer sets PlayHQ org id', (select playhq_org_id from associations where id='pdca') = 'abc');
+select denied('officer cannot set the PlayHQ org id (platform owner only, 0006)', $$update associations set playhq_org_id='abc' where id='pdca'$$);
 select denied('officer cannot write another association', $$insert into rounds (association_id,id) values ('other','x')$$);
 select expect('officer sees other-association memberships of own member (membership only)', rows_visible($$select 1 from memberships where email='u1@x.test'$$) = 2);
 delete from officers where email='off@x.test';   -- matches no row
@@ -113,3 +112,30 @@ update rounds set published = true where association_id='pdca' and id='r-draft';
 select expect('publishing a round publishes its appointments', (select count(*) from appointments where game_id='g-new' and status='published') = 2);
 select as_user('u1@x.test');
 select denied('umpire cannot save games', $j$select save_games('pdca','r-draft','[{"game":{"id":"g-hack","slots":1},"days":[],"appts":[]}]'::jsonb)$j$);
+
+-- ===== joining (0007) =====
+reset role;
+insert into people (email, name) values ('j1@x.test','J One'),('j2@x.test','J Two');
+set role authenticated;
+select as_user('j1@x.test');
+insert into memberships (association_id,email,pid,active) values ('pdca','j1@x.test','pj1',false);
+select denied('a request waiting for approval cannot give availability', $$insert into availability (association_id,season_id,email) values ('pdca','s','j1@x.test')$$);
+reset role;
+update associations set config = '{"joining":{"membershipRequired":false}}' where id = 'pdca';
+set role authenticated;
+select as_user('j1@x.test');
+insert into availability (association_id,season_id,email) values ('pdca','s','j1@x.test');
+select expect('with membership not required, a request can give availability', rows_visible($$select 1 from availability where email='j1@x.test'$$) = 1);
+select as_user('off@x.test');
+update memberships set rejected = true where email = 'j1@x.test' and association_id = 'pdca';
+select as_user('j1@x.test');
+do $$ declare n int; begin
+  update availability set data = '{"x":1}' where email = 'j1@x.test'; get diagnostics n = row_count;
+  perform expect('someone turned down cannot change their availability', n = 0); end $$;
+do $$ declare n int; begin
+  delete from memberships where email = 'j1@x.test' and association_id = 'pdca'; get diagnostics n = row_count;
+  perform expect('someone turned down cannot delete the rejection and ask again', n = 0); end $$;
+select as_user('j2@x.test');
+insert into memberships (association_id,email,pid,active) values ('pdca','j2@x.test','pj2',false);
+delete from memberships where email='j2@x.test' and association_id='pdca';
+select expect('a waiting request can be taken back', rows_visible($$select 1 from memberships where email='j2@x.test'$$) = 0);

@@ -7,8 +7,9 @@ import { SUPABASE_SDK } from './config.js';
 import { fixtureList } from './rounds.js';
 import {
   orgToRow, rowToOrg, personRow, membershipRow, rowToUmpire, roundToRow, rowToRound,
-  gameToItem, itemToGame, withdrawalToRow, rowToWithdrawal, rowToMembershipLine,
+  gameToItem, itemToGame, withdrawalToRow, rowToWithdrawal, rowToMembershipLine, rowToStanding,
 } from './supabase-map.js';
+import { newPid } from './logic.js';
 
 const PAGE = 1000;                                              // PostgREST returns at most 1000 rows a call
 const fail = ({ error }) => { if (error) throw Object.assign(new Error(error.message), { code: error.code }); };
@@ -149,6 +150,42 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
       if (!ids.length) return [];
       return (await ok(sb.from('associations').select('*').in('id', ids))).map(rowToOrg);
     },
+    // ----- joining: the associations on Third Umpire, and a person's place in each -----
+    // Every association that is open to the platform (not suspended). Each decides for itself whether it is listed for new umpires.
+    async listJoinableOrgs() {
+      return (await ok(sb.from('associations').select('id, name, plan, config').in('plan', ['trial', 'active']).order('name'))).map(rowToOrg);
+    },
+    // The details already on someone's profile (kept once, whatever association they join).
+    async getProfile(email) {
+      const p = await one(sb.from('people').select('*').eq('email', email));
+      return p ? rowToUmpire({ pid: '', email, people: p }) : null;
+    },
+    // Where this person stands in every association they have asked to join or officiate for.
+    async listStandings(email) {
+      const [m, o] = await Promise.all([
+        ok(sb.from('memberships').select('association_id, pid, email, active, approved, rejected, suspended, deactivated, non_member, created_at').eq('email', email)),
+        ok(sb.from('officers').select('association_id').eq('email', email)),
+      ]);
+      const officer = new Set(o.map(r => r.association_id));
+      const out = m.map(r => ({ ...rowToStanding(r), officer: officer.has(r.association_id) }));
+      for (const id of officer) if (!out.some(x => x.orgId === id)) out.push({ orgId: id, u: null, officer: true });
+      return out;
+    },
+    // Ask to join: save the details they gave on their own profile, then add a membership that waits for approval.
+    // Not tied to the association in use: a person can join one they have not opened. Safe to repeat.
+    async joinOrg(orgId, details) {
+      const email = (details.email || me).toLowerCase();
+      const had = await one(sb.from('memberships').select('pid').eq('association_id', orgId).eq('email', email));
+      await ok(sb.from('people').upsert(personRow({ ...details, email })));
+      if (had) return had.pid;
+      const pid = newPid();
+      await ok(sb.from('memberships').insert(membershipRow(orgId, { email, pid, active: false })));
+      return pid;
+    },
+    // Take back a request that is still waiting (the database refuses once an officer has decided).
+    async cancelJoin(orgId, email) { await ok(sb.from('memberships').delete().eq('association_id', orgId).eq('email', email)); },
+    // The people in this association who might be waiting for approval (not active); the app picks out who is.
+    async listJoinRequests() { return (await all(() => sb.from('memberships').select('*, people(*)').eq('association_id', A()).eq('active', false).order('created_at'))).map(rowToUmpire); },
     async rememberOrg() {},                                    // membership and officer rows are the list; nothing to remember
     async createOrg(o, email) {
       const row = orgToRow({ ...o, createdBy: email });

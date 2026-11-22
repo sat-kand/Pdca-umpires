@@ -4,6 +4,7 @@ import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './u
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
   slotOptions, recount, summarise, formatSummary, publishState, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
+  joinFieldsFor, joinSettings,
   availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot, umpiresForGrade, suggestUmpires, firstGroup, groupNeedsUmpires, memberStatus, STATUS_LABEL, STATUS_CHIP, membershipOf, MEMBERSHIP_LABEL, MEMBERSHIP_CHIP, MEMBER_CHANGE, canUmpire, isActiveUmpire,
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
@@ -179,6 +180,9 @@ export async function viewAdminHome(ctx) {
           state.pu.added.map(x => h('li', {}, `${x.name} chose `, h('a', { href: `#/admin/round/${x.roundId}` }, `${x.label} (${fmtDay(x.date)})`), ' \u2014 added to the board')),
           state.pu.removed.map(x => h('li', {}, `${x.name} no longer wants `, h('a', { href: `#/admin/round/${x.roundId}` }, `${x.label} (${fmtDay(x.date)})`), ' \u2014 taken off')),
           state.pu.blocked.map(x => h('li', { class: 'warn-text' }, `${x.name} chose `, h('a', { href: `#/admin/round/${x.roundId}` }, `${x.label} (${fmtDay(x.date)})`), ', but both places are taken')))),
+      ctx.S.pending > 0 && h('div', { class: 'notice warn join-banner' },
+        h('strong', {}, `${ctx.S.pending} ${ctx.S.pending === 1 ? 'umpire is' : 'umpires are'} waiting to join`), ' ',
+        h('a', { href: '#/admin/members' }, 'Review join requests')),
       state.dropouts.length > 0 && h('div', { class: 'notice warn dropouts' },
         h('strong', {}, 'Umpires have pulled out of published games'),
         h('ul', { class: 'plain' }, state.dropouts.map(d => h('li', {}, `${d.name}: `,
@@ -905,6 +909,7 @@ export async function viewUmpires(ctx) {
     }
     ui.picked.clear();
     draw();
+    if (ctx.refreshPending) ctx.refreshPending();                // the count beside My Organisation
   })();
   // What a bulk action can be applied to.
   const CAN = {
@@ -943,9 +948,28 @@ export async function viewUmpires(ctx) {
     const search = h('input', { type: 'search', class: 'member-search', placeholder: 'Search by name or email', value: ui.q, 'aria-label': 'Search members' });
     search.oninput = () => { ui.q = search.value; draw(); const s2 = wrap.querySelector('.member-search'); if (s2) { s2.focus(); s2.setSelectionRange(s2.value.length, s2.value.length); } };
     const COLS = [all, 'Name', 'Umpiring', 'Membership', 'Membership type'];
+    // People who have asked to join, with the details they gave (the list below keeps those off the page).
+    const requests = members.filter(u => membershipOf(u) === 'applied').sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || '') || compareMembers(a, b));
+    const needApproval = joinSettings(store.org).membershipRequired;
+    const asked = joinFieldsFor(store.org);
+    const detail = (u, f) => (f.key === 'dob' && u.dob ? new Date(`${u.dob}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : u[f.key]);
+    const requestsCard = () => h('section', { class: 'card join-requests' },
+      h('h2', {}, `Join requests (${requests.length})`),
+      h('p', { class: 'muted small' }, needApproval
+        ? 'These umpires asked to join. They can give their availability once you approve them.'
+        : 'These umpires asked to join and can already give their availability. Approve them to make them members.'),
+      h('ul', { class: 'plain request-list' }, requests.map(u => h('li', { class: 'request', 'data-pid': u.pid },
+        h('div', { class: 'request-main' },
+          h('div', {}, profileLink(u), u.createdAt && h('span', { class: 'muted small' }, ` \u00b7 asked ${new Date(u.createdAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}`)),
+          h('div', { class: 'muted small' }, u.email),
+          h('dl', { class: 'request-details' }, asked.map(f => [h('dt', {}, f.label), h('dd', {}, detail(u, f) || h('span', { class: 'muted' }, '\u2014'))]))),
+        h('div', { class: 'request-actions' },
+          h('button', { type: 'button', class: 'btn small primary', onclick: () => change([u], 'approve') }, 'Approve'),
+          h('button', { type: 'button', class: 'btn small danger', onclick: () => change([u], 'reject') }, 'Reject'))))));
     setChildren(wrap,
       h('h1', {}, 'Members'),
       h('p', { class: 'muted' }, 'Active umpires are members who said Available to at least one date this season. Everyone else (no answer, or Not available to everything) is an Inactive member, kept for your communications. It follows their availability by itself.'),
+      requests.length > 0 && requestsCard(),
       h('p', { class: 'member-mail' }, emailBtn('Email active members', active), ' ', emailBtn('Email inactive members', inactive)),
       h('section', { class: 'card' },
         h('div', { class: 'member-tools' }, search,

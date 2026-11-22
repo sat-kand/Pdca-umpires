@@ -7,6 +7,7 @@
 //   db.users[email] = [orgId, ...]      which associations a person has opened
 
 import { DEMO_ORG } from './config.js';
+import { newPid } from './logic.js';
 
 const KEY = 'pdca-umpires-demo-v2';
 const clone = x => (x === undefined ? x : JSON.parse(JSON.stringify(x)));
@@ -48,8 +49,54 @@ export function createDemoStore() {
     get org() { return cur && db.orgs[cur] ? clone(db.orgs[cur].org) : null; },
     useOrg(id) { cur = id && db.orgs[id] ? id : null; return this.org; },
     async getOrg(id) { return db.orgs[id] ? clone(db.orgs[id].org) : null; },
-    async listMyOrgs(email) { return (db.users[email] || []).filter(id => db.orgs[id]).map(id => clone(db.orgs[id].org)); },
+    // Like the live back-end: the associations they are an officer of or have a membership in (waiting or not).
+    async listMyOrgs(email) { fresh(); return Object.values(db.orgs).filter(x => x.admins.includes(email) || x.umpires[email]).map(x => clone(x.org)); },
     async rememberOrg(email, id) { index(email, id); save(); },
+
+    // ----- joining: the associations in this browser, and a person's place in each -----
+    async listJoinableOrgs() { fresh(); return Object.values(db.orgs).map(x => clone(x.org)).filter(x => x.plan !== 'suspended').sort((a, b) => (a.name || '').localeCompare(b.name || '')); },
+    // Details already on their profile: whatever any association here holds for this email.
+    async getProfile(email) {
+      fresh();
+      const out = {};
+      for (const x of Object.values(db.orgs)) {
+        const u = x.umpires[email];
+        if (u) for (const k of ['firstName', 'lastName', 'name', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider']) if (u[k] && !out[k]) out[k] = u[k];
+      }
+      return Object.keys(out).length ? { email, ...out } : null;
+    },
+    async listStandings(email) {
+      fresh();
+      const out = [];
+      for (const [id, x] of Object.entries(db.orgs)) {
+        const u = x.umpires[email], officer = x.admins.includes(email);
+        if (u || officer) out.push({ orgId: id, u: u ? clone(u) : null, officer });
+      }
+      return out;
+    },
+    async joinOrg(orgId, details) {
+      fresh();
+      const x = db.orgs[orgId];
+      if (!x) throw new Error('No such association');
+      const email = details.email;
+      const had = x.umpires[email];
+      // The person's own details go on every association's copy that already has them; the new membership waits for approval.
+      const person = Object.fromEntries(['firstName', 'lastName', 'name', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider'].filter(k => k in details).map(k => [k, details[k]]));
+      x.umpires[email] = had ? { ...had, ...clone(person) } : { ...clone(person), email, pid: newPid(), active: false, createdAt: new Date().toISOString() };
+      for (const y of Object.values(db.orgs)) if (y.umpires[email]) y.umpires[email] = { ...y.umpires[email], ...clone(person) };
+      index(email, orgId); save();
+      return x.umpires[email].pid;
+    },
+    async cancelJoin(orgId, email) {
+      fresh();
+      const x = db.orgs[orgId];
+      const u = x && x.umpires[email];
+      if (!u || u.active || u.approved || u.rejected) return;            // only a request still waiting can be taken back
+      delete x.umpires[email];
+      if (!x.admins.includes(email)) db.users[email] = (db.users[email] || []).filter(id => id !== orgId);
+      save();
+    },
+    async listJoinRequests() { return Object.values(clone(o().umpires)).filter(u => !u.active); },
     async createOrg(org, email) {
       if (db.orgs[org.id]) throw new Error('That association already exists');
       db.orgs[org.id] = { ...blank({ ...clone(org), createdBy: email }), admins: [email] };

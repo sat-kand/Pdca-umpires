@@ -5,12 +5,14 @@ import { h, setChildren, spinner, toast } from './ui.js';
 import { createDemoStore } from './store-demo.js';
 import { seedDemo } from './demo-seed.js';
 import { viewLogin, viewProfile, viewMy } from './views-umpire.js';
-import { viewAssociations, viewOrgSettings } from './views-org.js';
+import { viewOrgSettings } from './views-org.js';
+import { viewAssociations, viewJoin } from './views-join.js';
+import { membershipOf } from './logic.js';
 import { viewAdminHome, viewPastAllocations, viewBoard, viewAvailabilityOverview, viewSeasonAvailability, viewReport, viewUmpires } from './views-admin.js';
 
 const S = { store: null, user: null, org: null, isAdmin: false, umpire: null };
 const ORG_KEY = 'pdca-org';            // the association this browser last used
-const JOIN_KEY = 'pdca-org-joining';   // set when it was just chosen (join link, picker or sign-up)
+const NEXT_KEY = 'pdca-join-next';      // an association's join link opened before signing in: where to go once they have
 const main = document.getElementById('app');
 const header = document.getElementById('top');
 let renderId = 0;
@@ -18,34 +20,35 @@ let renderId = 0;
 const go = path => { if (location.hash === '#' + path) render(); else location.hash = '#' + path; };
 
 async function loadUser(user) {
-  S.user = user; S.isAdmin = false; S.umpire = null; S.org = null; S.myOrgs = [];
+  S.user = user; S.isAdmin = false; S.umpire = null; S.org = null; S.myOrgs = []; S.pending = 0;
   await S.store.useOrg(null);
   if (!user) return;
   try {
+    // Someone is only ever "in" an association they have asked to join (or are an officer of): a link or a
+    // remembered choice for any other one means nothing until they have joined it.
+    S.myOrgs = await S.store.listMyOrgs(user.email);             // every association they are an officer or member of (or waiting to join): the switcher
+    const mine = S.myOrgs.map(o => o.id);
     let id = localStorage.getItem(ORG_KEY);
-    // Arriving by a link (or having just picked one) wins. Otherwise use the association this browser last used,
-    // unless this person belongs to others and not that one (a shared computer).
-    S.myOrgs = await S.store.listMyOrgs(user.email);             // every association they are an officer or member of: the switcher
-    if (!localStorage.getItem(JOIN_KEY)) {
-      const mine = S.myOrgs.map(o => o.id);
-      if (mine.length && !mine.includes(id)) id = mine.length === 1 ? mine[0] : null;
-    }
-    if (!id && S.store.mode === 'demo') id = DEMO_ORG.id;      // the demo has one built-in association: nobody needs a link to try it
+    if (!mine.includes(id)) id = mine.length === 1 ? mine[0] : null;   // otherwise they choose, from the list of associations
     S.org = id ? await S.store.useOrg(id) : null;
     applyOrg(S.org);
-    if (id && !S.org) { localStorage.removeItem(ORG_KEY); if (localStorage.getItem(JOIN_KEY)) toast('That association link is not valid.', 'err'); }
+    if (id && !S.org) localStorage.removeItem(ORG_KEY);
   } catch (e) { console.warn('association load failed', e); }
-  const joining = localStorage.getItem(JOIN_KEY);
-  localStorage.removeItem(JOIN_KEY);
   if (!S.org) return;
   localStorage.setItem(ORG_KEY, S.org.id);
-  if (joining) { try { await S.store.rememberOrg(user.email, S.org.id); } catch (e) { console.warn('could not remember association', e); } }
   try { S.isAdmin = await S.store.isAdmin(user.email); } catch (e) { console.warn('admin check failed', e); }
   try { S.umpire = await S.store.getUmpire(user.email); } catch (e) { console.warn('umpire load failed', e); }
+  if (S.isAdmin) await refreshPending(true);
+}
+// People waiting to join the open association, for the officer's badge and banner.
+async function refreshPending(quiet) {
+  if (!S.isAdmin || !S.store.listJoinRequests) { S.pending = 0; return; }
+  try { S.pending = (await S.store.listJoinRequests()).filter(u => membershipOf(u) === 'applied').length; } catch (e) { console.warn('join requests', e); S.pending = 0; }
+  if (!quiet) drawHeader();
 }
 // Switching association keeps the page they are on, showing that association's content instead.
 async function chooseOrg(id, opts = {}) {
-  localStorage.setItem(ORG_KEY, id); localStorage.setItem(JOIN_KEY, '1');
+  localStorage.setItem(ORG_KEY, id);
   S.openGroup = opts.open || '';                        // a group to open on My availability
   if (S.user) await loadUser(S.user);
   const path = location.hash.slice(1) || '/';
@@ -61,7 +64,7 @@ function switchItems() {
   return [h('hr'), h('div', { class: 'menu-head muted small' }, 'Switch association'),
     ...others.map(o => h('button', { class: 'nav-link menu-switch', type: 'button', onclick: () => chooseOrg(o.id) }, o.name))];
 }
-const ctx = { get store() { return S.store; }, S, go, refreshUser: () => loadUser(S.user), chooseOrg, redrawHeader: () => drawHeader() };
+const ctx = { get store() { return S.store; }, S, go, refreshUser: () => loadUser(S.user), refreshPending: () => refreshPending(), chooseOrg, redrawHeader: () => drawHeader() };
 
 const ROUTES = [
   [/^\/$/, () => viewMy(ctx)],
@@ -98,7 +101,7 @@ function drawHeader() {
       h('a', { class: 'brand', href: '#/' }, '🏏 ', CONFIG.appName),
       S.isAdmin && h('nav', { class: 'nav' }, link('#/admin', 'Allocate'), link('#/admin/availability', 'Availability'),
         // Members, Settings and the association picker sit together, out of the way of the weekly work.
-        h('details', { class: 'menu' }, h('summary', { class: 'nav-link' }, 'My Organisation'),
+        h('details', { class: 'menu' }, h('summary', { class: 'nav-link' }, 'My Organisation', S.pending > 0 && h('span', { class: 'badge', 'aria-label': `${S.pending} waiting to join` }, S.pending)),
           h('div', { class: 'menu-items' }, S.org && h('div', { class: 'menu-head' }, h('strong', {}, S.org.name)),
             link('#/admin/members', 'Members'), link('#/admin/past', 'Past allocations'), link('#/admin/settings', 'Settings'), ...switchItems()))),
       // The account menu, top right as on most sites: their name, then profile, availability and Sign out.
@@ -110,7 +113,7 @@ function drawHeader() {
             h('summary', { class: 'who-name', 'aria-label': 'Account menu' }, h('span', { class: 'avatar' }, initials), h('span', { class: 'who-label' }, name)),
             h('div', { class: 'menu-items' },
               h('div', { class: 'menu-head' }, h('strong', {}, name), name !== S.user.email && h('span', { class: 'muted small' }, S.user.email)),
-              link('#/profile', 'My profile'), link('#/my', 'My availability'),
+              link('#/profile', 'My profile'), link('#/my', 'My availability'), link('#/associations', 'Associations'),
               ...(S.isAdmin ? [] : switchItems()),
               h('hr'),
               h('button', { class: 'nav-link menu-signout', type: 'button', onclick: async () => { await S.store.signOut(); await loadUser(null); location.hash = '#/'; render(); } }, 'Sign out'))));
@@ -124,15 +127,19 @@ async function render(quiet) {
   drawHeader();
   const path = location.hash.slice(1) || '/';
   const join = /^\/join\/([^/]+)$/.exec(path);          // the link an association sends its umpires
-  if (join) { if (S.user) await chooseOrg(decodeURIComponent(join[1])); else { localStorage.setItem(ORG_KEY, decodeURIComponent(join[1])); localStorage.setItem(JOIN_KEY, '1'); go('/'); } return; }
+  const joinId = join && decodeURIComponent(join[1]);
+  if (joinId && !S.user) { localStorage.setItem(NEXT_KEY, joinId); go('/'); return; }          // sign in first, then come back to it
+  const next = S.user && localStorage.getItem(NEXT_KEY);
+  if (next && !join) { localStorage.removeItem(NEXT_KEY); go('/join/' + encodeURIComponent(next)); return; }
+  if (joinId && (S.myOrgs || []).some(o => o.id === joinId)) { await chooseOrg(joinId); return; }   // already in it (or waiting): just open it
   if (S.user && S.org && S.isAdmin && path === '/') { go('/admin'); return; }
   shownPath = null;                                    // the spinner's scroll position is not anyone's
   if (quiet !== true) setChildren(main, spinner());       // a refresh on returning to the tab keeps the page as it is until the new one is ready
   let view;
   try {
     if (!S.user) view = viewLogin(ctx);
-    else if (!S.org || path === '/associations') view = await viewAssociations(ctx);
-    else if (!S.umpire && !S.isAdmin && path !== '/profile') view = await viewProfile(ctx);
+    else if (joinId) view = await viewJoin(ctx, joinId);                 // the details that association asks for
+    else if (!S.org || path === '/associations' || (!S.umpire && !S.isAdmin)) view = await viewAssociations(ctx);   // new here: choose an association to join
     else {
       let matched = false;
       for (const [re, fn, adminOnly] of ROUTES) {
