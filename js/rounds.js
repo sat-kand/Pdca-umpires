@@ -7,7 +7,7 @@ import { buildCalendar, compKeyOf, summarise, COMPS, groupOrder, suggestGroups, 
 import { applyOrg } from './org-setup.js';
 
 // Bump when the information saved on each round changes shape, so stored rounds are rebuilt on the next visit.
-export const SCHEMA = 9;   // 6: rounds by calendar week and group; 7: every week of the season; 8: grades set to None leave no dates; 9: games filled on tiles
+export const SCHEMA = 10;  // 10: stale 'No longer in the fixture list' warnings cleared; 6: rounds by calendar week and group; 7: every week of the season; 8: grades set to None leave no dates; 9: games filled on tiles
 export const STALE_MS = 12 * 60 * 60 * 1000;   // refetch the fixtures at most twice a day on its own
 
 export const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
