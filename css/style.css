@@ -383,3 +383,18 @@ button.tagbtn:hover { outline: 2px solid currentColor; outline-offset: 1px; }
 /* Short pickers stay short on wide screens. */
 .member-profile .kv select, table.members .member-type select { max-width: 16rem; }
 @media (max-width: 640px) { table.members .member-type select { max-width: none; } }
+
+/* Availability: one card per group, each with its own Edit, Save and Cancel. */
+.comp-headline { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; min-width: 0; }
+.comp-head .btn { background: #fff; }
+.comp-section [hidden] { display: none !important; }
+.group-summary { margin: 12px; }
+.group-note { margin: 10px 12px 0; }
+.group-tools { text-align: right; margin: 0 0 .4rem; }
+.group-tools .link { color: var(--green-d); }
+.group-foot { display: flex; justify-content: space-between; align-items: center; gap: .6rem 1rem; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: .7rem; }
+.group-foot .btn { padding: .55rem 1.3rem; font-weight: 600; }
+.group-foot .btn:disabled { opacity: .45; cursor: default; }
+.avail-head { margin: 0 0 .8rem; }
+.avail-head h2 { margin: .1rem 0 .3rem; }
+@media (max-width: 600px) { .group-foot { flex-direction: column; align-items: stretch; } .group-foot .savebar-btns { display: grid; grid-template-columns: 1fr 1fr; } }
