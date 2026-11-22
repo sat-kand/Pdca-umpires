@@ -148,7 +148,9 @@ export async function syncFixtures(store, { today, onProgress } = {}) {
   const seasons = await fetchSeasons(api, pc);
   const cur = seasons.find(x => x.current) || seasons[0];
   if (!cur) throw new Error('No season found');
-  const comps = await fetchCompetitions(api, pc, cur.id);
+  // Competitions the association has left out (run by someone else, say) are not brought in.
+  const left = new Set((store.org && store.org.leftOutComps) || []);
+  const comps = (await fetchCompetitions(api, pc, cur.id)).filter(c => !left.has(c.name));
   const games = await loadFixtures({ api, comps, from: '0000-01-01', to: '9999-12-31', onProgress });
   return saveSeasonAndRounds(store, { season: { id: cur.id, name: cur.name }, games, comps, today });
 }
