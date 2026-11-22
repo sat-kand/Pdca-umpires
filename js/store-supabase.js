@@ -97,7 +97,7 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
         const { data } = await sb.auth.getSession();            // already signed in by an earlier attempt with this same link: not a problem
         if (data && data.session) return true;
         // Say what is most likely wrong: a link opened somewhere other than where it was asked for, or a link already used or too old.
-        const elsewhere = /verifier|flow state/i.test(error.message || '') && !/expired|used|invalid/i.test(error.message || '');
+        const elsewhere = /verifier/i.test(error.message || '');            // no PKCE verifier here: the link was asked for in another browser (a used or old code says 'flow state')
         throw Object.assign(new Error(elsewhere
           ? 'This sign-in link was opened in a different browser or device from the one you asked for it in. Open it in that same browser, or get a new link below.'
           : 'This sign-in link has already been used or has expired. Each link works once, and for about an hour. Get a new one below.'), { signInLink: true });
