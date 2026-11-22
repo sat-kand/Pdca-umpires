@@ -1,4 +1,4 @@
-// Pure allocation logic: no DOM, no network, no Firebase. Fully unit-tested.
+// Pure allocation logic: no DOM, no network, no database. Fully unit-tested.
 //
 // Data shapes
 //   umpire : { pid, email, name, phone, active }
@@ -188,7 +188,7 @@ export function compareGrades(a, b) {
   return ra[0] - rb[0] || ra[1] - rb[1] || ra[2].localeCompare(rb[2], undefined, { numeric: true });
 }
 
-// The match types Play Cricket gives the games ("One Day", "Two Day", "T20"), joined with " & ".
+// The match types the fixtures give the games ("One Day", "Two Day", "T20"), joined with " & ".
 export function formatSummary(games) {
   const order = t => { const i = ['One Day', 'Two Day', 'T20'].indexOf(t); return i < 0 ? 9 : i; };
   return [...new Set(games.map(g => g.matchType).filter(Boolean))].sort((a, b) => order(a) - order(b) || a.localeCompare(b)).join(' & ');
@@ -453,7 +453,7 @@ export function summarise(games) {
 
 // When games start and, for games of more than one day, when their other days are: one line per start
 // day and format, e.g. { date: '2026-11-21', n: 6, type: 'Two Day', later: ['2026-11-28'], noLater: 0 }.
-// `noLater` counts games of that kind with only one day listed in Play Cricket so far.
+// `noLater` counts games of that kind with only one day listed in the fixtures so far.
 export function startSummary(games) {
   const by = new Map();
   for (const g of games) {

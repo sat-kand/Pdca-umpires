@@ -150,7 +150,7 @@ test('round title follows the picked grades; a grade on another round is listed 
   assert.equal(summarise(games).title, 'Round 4');                             // only Women picked: Round 4
 });
 
-test('tile format line uses Play Cricket\'s own match types', async () => {
+test('tile format line uses the competition\'s own match types', async () => {
   const { formatSummary } = await import('../js/logic.js');
   const G = (matchType, slots = 0) => ({ id: matchType + slots, grade: matchType, roundName: 'Round 1', matchType, slots, days: [{ date: '2026-11-21' }], alloc: {} });
   assert.equal(formatSummary([G('Two Day'), G('Two Day')]), 'Two Day');
@@ -247,12 +247,12 @@ test('moving a grade to another group takes its upcoming games out of the old gr
   } finally { (await import('./pdca-groups.mjs')).usePdcaGroups(); }
 });
 
-test('association helpers: Play Cricket id from a link, association id', async () => {
+test('association helpers: PlayHQ id from a link, association id', async () => {
   globalThis.location ||= { origin: 'https://x.test', pathname: '/app/' };
-  const { playCricketIdFrom, orgIdFrom } = await import('../js/views-org.js');
-  assert.equal(playCricketIdFrom('https://play.cricket.com.au/club/parramatta-district-cricket-association/EE7D89D9-6732-ec11-981f-501ac52e1666?tab=grades'), 'ee7d89d9-6732-ec11-981f-501ac52e1666');
-  assert.equal(playCricketIdFrom('ee7d89d9-6732-ec11-981f-501ac52e1666'), 'ee7d89d9-6732-ec11-981f-501ac52e1666');
-  assert.equal(playCricketIdFrom('https://play.cricket.com.au/'), '');
+  const { playhqIdFrom, orgIdFrom } = await import('../js/views-org.js');
+  assert.equal(playhqIdFrom('https://www.playhq.com/cricket-australia/org/parramatta-district-cricket-association/EE7D89D9-6732-ec11-981f-501ac52e1666?tab=grades'), 'ee7d89d9-6732-ec11-981f-501ac52e1666');
+  assert.equal(playhqIdFrom('ee7d89d9-6732-ec11-981f-501ac52e1666'), 'ee7d89d9-6732-ec11-981f-501ac52e1666');
+  assert.equal(playhqIdFrom('https://www.playhq.com/'), '');
   assert.equal(orgIdFrom('Hills District Cricket Assoc.!', () => 0), 'hills-district-cricket-assoc-0000');
   assert.match(orgIdFrom(''), /^association-[0-9a-z]{4}$/);
 });

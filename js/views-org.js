@@ -28,8 +28,8 @@ export function renewalText(org) {
 }
 export const money = v => (v || v === 0 ? `$${Number(v).toFixed(2).replace(/\.00$/, '')}` : '');
 
-// A Play Cricket page link, a PlayHQ page link or the bare id -> the organisation id.
-export function playCricketIdFrom(text) {
+// A PlayHQ page link or the bare id -> the organisation id.
+export function playhqIdFrom(text) {
   const m = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.exec(text || '');
   return m ? m[0].toLowerCase() : '';
 }
@@ -56,7 +56,7 @@ export async function viewAssociations(ctx) {
       : h('p', { class: 'notice' }, 'You are not in an association yet. Open the link your appointments officer sent you, and they will approve you.'));
 }
 
-// Officers only: name, Play Cricket link, who the officers are, and the link umpires join with.
+// Officers only: name, PlayHQ organisation, who the officers are, and the link umpires join with.
 export async function viewOrgSettings(ctx) {
   const { store, S } = ctx;
   const wrap = h('div');
@@ -233,10 +233,8 @@ export async function viewOrgSettings(ctx) {
     const admins = (await store.listAdmins()).sort();
     const link = joinLink(org.id);
     const name = h('input', { required: true, value: org.name || '' });
-    const live = !!store.playhq;                                 // the live store reads PlayHQ; demo mode reads Play Cricket
-    const pc = live
-      ? h('input', { value: org.playhqOrgId || '', placeholder: 'e.g. 4059f1b9-86d8-eb11-a7ad-2818780da0cc', autocomplete: 'off', spellcheck: 'false' })
-      : h('input', { value: org.playCricketId ? `https://play.cricket.com.au/club/-/${org.playCricketId}` : '', placeholder: 'https://play.cricket.com.au/club/…' });
+    const live = !!store.playhq;                                 // only the live store reads PlayHQ; demo mode has made-up fixtures
+    const pc = live ? h('input', { value: org.playhqOrgId || '', placeholder: 'e.g. 4059f1b9-86d8-eb11-a7ad-2818780da0cc', autocomplete: 'off', spellcheck: 'false' }) : null;
     const notify = h('input', { type: 'email', value: org.notifyEmail || '', placeholder: S.user.email });
     const save = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
     const add = h('input', { type: 'email', placeholder: 'officer@example.com', 'aria-label': 'Email of the new officer' });
@@ -246,17 +244,16 @@ export async function viewOrgSettings(ctx) {
       h('h1', {}, 'Settings'),
       saveButton(h('form', { class: 'card', onsubmit: busy(save, async e => {
         e.preventDefault();
-        const id = playCricketIdFrom(pc.value);
-        if (pc.value.trim() && !id) { toast(live ? 'That does not look like a PlayHQ organisation ID.' : 'That does not look like a Play Cricket link.', 'err'); return; }
-        const field = live ? 'playhqOrgId' : 'playCricketId';
-        const moved = id !== (store.org[field] || '');
+        const id = live ? playhqIdFrom(pc.value) : '';
+        if (live && pc.value.trim() && !id) { toast('That does not look like a PlayHQ organisation ID.', 'err'); return; }
+        const moved = live && id !== (store.org.playhqOrgId || '');
         // A new PlayHQ ID is checked with PlayHQ first; a wrong one is refused and nothing is saved.
         if (live && moved && id) {
           const found = await store.playhq('check', { orgId: id });
           if (!found.ok) { toast(found.error || 'PlayHQ did not recognise that ID.', 'err'); return; }
           toast(`Found: ${found.name || 'organisation'} ✓`, 'ok');
         }
-        await store.saveOrg({ name: name.value.trim(), [field]: id, notifyEmail: (notify.value || '').trim().toLowerCase(), updatedAt: new Date().toISOString() });
+        await store.saveOrg({ name: name.value.trim(), ...(live ? { playhqOrgId: id } : {}), notifyEmail: (notify.value || '').trim().toLowerCase(), updatedAt: new Date().toISOString() });
         if (moved) {
           // Another association's fixtures: load them the next time Allocate opens; their groups are
           // suggested then, and groups left with no grades are removed.
@@ -265,13 +262,13 @@ export async function viewOrgSettings(ctx) {
         }
         saved.add('assoc');
         await ctx.refreshUser(); ctx.redrawHeader();
-        toast(moved ? (live ? 'Saved. Allocate will load the fixtures from PlayHQ.' : 'Saved. Allocate will load the fixtures from the new link.') : 'Saved', 'ok');
+        toast(moved ? 'Saved. Allocate will load the fixtures from PlayHQ.' : 'Saved', 'ok');
         await draw();
       }) },
       h('h2', {}, 'Association'),
       h('label', {}, 'Name', name),
-      h('label', {}, live ? 'PlayHQ organisation ID' : 'Its page on Play Cricket (link)', pc),
-      h('p', { class: 'muted small' }, live ? 'Fixtures are read from PlayHQ for this organisation. PlayHQ can give you the ID; it is checked when you save.' : 'Fixtures are read from this page.'),
+      live && h('label', {}, 'PlayHQ organisation ID', pc),
+      h('p', { class: 'muted small' }, live ? 'Fixtures are read from PlayHQ for this organisation. PlayHQ can give you the ID; it is checked when you save.' : 'Demo mode: the fixtures are made up. A live association reads its fixtures from PlayHQ.'),
       h('label', {}, 'Send alerts to', notify),
       h('p', { class: 'muted small' }, 'Where to email when an umpire pulls out of a published game.'),
       save), save, 'assoc'),

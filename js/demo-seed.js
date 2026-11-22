@@ -1,14 +1,10 @@
-// Sample data for demo mode. "Load sample data" pulls the association's real fixtures from Play Cricket
-// (from the link in its Settings) and pairs them with made-up umpires. If Play Cricket can't be
-// reached it falls back to made-up fixtures that overlap the same way, so the whole flow
-// can always be tried without any setup.
+// Sample data for demo mode: made-up umpires and made-up fixtures that overlap the way real ones do,
+// so the whole flow can be tried without any setup or network.
 
 import { newPid, compKeyOf, compareGrades, COMPS } from './logic.js';
 import { addDays, saveSeasonAndRounds, buildRound, ensureGroups } from './rounds.js';
-import { CONFIG } from './config.js';
-import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures } from './fixtures.js';
 
-// Competitions for the made-up fallback fixtures only.
+// Competitions for the made-up fixtures.
 const SEN = 'Senior Competition';
 const JUN = 'Junior Competition';
 const T20 = 'T20 Competition';
@@ -65,22 +61,6 @@ const NAMES = [
 
 const todayIso = () => { const d = new Date(); return iso(d); };
 
-// Real fixtures for the whole season from Play Cricket, or null when the service can't be reached.
-export async function loadLiveSeason({ fetchFn, timeoutMs = 45000, playCricketId } = {}) {
-  if (!playCricketId) return null;
-  const work = (async () => {
-    const api = makeApi(CONFIG.apiBase, fetchFn);
-    const seasons = await fetchSeasons(api, playCricketId);
-    const cur = seasons.find(x => x.current) || seasons[0];
-    if (!cur) return null;
-    const comps = await fetchCompetitions(api, playCricketId, cur.id);
-    const games = await loadFixtures({ api, comps, from: '0000-01-01', to: '9999-12-31' });
-    return games.length ? { season: { id: cur.id, name: cur.name }, games, comps } : null;
-  })();
-  const timeout = new Promise(res => setTimeout(() => res(null), timeoutMs));
-  try { return await Promise.race([work, timeout]); } catch { return null; }
-}
-
 // The "current round" for the demo: every game whose first day is in the week starting at the
 // next upcoming game (or, if the season is over, the last week).
 // Made-up answers that differ by group, so the demo shows separate availability: umpires 3 and 6
@@ -95,7 +75,7 @@ export function demoAnswer(i, comp, k) {
 // Applicants waiting for approval (not counted among the sample umpires above).
 const APPLICANTS = [['Priya', 'Nair', 'applicant1@demo.test'], ['Tom', 'Walsh', 'applicant2@demo.test'], ['Lena', 'Okafor', 'applicant3@demo.test']];
 
-export async function seedDemo(store, { live = true, fetchFn } = {}) {
+export async function seedDemo(store) {
   for (const [i, [firstName, lastName]] of NAMES.entries()) {
     const email = `umpire${i + 1}@demo.test`;
     const had = await store.getUmpire(email);
@@ -115,23 +95,19 @@ export async function seedDemo(store, { live = true, fetchFn } = {}) {
       { orgId: 'hdca', orgName: 'Hills District Cricket Association', membership: 'Life member', active: true, since: '2022-08-20' }],
   });
 
-  const real = live ? await loadLiveSeason({ fetchFn, playCricketId: store.org && store.org.playCricketId }) : null;
-  let seasonInfo, all, comps = [];
-  if (real) {
-    seasonInfo = real.season; all = real.games; comps = real.comps;
-  } else {
-    const [D1, D2] = demoDates();
-    seasonInfo = { id: 'demo', name: 'Summer 2026/27' };
-    all = demoGames([D1, D2]);
-    // The rest of the season: another round every fortnight for each competition.
-    for (let k = 1; k < 6; k++) {
-      const a = addDays(D1, 14 * k), b = addDays(D2, 14 * k);
-      all.push(fx(`s${k}`, 'Senior A Grade', 'A', 'B', 'X', [a, b], `Round ${2 + k}`));
-      all.push(fx(`j${k}`, 'U12 Gold', 'A', 'B', 'X', [a], `Round ${2 + k}`, 'One Day', JUN));
-      all.push(fx(`t${k}`, 'T20 Mens', 'A', 'B', 'X', [b], `Round ${1 + k}`, 'T20', T20));
-    }
+  const [D1, D2] = demoDates();
+  const seasonInfo = { id: 'demo', name: 'Summer 2026/27' };
+  const all = demoGames([D1, D2]);
+  // The rest of the season: another round every fortnight for each competition.
+  for (let k = 1; k < 6; k++) {
+    const a = addDays(D1, 14 * k), b = addDays(D2, 14 * k);
+    all.push(fx(`s${k}`, 'Senior A Grade', 'A', 'B', 'X', [a, b], `Round ${2 + k}`));
+    all.push(fx(`j${k}`, 'U12 Gold', 'A', 'B', 'X', [a], `Round ${2 + k}`, 'One Day', JUN));
+    all.push(fx(`t${k}`, 'T20 Mens', 'A', 'B', 'X', [b], `Round ${1 + k}`, 'T20', T20));
   }
 
+  // The made-up competitions, as a fixture service would list them (so the groups are suggested the same way).
+  const comps = [...new Set(all.map(g => g.comp))].map(name => ({ id: name, name, grades: [...new Set(all.filter(g => g.comp === name).map(g => g.grade))].map(gr => ({ id: gr, name: gr })) }));
   // The association's groups, suggested from its own competitions.
   await ensureGroups(store, all, comps);
   // The committee has asked for the first five grades of the first group and every grade of the groups
@@ -142,7 +118,7 @@ export async function seedDemo(store, { live = true, fetchFn } = {}) {
   grades(keys[0]).slice(0, 5).forEach(gr => { slotsByGrade[gr] = 1; });
   keys.slice(1, -1).forEach(k => grades(k).forEach(gr => { slotsByGrade[gr] = 1; }));
   await store.saveSettings({ slotsByGrade });
-  const made = await saveSeasonAndRounds(store, { season: seasonInfo, games: all, comps, today: todayIso(), source: real ? undefined : { type: 'demo' } });
+  const made = await saveSeasonAndRounds(store, { season: seasonInfo, games: all, comps, today: todayIso(), source: { type: 'demo' } });
   const season = await store.getSeason();
 
   // Made-up finished rounds on the two Saturdays just gone, so "Past allocations" has something to show.
@@ -150,8 +126,7 @@ export async function seedDemo(store, { live = true, fetchFn } = {}) {
   const P1 = addDays(N1, -14), P2 = addDays(N1, -7);
   const ump = [];
   for (let i = 1; i <= 8; i++) { const u = await store.getUmpire(`umpire${i}@demo.test`); ump.push({ p: u.pid, n: u.name }); }
-  // Grade names come from this season's real fixtures, so the made-up results use the association's
-  // own grades (the made-up fallback names are only used when Play Cricket could not be reached).
+  // Grade names come from the sample fixtures above.
   const realGrades = key => grades(key).length ? grades(key) : null;
   const gr = (key, i, fallback) => { const l = realGrades(key); return l ? l[i % l.length] : fallback; };
   const K1 = keys[0], K2 = keys[keys.length - 1];
@@ -195,5 +170,5 @@ export async function seedDemo(store, { live = true, fetchFn } = {}) {
     for (const r of season.calendar) r.dates.forEach((d, k) => { days[`${r.comp}:${d}`] = k % 3 === 2 ? 'no' : 'yes'; });
     await store.saveAvailability({ seasonId: season.id, email, name: `${firstName} ${lastName}`, days, updatedAt: new Date().toISOString() });
   }
-  return { live: !!real, rounds: made.length, games: all.length };
+  return { rounds: made.length, games: all.length };
 }

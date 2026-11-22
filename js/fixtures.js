@@ -1,21 +1,6 @@
-// Fixture import: Play Cricket's public JSON service, plus a CSV fallback.
-//
-// The Play Cricket website itself loads its data from this service
-// (grassrootsapiproxy.cricket.com.au). It is not an officially documented API,
-// so everything here is defensive and the CSV import below is the fallback.
+// Fixture import: the PlayHQ service (through the app's `playhq` Edge Function), plus a CSV fallback.
 
 import { sectionKey } from './logic.js';
-
-const Q = 'jsconfig=eccn%3Atrue';
-
-export function makeApi(apiBase, fetchFn = globalThis.fetch) {
-  return async function api(path) {
-    const url = apiBase + path + (path.includes('?') ? '&' : '?') + Q;
-    const res = await fetchFn(url);
-    if (!res.ok) throw new Error(`Play Cricket returned ${res.status} for ${path.split('?')[0]}`);
-    return res.json();
-  };
-}
 
 // Live back-end: the app asks the `playhq` Edge Function (which holds the PlayHQ key and reads the
 // association's organisation ID itself). The function answers in the same shape as the paths below.
@@ -32,9 +17,10 @@ export function makePlayhqApi(store) {
   return api;
 }
 
-// The live store has `playhq`; demo mode has not, and reads the public Play Cricket service as before.
-export function fixtureApi(store, { apiBase, fetchFn } = {}) {
-  return store && store.playhq ? makePlayhqApi(store) : makeApi(apiBase, fetchFn);
+// Only the live store has `playhq`. Demo mode has no fixture service: its fixtures are made up when sample data is loaded.
+export function fixtureApi(store) {
+  if (!store || !store.playhq) throw new Error('Fixtures can only be loaded from PlayHQ once the app is set up with a database');
+  return makePlayhqApi(store);
 }
 
 export async function fetchSeasons(api, orgId) {

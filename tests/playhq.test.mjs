@@ -137,7 +137,8 @@ test('the app\'s fixture api asks the store, with the grade id intact', async ()
   assert.equal(asked[1][1].seasonId, 'summer-2026-27');
   assert.deepEqual(asked[2][1].gradeIds, [`${S_SEN}.${G_A}`]);
   assert.equal(games.length, 2);
-  assert.equal(fixtureApi({}, { apiBase: 'https://x', fetchFn: async () => ({}) }).name, 'api');          // demo mode: the old service
+  assert.throws(() => fixtureApi({}), /PlayHQ/);                                                      // demo mode has no fixture service
+  assert.equal(typeof fixtureApi(store), 'function');
   await assert.rejects(api('/something/else'), /Unsupported/);
 });
 

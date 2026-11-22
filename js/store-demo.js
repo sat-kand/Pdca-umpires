@@ -1,5 +1,5 @@
 // Demo back-end: everything lives in this browser's localStorage.
-// Same interface as store-firebase.js, so the app code is identical.
+// Same interface as store-supabase.js, so the app code is identical.
 // "Sign in" simply asks for an email (no link is sent).
 //
 // Data is kept per association (org), exactly like the live back-end:

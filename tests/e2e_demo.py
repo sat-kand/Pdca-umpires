@@ -56,7 +56,7 @@ S1, S2 = f"Sat, {_n(sat1)}", f"Sat, {_n(sat2)}"
 N2 = _n(sat2)
 P1, P2 = sat1 - timedelta(days=7), sat1 - timedelta(days=14)   # the two finished sample rounds
 
-# ---- fake Play Cricket service (same JSON shape as the live one) -------------
+# ---- fake fixture service (answers in the shape the app reads) -------------
 def match(mid, rnd, mtype, days, home, away, venue):
     return {"id": mid, "status": "SCHEDULED", "matchType": mtype, "round": {"id": "r", "name": rnd, "shortName": "R"},
             "matchSchedule": [{"matchDay": i + 1, "startDateTime": f"{d}T13:30:00.0000000+11:00"} for i, d in enumerate(days)],
@@ -76,7 +76,29 @@ API = {
     "g-u14": [match("m7", "Round 3", "Two Day", [(sat1 + timedelta(days=14)).isoformat(), (sat1 + timedelta(days=21)).isoformat()], "Fourteen A", "Fourteen B", "Teen Oval")],
     "g-u13": [match("m8", "Round 4", "One Day", [(sat1 + timedelta(days=21)).isoformat()], "Thirteen A", "Thirteen B", "Teen Oval")],
 }
-API_DOWN = True   # the first "Load sample data" runs with Play Cricket unreachable -> made-up fixtures
+API_DOWN = True   # the first run has the fixture service unreachable -> a clear message and a retry link
+
+# The demo has no fixture service of its own (its fixtures are made up). To test the whole fixture flow the browser is
+# given one: a stand-in for the live store's `playhq` call that reads the fake service above, which answers in the shape
+# the Edge Function does.
+SHIM = """
+(() => {
+  const base = 'https://grassrootsapiproxy.cricket.com.au';
+  const get = async path => { const r = await fetch(base + path); if (!r.ok) throw new Error('Could not reach the fixture service. Try again in a minute.'); return r.json(); };
+  const iv = setInterval(() => {
+    const P = window.__pdca;
+    if (!(P && P.S && P.S.store)) return;
+    clearInterval(iv);
+    P.S.store.playhq = async (action, p = {}) => {
+      if (action === 'seasons') return get('/seasons');
+      if (action === 'competitions') return get('/competition-seasons?seasonId=' + p.seasonId);
+      if (action === 'matches') return get('/scores/grades/' + p.gradeId + '/matches');
+      if (action === 'matchesMany') { const out = {}; for (const id of p.gradeIds) out[id] = await get('/scores/grades/' + id + '/matches'); return { grades: out }; }
+      throw new Error('Unknown request');
+    };
+  }, 2);
+})();
+"""
 
 
 def fulfill_api(route):
@@ -86,7 +108,7 @@ def fulfill_api(route):
     url = route.request.url
     cors = {"access-control-allow-origin": "*"}
     if "/seasons" in url:
-        body = {"seasons": [{"id": "s1", "name": "Summer 2026/27", "isCurrentSeason": True, "startDate": "2026-07-01"}]}
+        body = {"seasons": [{"id": "demo", "name": "Summer 2026/27", "isCurrentSeason": True, "startDate": "2026-07-01"}]}
     elif "competition-seasons" in url:
         body = {"competitionSeasons": [
             {"competition": {"id": "c-sen", "name": "PDCA Senior Competition"}, "grades": [{"id": "g-a", "name": "Senior A Grade"}, {"id": "g-b", "name": "Senior B01"}, {"id": "g-w", "name": "Senior Women"}]},
@@ -164,6 +186,7 @@ def sign_out(page):
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path=CHROME, headless=True, args=["--no-sandbox"])
     ctx = browser.new_context(viewport={"width": 1280, "height": 900}, accept_downloads=True)
+    ctx.add_init_script(SHIM)
     page = ctx.new_page()
     page.on("console", lambda m: errors.append("console: " + m.text) if m.type == "error" and "ERR_" not in m.text and "Failed to fetch" not in m.text else None)
     page.on("pageerror", lambda e: errors.append("pageerror: " + str(e)))
@@ -175,12 +198,12 @@ with sync_playwright() as p:
     page.wait_for_selector(".comp-tile")
     check(page.locator("text=Season dates").count() == 0 and page.locator("text=New round").count() == 0 and page.locator("text=Re-sync").count() == 0, "no Season dates card, Re-sync or New round button")
     page.wait_for_selector(".notice.warn:has-text('Could not load the fixtures')")
-    check(True, "with Play Cricket unreachable the officer gets a clear message and a retry link")
+    check(True, "with the fixture service unreachable the officer gets a clear message and a retry link")
     page.click("button:has-text('Load sample data')")
     page.wait_for_selector(".tile-round")
     tile = lambda name, n=0: page.locator(f".comp-tile:has(h2:has-text('{name}'))").nth(n)
     check(page.locator(".comp-tile h2").all_inner_texts() == ["Senior", "Junior", "T20", "Junior"] and page.locator("section.week").count() == 2,
-          "one section per week: this week Senior and Junior; next week T20 and the Junior one-day games on the two-day games' second Saturday (groups in the order Play Cricket lists the competitions)")
+          "one section per week: this week Senior and Junior; next week T20 and the Junior one-day games on the two-day games' second Saturday (groups in the order the fixtures list the competitions)")
     check(page.locator(".week-head h2").all_inner_texts()[:2] == ["This week", "Next week"], "weeks are headed This week, Next week")
     wk2 = page.locator("section.week").nth(1).inner_text()
     check(f"two-day games from {S1} continue {S2}" in wk2, "next week lists the two-day games continuing from this week, instead of repeating them")
@@ -218,7 +241,7 @@ with sync_playwright() as p:
     check(sen_t.upper().index(S1.upper()) < sen_t.upper().find(N2.upper()) and "ROUND" not in sen_t.upper(), "tile lists each start day, not the round name")
     check(f"Two Day games, day 2 {S2}" in sen_t, f"each start day says how many games and when their day 2 is: {sen_t!r}")
     check("5 grades selected" in sen_t and "0 / 13 filled" in sen_t, f"Senior tile: 5 grades selected, 0 / 13 games filled (26 places, two-day games counted once): {sen_t!r}")
-    check("Two Day" in sen_t and "Mens" not in sen_t and "Women" not in sen_t, "Senior tile shows Play Cricket's own match type: Two Day (no made-up grade groups)")
+    check("Two Day" in sen_t and "Mens" not in sen_t and "Women" not in sen_t, "Senior tile shows the fixtures' own match type: Two Day (no made-up grade groups)")
     check("T20" in tile("T20").inner_text().replace("T20\n", "", 1), "T20 tile shows the match type T20")
     check("One Day game" in tile("Junior").inner_text() and "Two Day game" in tile("Junior").inner_text(), "Junior tile shows its match types before any grade is picked: One Day and Two Day")
     check("0 / 4 filled" in tile("T20").inner_text(), "T20 tile: 0 / 4 filled")
@@ -242,7 +265,7 @@ with sync_playwright() as p:
     open_grades("Junior")
     check(dlg.locator(".grade-row").count() == 2, "popup lists the Junior grades that play this round (U12 Gold, U14 Blue)")
     check("2 games" in dlg.locator(".grade-row:has-text('U12')").inner_text() and "1 game" in dlg.locator(".grade-row:has-text('U14')").inner_text(), "each grade shows its game count")
-    check("One Day" in dlg.locator(".grade-row:has-text('U12')").inner_text() and "Two Day" in dlg.locator(".grade-row:has-text('U14')").inner_text() and "Round" not in dlg.locator(".grade-list").inner_text(), "each grade shows its Play Cricket match type, not the round")
+    check("One Day" in dlg.locator(".grade-row:has-text('U12')").inner_text() and "Two Day" in dlg.locator(".grade-row:has-text('U14')").inner_text() and "Round" not in dlg.locator(".grade-list").inner_text(), "each grade shows its match type, not the round")
     check("No grades selected" in dlg.inner_text(), "nothing ticked at first")
     dlg.locator(".grade-row:has-text('U12') input[type=checkbox]").check()
     check("1 grade" in dlg.inner_text() and "2 umpire slots" in dlg.inner_text(), "ticking U12 Gold (2 games) = 2 slots")
@@ -1296,7 +1319,7 @@ with sync_playwright() as p:
     page.click(".tabs button.tab:has-text('Junior')")
     check("R Dryburgh" not in page.evaluate("() => document.body.innerText.split('Copy emails')[0]"), "the officer's Junior count does not chase someone who doesn't do Junior")
 
-    print("Admin: fixtures load automatically from Play Cricket (mocked service)")
+    print("Admin: fixtures load automatically (mocked service)")
     API_DOWN = False
     page.locator("button:has-text('Reset')").click()      # demo reset: start from an empty app
     page.wait_for_timeout(500)
@@ -1368,18 +1391,16 @@ with sync_playwright() as p:
     check(m.locator(".savebar").is_visible(), "Save bar is visible without scrolling on a phone")
     m.close()
 
-    print("Sample data pulls the real fixtures when Play Cricket is reachable (mocked)")
+    print("Sample data loads made-up umpires and fixtures")
     sign_out(page)
     sign_in(page, "admin@demo.test")
     page.click("button:has-text('Load sample data')")
-    page.wait_for_selector("text=Loaded Parramatta District Cricket Association's fixtures from Play Cricket")
-    check(True, "Load sample data names the association whose link is in Settings, not a built-in one")
-    check(True, "sample data announces it used the real fixtures")
+    page.wait_for_selector("text=Loaded sample umpires and made-up fixtures")
+    check(True, "sample data says it loaded made-up fixtures")
     page.wait_for_selector(".tile-round")
     check(re.search(r"\d+ / \d+ filled", tile("Senior").inner_text()) is not None, "sample Senior tile already has grades picked")
     tile("Senior").locator("a.tile-body").click()
     page.wait_for_selector("table.board")
-    check(page.locator("td:has-text('Pearce Reserve'), td:has-text('New Ground')").count() >= 1, "board shows the real (mocked) grounds")
 
     print("Demo: an umpire on a fresh browser still gets the availability page")
     fresh = browser.new_context(viewport={"width": 1280, "height": 900})
@@ -1431,7 +1452,7 @@ with sync_playwright() as p:
     page.evaluate("""(id) => {                       // the tool's owner sets an association up; here, straight into the demo store
         const k = 'pdca-umpires-demo-v2';
         const db = JSON.parse(localStorage.getItem(k));
-        db.orgs[id] = { org: { id, name: 'Hills Cricket Association', playCricketId: '11111111-2222-3333-4444-555555555555', plan: 'trial', notifyEmail: 'founder@demo.test' },
+        db.orgs[id] = { org: { id, name: 'Hills Cricket Association', playhqOrgId: '11111111-2222-3333-4444-555555555555', plan: 'trial', notifyEmail: 'founder@demo.test' },
           admins: ['founder@demo.test'], umpires: {}, rounds: {}, games: {}, availability: {}, settings: {}, season: null, withdrawals: {}, mail: {} };
         db.users['founder@demo.test'] = [id];
         localStorage.setItem(k, JSON.stringify(db));

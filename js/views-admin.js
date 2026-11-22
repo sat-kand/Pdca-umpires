@@ -15,7 +15,7 @@ import { membershipLink } from './views-member.js';
 const profileLink = u => h('a', { class: 'member-link', href: `#/admin/member/${encodeURIComponent(u.pid)}`, title: 'Open profile' }, u.name);
 import { planImport, applyImport } from './import-availability.js';
 import { planMembers, applyMembers } from './import-members.js';
-import { syncFromPlayCricket, refreshRound, currentRound, visibleRounds, needsSync, addDays, weekOf, upcomingRounds } from './rounds.js';
+import { syncFixtures, refreshRound, currentRound, visibleRounds, needsSync, addDays, weekOf, upcomingRounds } from './rounds.js';
 
 // A finished round can still be changed for this many days after its last game (an umpire replaced on
 // the morning, say). After that it is a record: Availability and Report only, no Assign board.
@@ -57,7 +57,7 @@ async function openGradesModal({ store, round, chosenGames = new Set(), onDone }
   const hasPu = g => Object.values(g.alloc || {}).some(arr => (arr || []).some(a => a && a.pu));
   const isPuGame = g => chosenGames.has(g.id) || hasPu(g);         // chosen right now, or in it as a player umpire
   const puGames = gr => live.filter(g => g.grade === gr && isPicked(g) && isPuGame(g)).length;
-  const typeOf = gr => formatSummary(live.filter(g => g.grade === gr));              // Play Cricket's match type: One Day / Two Day / T20
+  const typeOf = gr => formatSummary(live.filter(g => g.grade === gr));              // the competition's match type: One Day / Two Day / T20
 
   const dlg = h('dialog', { class: 'modal', 'aria-label': 'Select grades' });
   const total = h('span', { class: 'muted' });
@@ -196,7 +196,7 @@ export async function viewAdminHome(ctx) {
   async function sync(force) {
     if (state.syncing) return;
     state.syncing = true; state.error = ''; draw();
-    try { await syncFromPlayCricket(store, { today }); await load(); }
+    try { await syncFixtures(store, { today }); await load(); }
     catch (e) { console.error(e); state.error = `Could not load the fixtures (${e.message || e}).`; }
     state.syncing = false; draw();
   }
@@ -204,7 +204,7 @@ export async function viewAdminHome(ctx) {
   await load();
   draw();
   // First visit, or fixtures more than half a day old, or a competition has no round yet: fetch in the background.
-  if (needsSync(state.season, state.rounds, today)) sync();
+  if (store.playhq && needsSync(state.season, state.rounds, today)) sync();
   return wrap;
 }
 

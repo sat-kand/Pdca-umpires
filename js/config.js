@@ -1,40 +1,27 @@
 // ---------------------------------------------------------------------------
 // App configuration
 // ---------------------------------------------------------------------------
-// While `firebase.apiKey` is empty the app runs in DEMO MODE: everything is
+// While `supabase.url` is empty the app runs in DEMO MODE: everything is
 // stored in this browser only (localStorage), so you can click through it
-// without any setup. To go live, paste your Firebase web-app config below
-// (Firebase console > Project settings > Your apps > Web app > Config).
-// See README.md for the full setup.
+// without any setup. To go live, put your Supabase project's URL and public
+// (publishable) key below. See README.md for the full setup.
 
 export const CONFIG = {
   appName: 'Third Umpire',
-
-  apiBase: 'https://grassrootsapiproxy.cricket.com.au',
 
   // Supabase (the live back-end). Both values are public by design: the database is protected by
   // row-level security, not by hiding these. Leave blank for demo mode. Each environment
   // (dev, staging, prod) uses its own project.
   supabase: { url: 'https://vziphltqtkuzlpltudqy.supabase.co', anonKey: 'sb_publishable_IxGIQNMptZZFoZNwCcv8dw_pX-L4k9C' },
-
-  firebase: {
-    apiKey: '',
-    authDomain: '',
-    projectId: '',
-    storageBucket: '',
-    messagingSenderId: '',
-    appId: '',
-  },
 };
 
 export const SUPABASE_SDK = 'https://esm.sh/@supabase/supabase-js@2.45.4';
-export const FIREBASE_SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
 
 // The association the demo starts with (demo mode only; live associations are created in the app).
 export const DEMO_ORG = {
   id: 'pdca',
   name: 'Parramatta District Cricket Association',
-  playCricketId: 'ee7d89d9-6732-ec11-981f-501ac52e1666',
+  playhqOrgId: '00000000-0000-4000-8000-000000000001',        // a made-up id: the demo never calls PlayHQ
   plan: 'trial',
   notifyEmail: 'admin@demo.test',
   playerUmpire: { description: 'Pick any Senior round, grade or fixture you want to umpire.' },

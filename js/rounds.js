@@ -1,8 +1,7 @@
 // The appointments officer never creates rounds by hand. Each competition's NEXT round is built
-// automatically from the Play Cricket fixtures, and the season dates umpires answer for are
+// automatically from the PlayHQ fixtures, and the season dates umpires answer for are
 // rebuilt from the same fetch.
 
-import { CONFIG } from './config.js';
 import { fixtureApi, fetchSeasons, fetchCompetitions, loadFixtures, mergeFixtures } from './fixtures.js';
 import { buildCalendar, compKeyOf, summarise, COMPS, groupOrder, suggestGroups, suggestUmpires, firstGroup, needsUmpires } from './logic.js';
 import { applyOrg } from './org-setup.js';
@@ -56,7 +55,7 @@ export function buildRound({ key, win, games, season, compIds = [], source = nul
     id: `${key}-${win.from}`, comp: key, title: majorityRound(games),
     start: dates[0], end: dates[dates.length - 1], dates, published: false,
     season: { id: season.id, name: season.name },
-    source: source || { type: 'playcricket', seasonId: season.id, comps: compIds, from: win.from, to: win.to },
+    source: source || { type: 'playhq', seasonId: season.id, comps: compIds, from: win.from, to: win.to },
     ...summarise(games),
   };
 }
@@ -131,19 +130,21 @@ export async function applyFresh(store, round, fresh, settings) {
   return { ...res, all };
 }
 
+// 'playcricket' is how rounds made before the move to PlayHQ were tagged; they are refreshed the same way.
+const isFixtureSource = src => !!src && (src.type === 'playhq' || src.type === 'playcricket');
+
 // Each association has its own PlayHQ organisation id (set in Settings).
-// Live: the PlayHQ organisation id (the Edge Function reads it from the database). Demo: the Play Cricket id.
-function playCricketId(store) {
-  const o = store.org || {};
-  const id = o.playhqOrgId || o.playCricketId;
-  if (!id) throw new Error(store.playhq ? 'Add your association\'s PlayHQ organisation ID in Settings first' : 'Add your association\'s Play Cricket link in Settings first');
+// The association's PlayHQ organisation id (the Edge Function reads it from the database itself).
+function playhqOrgId(store) {
+  const id = (store.org || {}).playhqOrgId;
+  if (!id) throw new Error('Add your association\'s PlayHQ organisation ID in Settings first');
   return id;
 }
 
 // Fetch the whole season, rebuild the umpires' date list, and create / update each competition's next round.
-export async function syncFromPlayCricket(store, { today, fetchFn, onProgress } = {}) {
-  const pc = playCricketId(store);
-  const api = fixtureApi(store, { apiBase: CONFIG.apiBase, fetchFn });
+export async function syncFixtures(store, { today, onProgress } = {}) {
+  const pc = playhqOrgId(store);
+  const api = fixtureApi(store);
   const seasons = await fetchSeasons(api, pc);
   const cur = seasons.find(x => x.current) || seasons[0];
   if (!cur) throw new Error('No season found');
@@ -216,7 +217,7 @@ export async function saveSeasonAndRounds(store, { season, games, comps = [], to
       if (have) {
         jobs.push(async () => {
           await applyFresh(store, have, win.games, settings);
-          if ((have.source || {}).type === 'playcricket') await store.saveRound({ id: have.id, source: { ...have.source, comps: compIds, from: win.from, to: win.to } });
+          if (isFixtureSource(have.source)) await store.saveRound({ id: have.id, source: { ...have.source, comps: compIds, from: win.from, to: win.to } });
         });
         made.push(have.id);
         continue;
@@ -253,11 +254,11 @@ async function runLimited(jobs, limit) {
 }
 
 // "Update fixtures" on one round: refetch its competition for the same week and merge.
-export async function refreshRound(store, round, settings, { fetchFn } = {}) {
+export async function refreshRound(store, round, settings) {
   const src = round.source || {};
-  if (src.type !== 'playcricket') return null;
-  const api = fixtureApi(store, { apiBase: CONFIG.apiBase, fetchFn });
-  const comps = (await fetchCompetitions(api, playCricketId(store), src.seasonId)).filter(c => (src.comps || []).includes(c.id));
+  if (!isFixtureSource(src) || !store.playhq) return null;
+  const api = fixtureApi(store);
+  const comps = (await fetchCompetitions(api, playhqOrgId(store), src.seasonId)).filter(c => (src.comps || []).includes(c.id));
   // Only this group's games: a competition can feed more than one group.
   const fresh = (await loadFixtures({ api, comps, from: src.from, to: src.to })).filter(g => compKeyOf(g) === round.comp);
   return applyFresh(store, round, fresh, settings);
