@@ -133,7 +133,7 @@ async function render() {
   } catch (e) {
     console.error(e);
     view = h('div', { class: 'notice err' }, h('strong', {}, 'Something went wrong. '), e.message || String(e),
-      /permission|insufficient/i.test(String(e.message)) ? h('p', {}, 'This usually means the Firestore security rules have not been published, or this email is not allowed to see this page.') : null);
+      /permission|insufficient/i.test(String(e.message)) ? h('p', {}, 'This usually means this email is not allowed to see this page, or the database permissions have not been set up.') : null);
   }
   if (id !== renderId) return; // a newer navigation superseded this one
   setChildren(main, view);
