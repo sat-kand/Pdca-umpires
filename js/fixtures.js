@@ -216,7 +216,7 @@ export function mergeFixtures(existing, fresh, defaultSlots = () => 1) {
     const notes = changeNotes(old, f);
     const merged = { ...old };
     for (const k of FIXTURE_FIELDS) merged[k] = f[k];
-    merged.removed = false;
+    if (old.removed) merged.removed = false;                  // (a game that was never removed reads back as null, not false)
     if (notes.length) { merged.changeNote = notes.join('; '); changed++; }
     if (canon(merged) !== canon(old)) out.push(merged);
   }

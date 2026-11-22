@@ -217,7 +217,11 @@ export async function saveSeasonAndRounds(store, { season, games, comps = [], to
       if (have) {
         jobs.push(async () => {
           await applyFresh(store, have, win.games, settings);
-          if (isFixtureSource(have.source)) await store.saveRound({ id: have.id, source: { ...have.source, comps: compIds, from: win.from, to: win.to } });
+          if (isFixtureSource(have.source)) {                       // also moves rounds tagged 'playcricket' over to 'playhq'
+            const next = { ...have.source, type: 'playhq', comps: compIds, from: win.from, to: win.to };
+            const cur = have.source;
+            if (cur.type !== 'playhq' || cur.from !== win.from || cur.to !== win.to || JSON.stringify(cur.comps || []) !== JSON.stringify(compIds)) await store.saveRound({ id: have.id, source: next });
+          }
         });
         made.push(have.id);
         continue;

@@ -242,7 +242,7 @@ test('moving a grade to another group takes its upcoming games out of the old gr
     await saveSeasonAndRounds(store, { season: { id: 's', name: 'S' }, games, today: '2026-11-16' });
     const old = await store.listGames('senior-2026-11-16');
     assert.equal(old.find(g => g.id === 'w').removed, true);
-    assert.equal(old.find(g => g.id === 'a').removed, false);
+    assert.ok(!old.find(g => g.id === 'a').removed);
     assert.deepEqual((await store.listGames('women-2026-11-16')).map(g => g.id), ['w']);
   } finally { (await import('./pdca-groups.mjs')).usePdcaGroups(); }
 });
