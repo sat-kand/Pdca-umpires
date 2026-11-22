@@ -183,7 +183,11 @@ async function boot() {
   document.addEventListener('visibilitychange', () => { if (!document.hidden && location.hash.startsWith('#/admin')) render(); });
   try { await S.store.completeLink(async () => prompt('To finish signing in, please type the email address the link was sent to:')); }
   catch (e) { if (e && e.signInLink) S.linkProblem = e.message; else toast('Sign-in problem: ' + (e.message || e), 'err'); }
-  S.store.onAuth(async user => { await loadUser(user); render(); });
+  S.store.onAuth(async user => {
+    // The auth library re-announces the same person when the tab regains focus: reloading then would blank the association mid-draw.
+    if (user && S.user && S.user.email === user.email && (S.org || S.isAdmin || S.umpire)) return;
+    await loadUser(user); render();
+  });
 }
 
 boot();

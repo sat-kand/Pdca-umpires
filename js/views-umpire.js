@@ -26,9 +26,9 @@ export function viewLogin(ctx) {
   problem,
   h('p', { class: 'muted' }, store.mode === 'demo'
     ? 'Demo mode: no email is sent. Type any address to continue. Use admin@demo.test for the appointments officer view, or umpire1@demo.test … umpire10@demo.test for sample umpires.'
-    : 'Use the same email address the appointments officer has for you.'),
-  google, google && h('p', { class: 'muted center' }, 'or get a link by email'),
-  h('label', {}, 'Email address', email), btn, msg);
+    : 'Enter your email address and we will send you a link to sign in.'),
+  h('label', {}, 'Email address', email), btn, msg,
+  google && h('p', { class: 'muted center' }, 'or'), google);
   return form;
 }
 
