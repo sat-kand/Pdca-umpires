@@ -20,7 +20,7 @@ export function makeApi(apiBase, fetchFn = globalThis.fetch) {
 // Live back-end: the app asks the `playhq` Edge Function (which holds the PlayHQ key and reads the
 // association's organisation ID itself). The function answers in the same shape as the paths below.
 export function makePlayhqApi(store) {
-  return async function api(path) {
+  const api = async function api(path) {
     const [p, qs = ''] = path.split('?');
     let m;
     if (/\/seasons$/.test(p)) return store.playhq('seasons');
@@ -28,6 +28,8 @@ export function makePlayhqApi(store) {
     if ((m = /\/grades\/([^/]+)\/matches$/.exec(p))) return store.playhq('matches', { gradeId: decodeURIComponent(m[1]) });
     throw new Error('Unsupported fixture request: ' + p);
   };
+  api.many = async gradeIds => (await store.playhq('matchesMany', { gradeIds })).grades || {};   // all grades in one trip
+  return api;
 }
 
 // The live store has `playhq`; demo mode has not, and reads the public Play Cricket service as before.
@@ -92,6 +94,12 @@ async function mapLimit(items, limit, fn) {
 export async function loadFixtures({ api, comps, from, to, onProgress }) {
   const grades = comps.flatMap(c => c.grades.map(g => ({ grade: g, comp: c })));
   let done = 0;
+  if (api.many && grades.length) {
+    const byId = await api.many(grades.map(x => x.grade.id));
+    onProgress && onProgress(grades.length, grades.length);
+    const out = grades.flatMap(({ grade, comp }) => ((byId[grade.id] || {}).matches || []).map(m => normaliseMatch(m, grade, comp)).filter(Boolean));
+    return out.filter(g => g.days[0].date >= from && g.days[0].date <= to);
+  }
   const lists = await mapLimit(grades, 4, async ({ grade, comp }) => {
     const j = await api(`/scores/grades/${grade.id}/matches`);
     onProgress && onProgress(++done, grades.length);

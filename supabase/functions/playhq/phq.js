@@ -184,5 +184,28 @@ export async function run(action, params, phq, orgId) {
     if (!grades.some(g => g.id === gradeId)) throw new PhqError('That grade is not in this association', 403);
     return legacyMatches(await phq.games(gradeId));
   }
+  if (action === 'matchesMany') {                                // every grade in one request: sign-in and ownership are checked once
+    const ids = [...new Set(Array.isArray(params.gradeIds) ? params.gradeIds.map(String) : [])];
+    if (!ids.length || ids.length > 300) throw new PhqError('That list of grades is not valid', 400);
+    const pairs = ids.map(id => id.split('.'));
+    if (pairs.some(([s, g]) => !isUuid(s) || !isUuid(g))) throw new PhqError('That grade is not valid', 400);
+    const owned = new Set((await phq.seasons(orgId)).map(s => s.id));
+    const seasonIds = [...new Set(pairs.map(([s]) => s))];
+    if (seasonIds.some(s => !owned.has(s))) throw new PhqError('That grade is not in this association', 403);
+    const gradesOf = new Map(await pool(seasonIds, 6, async s => [s, new Set((await phq.grades(s)).map(g => g.id))]));
+    if (pairs.some(([s, g]) => !gradesOf.get(s).has(g))) throw new PhqError('That grade is not in this association', 403);
+    const lists = await pool(ids, 8, async id => [id, legacyMatches(await phq.games(id.split('.')[1]))]);
+    return { grades: Object.fromEntries(lists) };
+  }
   throw new PhqError('Unknown request', 400);
+}
+
+// Run fn over items, at most `limit` at a time; results in input order.
+async function pool(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) { const i = next++; out[i] = await fn(items[i]); }
+  }));
+  return out;
 }

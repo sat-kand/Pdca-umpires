@@ -128,15 +128,30 @@ test('the PlayHQ client sends the key as headers, follows pages, retries a busy 
 
 test('the app\'s fixture api asks the store, with the grade id intact', async () => {
   const asked = [];
-  const store = { playhq: async (a, p) => { asked.push([a, p]); return a === 'matches' ? legacyMatches(v2) : { seasons: [] }; } };
+  const store = { playhq: async (a, p) => { asked.push([a, p]); return a === 'matchesMany' ? { grades: Object.fromEntries(p.gradeIds.map(id => [id, legacyMatches(v2)])) } : { seasons: [] }; } };
   const api = makePlayhqApi(store);
   await api('/fixturesladders/organisations/abc/seasons');
   await api('/fixturesladders/organisations/abc/competition-seasons?seasonId=summer-2026-27&responseModifier=includeGrades');
   const games = await loadFixtures({ api, comps: [{ id: 'c', name: 'PDCA Senior Competition', grades: [{ id: `${S_SEN}.${G_A}`, name: 'Senior A Grade' }] }], from: '2026-10-01', to: '2026-10-31' });
-  assert.deepEqual(asked.map(a => a[0]), ['seasons', 'competitions', 'matches']);
+  assert.deepEqual(asked.map(a => a[0]), ['seasons', 'competitions', 'matchesMany']);
   assert.equal(asked[1][1].seasonId, 'summer-2026-27');
-  assert.equal(asked[2][1].gradeId, `${S_SEN}.${G_A}`);
+  assert.deepEqual(asked[2][1].gradeIds, [`${S_SEN}.${G_A}`]);
   assert.equal(games.length, 2);
   assert.equal(fixtureApi({}, { apiBase: 'https://x', fetchFn: async () => ({}) }).name, 'api');          // demo mode: the old service
   await assert.rejects(api('/something/else'), /Unsupported/);
+});
+
+test('matchesMany: all grades in one request, checked once, and nothing foreign gets through', async () => {
+  const calls = [];
+  const fake = phqFake(calls);
+  fake.grades = async id => { calls.push(['grades', id]); return [{ id: G_A }, { id: G_B }]; };
+  const r = await run('matchesMany', { gradeIds: [`${S_SEN}.${G_A}`, `${S_SEN}.${G_B}`, `${S_SEN}.${G_A}`] }, fake, ORG);
+  assert.deepEqual(Object.keys(r.grades).sort(), [`${S_SEN}.${G_A}`, `${S_SEN}.${G_B}`].sort());
+  assert.equal(calls.filter(c => c[0] === 'seasons').length, 1);     // ownership checked once, not per grade
+  assert.equal(calls.filter(c => c[0] === 'grades').length, 1);
+  assert.equal(calls.filter(c => c[0] === 'games').length, 2);       // duplicates dropped
+  await assert.rejects(run('matchesMany', { gradeIds: [`${S_SEN}.${G_A}`, `${U(77)}.${G_A}`] }, phqFake(), ORG), /not in this association/);
+  await assert.rejects(run('matchesMany', { gradeIds: [`${S_SEN}.${U(78)}`] }, phqFake(), ORG), /not in this association/);
+  await assert.rejects(run('matchesMany', { gradeIds: [] }, phqFake(), ORG), /not valid/);
+  await assert.rejects(run('matchesMany', { gradeIds: ['x'] }, phqFake(), ORG), /not valid/);
 });
