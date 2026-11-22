@@ -198,7 +198,11 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
     async listWithdrawals() { return (await all(() => sb.from('withdrawals').select('*').eq('association_id', A()))).map(rowToWithdrawal); },
     async saveWithdrawal(w) {
       const old = await one(sb.from('withdrawals').select('*').eq('association_id', A()).eq('id', w.id));
-      await ok(sb.from('withdrawals').upsert(withdrawalToRow(A(), { ...(old ? rowToWithdrawal(old) : {}), ...w })));
+      const row = withdrawalToRow(A(), { ...(old ? rowToWithdrawal(old) : {}), ...w });
+      // An upsert is checked as an insert first, and only an umpire recording their own pull-out may insert: the officer
+      // marking it handled has to be a plain update.
+      if (old) await ok(sb.from('withdrawals').update(row).eq('association_id', A()).eq('id', w.id));
+      else await ok(sb.from('withdrawals').insert(row));
     },
     async queueMail(m) { await ok(sb.from('mail_queue').insert({ association_id: A(), to_email: m.to, message: m.message })); },
     async getSettings() { const r = await one(sb.from('association_settings').select('data').eq('association_id', A())); return (r && r.data) || {}; },

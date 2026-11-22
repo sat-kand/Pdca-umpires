@@ -127,3 +127,16 @@ test('signOut: still ends the session in this browser when the server call fails
   await s.signOut();
   assert.deepEqual(calls, [undefined, { scope: 'local' }]);
 });
+
+test('saveWithdrawal: an officer handling a pull-out updates it (an upsert is checked as an insert and fails); a new one is inserted', async () => {
+  const { c, s } = await mk({ associations: [{ id: 'pdca', name: 'P', plan: 'trial', config: {} }], withdrawals: [{ association_id: 'pdca', id: 'w1', email: 'u@x.test', pid: 'p1', handled: false, data: {} }] });
+  await s.useOrg('pdca');
+  await s.saveWithdrawal({ id: 'w1', handled: true });
+  const ops = c.calls.filter(x => x.table === 'withdrawals').map(x => x.op);
+  assert.ok(ops.includes('update') && !ops.includes('upsert'), `ops: ${ops}`);
+  const { c: c2, s: s2 } = await mk({ associations: [{ id: 'pdca', name: 'P', plan: 'trial', config: {} }], withdrawals: [] });
+  await s2.useOrg('pdca');
+  await s2.saveWithdrawal({ id: 'w2', email: 'u@x.test', pid: 'p1', handled: false });
+  const ops2 = c2.calls.filter(x => x.table === 'withdrawals').map(x => x.op);
+  assert.ok(ops2.includes('insert') && !ops2.includes('upsert'), `ops: ${ops2}`);
+});
