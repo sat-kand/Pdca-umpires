@@ -89,9 +89,14 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
     async completeLink() {
       const code = new URLSearchParams(location.search).get('code');
       if (!code) return false;
-      const { error } = await sb.auth.exchangeCodeForSession(code);
+      // The code is single-use: take it out of the address first, so a second start-up (or a reload) cannot try it again.
       history.replaceState(null, '', location.pathname + '#/');
-      if (error) throw new Error('That sign-in link has expired or was opened in a different browser. Request a new one.');
+      const { error } = await sb.auth.exchangeCodeForSession(code);
+      if (error) {
+        const { data } = await sb.auth.getSession();            // already signed in by an earlier attempt with this same link: not a problem
+        if (data && data.session) return true;
+        throw new Error('That sign-in link has expired or was opened in a different browser. Request a new one.');
+      }
       return true;
     },
     async signInGoogle() { fail(await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } })); },

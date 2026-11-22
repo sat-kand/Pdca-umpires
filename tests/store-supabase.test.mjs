@@ -86,3 +86,21 @@ test('playhq asks the Edge Function for the open association and surfaces its er
   reply = { data: null, error: { message: 'boom' } };
   await assert.rejects(s.playhq('seasons'), /Could not reach the fixture service/);
 });
+
+test('completeLink: the code is used once; a second start-up or an already signed-in browser is not an error', async () => {
+  const c = fake();
+  let exchanged = 0, fail = false;
+  c.auth.exchangeCodeForSession = async () => { exchanged++; return { error: fail ? { message: 'used' } : null }; };
+  const s = await createSupabaseStore({ url: 'u', anonKey: 'k' }, { createClient: () => c });
+  const url = { search: '?code=abc', pathname: '/' };
+  globalThis.location = url; globalThis.history = { replaceState: (_a, _b, to) => { url.search = ''; url.hash = to; } };
+  try {
+    assert.equal(await s.completeLink(), true);
+    assert.equal(await s.completeLink(), false);              // the address no longer carries the code
+    assert.equal(exchanged, 1);
+    url.search = '?code=def'; fail = true;                    // the exchange fails but a session exists (see fake getSession)
+    assert.equal(await s.completeLink(), true);
+    url.search = '?code=ghi'; c.auth.getSession = async () => ({ data: { session: null } });
+    await assert.rejects(s.completeLink(), /expired/);        // really expired
+  } finally { delete globalThis.location; delete globalThis.history; }
+});
