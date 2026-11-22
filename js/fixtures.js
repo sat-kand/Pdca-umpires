@@ -200,6 +200,8 @@ function changeNotes(old, neu) {
 // JSON with the keys sorted, so a game read back from the database (whose keys come in another order) equals the same game as fetched.
 const canon = v => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x)) ? Object.fromEntries(Object.keys(x).sort().map(key => [key, x[key]])) : x);
 
+const GONE_NOTE = 'No longer in the fixture list';
+
 export function mergeFixtures(existing, fresh, defaultSlots = () => 1) {
   const byId = new Map(existing.map(g => [g.id, g]));
   const seen = new Set();
@@ -217,12 +219,13 @@ export function mergeFixtures(existing, fresh, defaultSlots = () => 1) {
     const merged = { ...old };
     for (const k of FIXTURE_FIELDS) merged[k] = f[k];
     if (old.removed) merged.removed = false;                  // (a game that was never removed reads back as null, not false)
+    if (old.changeNote === GONE_NOTE) merged.changeNote = '';  // it is in the list again: the warning no longer applies
     if (notes.length) { merged.changeNote = notes.join('; '); changed++; }
     if (canon(merged) !== canon(old)) out.push(merged);
   }
   for (const old of existing) {
     if (!seen.has(old.id) && !old.removed && !old.manual) {
-      out.push({ ...old, removed: true, changeNote: 'No longer in the fixture list' });
+      out.push({ ...old, removed: true, changeNote: GONE_NOTE });
       removed++;
     }
   }

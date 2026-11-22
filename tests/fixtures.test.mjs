@@ -116,3 +116,13 @@ test('mergeFixtures: a game that has not changed is not rewritten, whatever orde
   assert.equal(mergeFixtures([stored], [fresh]).games.length, 0);
   assert.equal(mergeFixtures([stored], [{ ...fresh, ground: 'W' }]).games.length, 1);
 });
+
+test('mergeFixtures: a game that is back in the list loses its "No longer in the fixture list" warning', () => {
+  const g = { id: 'a', grade: 'G', home: { name: 'H' }, away: { name: 'A' }, days: [{ date: '2026-11-21', day: 1, time: '10:00' }], slots: 2, alloc: {} };
+  const gone = mergeFixtures([g], []).games[0];
+  assert.equal(gone.removed, true); assert.match(gone.changeNote, /No longer/);
+  const back = mergeFixtures([gone], [g]).games[0];
+  assert.ok(!back.removed); assert.ok(!back.changeNote);
+  const stuck = mergeFixtures([{ ...g, changeNote: 'No longer in the fixture list' }], [g]).games[0];   // flagged earlier, restored, note left behind
+  assert.ok(!stuck.changeNote);
+});
