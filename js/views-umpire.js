@@ -366,10 +366,10 @@ export async function viewMy(ctx) {
     const saveBtn = h('button', { class: 'btn primary', type: 'button' }, `Save ${c.label}`);
     const body = h('div', { class: 'group-dates' }, h('div', { class: 'group-tools' }, markAll), tiles);
     const foot = h('div', { class: 'group-foot' }, hint, h('span', { class: 'savebar-btns' }, cancelBtn, saveBtn));
-    const el = h('section', { class: 'comp-section', 'data-comp': k },
+    const el = h('li', { class: 'comp-section', 'data-comp': k },
       h('div', { class: 'row-between comp-head' }, h('div', { class: 'comp-headline' }, h('h2', { class: 'comp-title' }, c.label), chip), editBtn),
       summary, body, foot);
-    editing[k] = !sentOf(k);
+    editing[k] = false;                                   // compact: a line each, opened with Edit
     const update = () => {
       const on = !!editing[k], dirty = dirtyOf(k), sent = sentOf(k);
       const yes = keys.filter(x => savedDays[x] === 'yes').length, no = keys.filter(x => savedDays[x] === 'no').length, open = keys.filter(x => !savedDays[x]).length;
@@ -435,7 +435,7 @@ export async function viewMy(ctx) {
   const pCancel = h('button', { class: 'btn', type: 'button' }, 'Cancel');
   const pSave = h('button', { class: 'btn primary', type: 'button' }, `Save ${puTitle}`);
   const pFoot = h('div', { class: 'group-foot' }, pHint, h('span', { class: 'savebar-btns' }, pCancel, pSave));
-  const playerCard = h('section', { class: 'comp-section player-card' },
+  const playerCard = h('li', { class: 'comp-section player-card' },
     h('div', { class: 'row-between comp-head' }, h('div', { class: 'comp-headline' }, h('h2', { class: 'comp-title' }, puTitle), statusChips.player), pEditBtn),
     (pu.description || '').trim() && h('p', { class: 'muted group-note' }, (pu.description || '').trim()),
     pSummary, playerBody, pFoot);
@@ -469,11 +469,10 @@ export async function viewMy(ctx) {
   drawSummary = drawStatus;
   drawStatus();
   drawPlayer();
-  root.append(
-    h('div', { class: 'avail-head' }, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, orgName),
-      h('p', { class: 'muted' }, 'Each group is answered and saved on its own: tap Available or Not available for every date, then Save that group.')),
-    ...(groupCards.length ? groupCards.map(g => g.el) : [h('p', { class: 'muted' }, 'No upcoming dates.')]),
-    playerCard);
+  // One compact card for the association: a line for each group (and player umpiring), each opened and saved on its own.
+  root.append(h('section', { class: 'card avail-card' },
+    h('div', { class: 'avail-head' }, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, orgName)),
+    groupCards.length ? h('ul', { class: 'plain group-list' }, groupCards.map(g => g.el), playerCard) : h('p', { class: 'muted' }, 'No upcoming dates.')));
   // The member's other associations: a summary card each, opened to edit there.
   const others = h('div', { class: 'other-orgs' });
   root.append(others);

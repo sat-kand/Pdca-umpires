@@ -128,12 +128,9 @@ td.av { text-align: center; font-weight: 700; } td.av.ok { color: var(--green); 
 
 /* availability: one section per competition */
 /* Each group is its own panel: a solid header band and a tinted body, with clear space between groups. */
-.comp-section { border: 2px solid var(--green); border-radius: var(--radius); background: var(--green-l); overflow: hidden; }
-.comp-section + .comp-section { margin-top: 36px; }
-.comp-head { align-items: center; margin: 0; padding: 10px 14px; background: var(--green); }
-.comp-title { margin: 0; font-size: 1.15rem; color: #fff; }
-.comp-head .link { font-size: .9rem; color: #fff; }
-.comp-section > :not(.comp-head) { margin: 12px; }
+.comp-section { padding: .6rem 0; }
+.comp-section + .comp-section { border-top: 1px solid var(--line); }
+.comp-head { align-items: center; margin: 0; }
 
 .dnote { display: block; font-weight: 400; color: var(--muted, #666); font-size: .8rem; line-height: 1.25; margin-top: 2px; }
 
@@ -386,12 +383,15 @@ button.tagbtn:hover { outline: 2px solid currentColor; outline-offset: 1px; }
 
 /* Availability: one card per group, each with its own Edit, Save and Cancel. */
 .comp-headline { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; min-width: 0; }
-.comp-head .btn { background: #fff; }
 .comp-section [hidden] { display: none !important; }
-.group-summary { margin: 12px; }
-.group-note { margin: 10px 12px 0; }
+.group-list { margin: 0; padding: 0; list-style: none; }
+.comp-title { font-size: 1.05rem; margin: 0; }
+.group-summary { margin: .15rem 0 0; font-size: .92rem; }
+.group-note { margin: .2rem 0 0; font-size: .9rem; }
+.group-dates { margin-top: .6rem; }
 .group-tools { text-align: right; margin: 0 0 .4rem; }
 .group-tools .link { color: var(--green-d); }
+.avail-card .avail-head { margin: 0 0 .4rem; }
 .group-foot { display: flex; justify-content: space-between; align-items: center; gap: .6rem 1rem; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: .7rem; }
 .group-foot .btn { padding: .55rem 1.3rem; font-weight: 600; }
 .group-foot .btn:disabled { opacity: .45; cursor: default; }
