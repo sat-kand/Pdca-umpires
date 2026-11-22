@@ -97,7 +97,7 @@ function drawHeader() {
               h('div', { class: 'menu-head' }, h('strong', {}, name), name !== S.user.email && h('span', { class: 'muted small' }, S.user.email)),
               link('#/profile', 'My profile'), link('#/my', 'My availability'),
               h('hr'),
-              h('button', { class: 'nav-link menu-signout', type: 'button', onclick: async () => { await S.store.signOut(); location.hash = '#/'; } }, 'Sign out'))));
+              h('button', { class: 'nav-link menu-signout', type: 'button', onclick: async () => { await S.store.signOut(); await loadUser(null); location.hash = '#/'; render(); } }, 'Sign out'))));
       })()),
     S.org && S.org.plan === 'suspended' && h('div', { class: 'demo-banner' }, 'This association has been set to read-only, so changes cannot be saved.'));
 }

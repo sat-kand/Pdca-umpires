@@ -114,7 +114,12 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
       return true;
     },
     async signInGoogle() { fail(await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } })); },
-    async signOut() { await sb.auth.signOut(); },
+    async signOut() {
+      // If the server cannot be reached the library keeps the session; always end it in this browser.
+      let r; try { r = await sb.auth.signOut(); } catch (e) { r = { error: e }; }
+      if (r && r.error) { try { await sb.auth.signOut({ scope: 'local' }); } catch { /* nothing more to clear */ } }
+      me = '';
+    },
     async isPlatformAdmin(email) { return !!(await one(sb.from('platform_admins').select('email').eq('email', email))); },
 
     // ----- associations -----

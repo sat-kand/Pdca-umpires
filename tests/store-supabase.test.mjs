@@ -119,3 +119,11 @@ test('completeLink: an already-used emailed link comes back with error_code in t
     assert.equal(url.search, '');
   } finally { delete globalThis.location; delete globalThis.history; }
 });
+
+test('signOut: still ends the session in this browser when the server call fails', async () => {
+  const c = fake(); const calls = [];
+  c.auth.signOut = async o => { calls.push(o); if (!o) return { error: new Error('network') }; return { error: null }; };
+  const s = await createSupabaseStore({ url: 'u', anonKey: 'k' }, { createClient: () => c });
+  await s.signOut();
+  assert.deepEqual(calls, [undefined, { scope: 'local' }]);
+});
