@@ -200,6 +200,7 @@ export async function saveSeasonAndRounds(store, { season, games, comps = [], to
   const settings = await store.getSettings();
   const existing = await store.listRounds();
   const made = [];
+  const jobs = [];                       // the saves, done several at a time afterwards: one round trip each is slow when run in a line
   const startDay = (store.org && Number.isInteger(store.org.weekStart)) ? store.org.weekStart : 1;
   const ROUND_ID = /^[a-z0-9_-]+-(\d{4}-\d{2}-\d{2})$/;
   for (const { key } of COMPS) {
@@ -213,16 +214,20 @@ export async function saveSeasonAndRounds(store, { season, games, comps = [], to
         || existing.find(r => r.comp === key && !made.includes(r.id) && (r.end || '') >= today
           && ROUND_ID.test(r.id) && weekOf(r.start || r.id.match(ROUND_ID)[1], startDay) === win.from);
       if (have) {
-        await applyFresh(store, have, win.games, settings);
-        if ((have.source || {}).type === 'playcricket') await store.saveRound({ id: have.id, source: { ...have.source, comps: compIds, from: win.from, to: win.to } });
+        jobs.push(async () => {
+          await applyFresh(store, have, win.games, settings);
+          if ((have.source || {}).type === 'playcricket') await store.saveRound({ id: have.id, source: { ...have.source, comps: compIds, from: win.from, to: win.to } });
+        });
         made.push(have.id);
         continue;
       }
       const fullGames = win.games.map(g => ({ ...g, slots: defaultSlotsFn(settings)(g), alloc: {} }));
       const round = buildRound({ key, win, games: fullGames, season, compIds, source });
-      await store.saveRound(round);
-      await store.saveGames(id, fullGames);
-      if (store.saveFixtureList) await store.saveFixtureList(id, fixtureList(round, fullGames));
+      jobs.push(async () => {
+        await store.saveRound(round);
+        await store.saveGames(id, fullGames);
+        if (store.saveFixtureList) await store.saveFixtureList(id, fixtureList(round, fullGames));
+      });
       made.push(id);
     }
   }
@@ -230,9 +235,21 @@ export async function saveSeasonAndRounds(store, { season, games, comps = [], to
   // their games are marked as gone, so nothing is shown twice. Allocations stay with the games.
   for (const r of existing) {
     if (made.includes(r.id) || !ROUND_ID.test(r.id) || (r.end || '') < today) continue;
-    await applyFresh(store, r, [], settings);
+    jobs.push(() => applyFresh(store, r, [], settings));
   }
+  await runLimited(jobs, 8);
   return made;
+}
+
+// Run the jobs at most `limit` at a time; the first failure stops the rest from starting and is thrown.
+async function runLimited(jobs, limit) {
+  let next = 0, failed = null;
+  await Promise.all(Array.from({ length: Math.min(limit, jobs.length) }, async () => {
+    while (next < jobs.length && !failed) {
+      try { await jobs[next++](); } catch (e) { failed = failed || e; }
+    }
+  }));
+  if (failed) throw failed;
 }
 
 // "Update fixtures" on one round: refetch its competition for the same week and merge.
