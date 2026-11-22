@@ -128,7 +128,7 @@ def main():
         page.goto(BASE + "#/associations"); shot("14-associations")
         sign_in("umpire4@demo.test")
         page.goto(BASE + "#/my"); shot("15-my-availability-summary", ".comp-section")
-        page.locator(".comp-section:not(.player-card) .comp-head button:has-text('Edit availability')").first.click(); shot("16-my-availability-form", ".comp-section .tile")
+        page.locator(".comp-section:not(.player-card) .comp-head").first.click(); shot("16-my-availability-form", ".comp-section .tile")
         page.goto(BASE + "#/profile"); shot("17-my-profile", ".member-profile")
         page.goto(BASE + "#/profile/edit"); shot("18-edit-details", "form")
         b.close()
