@@ -20,6 +20,20 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=ROOT, **k)
 
+    # The tests run the app in demo mode, whatever Supabase project js/config.js points at.
+    def do_GET(self):
+        if self.path.split("?")[0] == "/js/config.js":
+            import re as _re
+            src = open(os.path.join(ROOT, "js", "config.js"), encoding="utf-8").read()
+            src = _re.sub(r"supabase:\s*\{[^}]*\}", "supabase: { url: '', anonKey: '' }", src, count=1).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/javascript")
+            self.send_header("Content-Length", str(len(src)))
+            self.end_headers()
+            self.wfile.write(src)
+            return
+        super().do_GET()
+
     def log_message(self, *a):
         pass
 

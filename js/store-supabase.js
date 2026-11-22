@@ -148,6 +148,14 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
     async saveGame(rid, g) { await saveItems(A(), rid, [g]); },
     async saveGames(rid, games) { await saveItems(A(), rid, games); },
 
+    // ----- PlayHQ fixtures: asked of the `playhq` Edge Function, which holds the key -----
+    async playhq(action, params = {}) {
+      const { data, error } = await sb.functions.invoke('playhq', { body: { action, associationId: A(), ...params } });
+      if (error) throw new Error('Could not reach the fixture service. Try again in a minute.');
+      if (data && data.error) throw new Error(data.error);
+      return data;
+    },
+
     // ----- season calendar (the dates umpires answer for) -----
     getSeason() { return seasonOf(A()); },
     async saveSeason(s) {

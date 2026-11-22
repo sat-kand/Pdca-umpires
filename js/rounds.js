@@ -3,7 +3,7 @@
 // rebuilt from the same fetch.
 
 import { CONFIG } from './config.js';
-import { makeApi, fetchSeasons, fetchCompetitions, loadFixtures, mergeFixtures } from './fixtures.js';
+import { fixtureApi, fetchSeasons, fetchCompetitions, loadFixtures, mergeFixtures } from './fixtures.js';
 import { buildCalendar, compKeyOf, summarise, COMPS, groupOrder, suggestGroups, suggestUmpires, firstGroup, needsUmpires } from './logic.js';
 import { applyOrg } from './org-setup.js';
 
@@ -131,20 +131,22 @@ export async function applyFresh(store, round, fresh, settings) {
   return { ...res, all };
 }
 
-// Each association has its own Play Cricket organisation id (set in Settings).
+// Each association has its own PlayHQ organisation id (set in Settings).
+// Live: the PlayHQ organisation id (the Edge Function reads it from the database). Demo: the Play Cricket id.
 function playCricketId(store) {
-  const id = store.org && store.org.playCricketId;
-  if (!id) throw new Error('Add your association\'s Play Cricket link in Settings first');
+  const o = store.org || {};
+  const id = o.playhqOrgId || o.playCricketId;
+  if (!id) throw new Error(store.playhq ? 'Add your association\'s PlayHQ organisation ID in Settings first' : 'Add your association\'s Play Cricket link in Settings first');
   return id;
 }
 
 // Fetch the whole season, rebuild the umpires' date list, and create / update each competition's next round.
 export async function syncFromPlayCricket(store, { today, fetchFn, onProgress } = {}) {
   const pc = playCricketId(store);
-  const api = makeApi(CONFIG.apiBase, fetchFn);
+  const api = fixtureApi(store, { apiBase: CONFIG.apiBase, fetchFn });
   const seasons = await fetchSeasons(api, pc);
   const cur = seasons.find(x => x.current) || seasons[0];
-  if (!cur) throw new Error('No season found on Play Cricket');
+  if (!cur) throw new Error('No season found');
   const comps = await fetchCompetitions(api, pc, cur.id);
   const games = await loadFixtures({ api, comps, from: '0000-01-01', to: '9999-12-31', onProgress });
   return saveSeasonAndRounds(store, { season: { id: cur.id, name: cur.name }, games, comps, today });
@@ -237,7 +239,7 @@ export async function saveSeasonAndRounds(store, { season, games, comps = [], to
 export async function refreshRound(store, round, settings, { fetchFn } = {}) {
   const src = round.source || {};
   if (src.type !== 'playcricket') return null;
-  const api = makeApi(CONFIG.apiBase, fetchFn);
+  const api = fixtureApi(store, { apiBase: CONFIG.apiBase, fetchFn });
   const comps = (await fetchCompetitions(api, playCricketId(store), src.seasonId)).filter(c => (src.comps || []).includes(c.id));
   // Only this group's games: a competition can feed more than one group.
   const fresh = (await loadFixtures({ api, comps, from: src.from, to: src.to })).filter(g => compKeyOf(g) === round.comp);

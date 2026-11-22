@@ -17,6 +17,24 @@ export function makeApi(apiBase, fetchFn = globalThis.fetch) {
   };
 }
 
+// Live back-end: the app asks the `playhq` Edge Function (which holds the PlayHQ key and reads the
+// association's organisation ID itself). The function answers in the same shape as the paths below.
+export function makePlayhqApi(store) {
+  return async function api(path) {
+    const [p, qs = ''] = path.split('?');
+    let m;
+    if (/\/seasons$/.test(p)) return store.playhq('seasons');
+    if (/\/competition-seasons$/.test(p)) return store.playhq('competitions', { seasonId: new URLSearchParams(qs).get('seasonId') });
+    if ((m = /\/grades\/([^/]+)\/matches$/.exec(p))) return store.playhq('matches', { gradeId: decodeURIComponent(m[1]) });
+    throw new Error('Unsupported fixture request: ' + p);
+  };
+}
+
+// The live store has `playhq`; demo mode has not, and reads the public Play Cricket service as before.
+export function fixtureApi(store, { apiBase, fetchFn } = {}) {
+  return store && store.playhq ? makePlayhqApi(store) : makeApi(apiBase, fetchFn);
+}
+
 export async function fetchSeasons(api, orgId) {
   const j = await api(`/fixturesladders/organisations/${orgId}/seasons`);
   return (j.seasons || []).map(s => ({ id: s.id, name: s.name, current: !!s.isCurrentSeason, start: s.startDate }));

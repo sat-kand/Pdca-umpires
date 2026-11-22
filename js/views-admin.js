@@ -146,7 +146,7 @@ export async function viewAdminHome(ctx) {
             h('strong', { class: 'tile-round' }, fmtDay(s.date)), ' ',
             h('span', { class: 'muted' }, `${s.n} ${s.type ? s.type + ' ' : ''}game${s.n === 1 ? '' : 's'}`
               + (s.later.length ? `, ${s.later.length === 1 ? 'day 2' : 'then'} ${s.later.map(d => fmtDay(d).replace(/ /g, '\u00a0')).join(' or ')}` : '')
-              + (s.noLater ? ` (${s.noLater} with no day 2 in Play Cricket yet)` : '')))))
+              + (s.noLater ? ` (${s.noLater} with no day 2 in the fixtures yet)` : '')))))
           : [h('div', { class: 'tile-round' }, here.map(d => fmtDay(d)).join(' & ')),
             h('div', { class: 'muted' }, r.formats || '', later.length ? ` \u00b7 continues ${later.map(fmtDay).join(' & ')}` : '')],
         h('div', { class: 'tile-stats' },
@@ -171,7 +171,7 @@ export async function viewAdminHome(ctx) {
     // Groups whose grades are all set to None need no umpires: no tile.
     const shown = visibleRounds(state.rounds.filter(r => groupNeedsUmpires(r.comp)), today, state.more, startDay);
     setChildren(wrap,
-      h('div', { class: 'row-between' }, h('h1', {}, 'Allocate'), state.syncing && h('span', { class: 'muted' }, 'Updating fixtures from Play Cricket…')),
+      h('div', { class: 'row-between' }, h('h1', {}, 'Allocate'), state.syncing && h('span', { class: 'muted' }, 'Updating fixtures…')),
       state.error && h('p', { class: 'notice warn' }, state.error, ' ', h('button', { class: 'link', type: 'button', onclick: () => sync(true) }, 'Try again')),
       state.pu && (state.pu.added.length + state.pu.removed.length + state.pu.blocked.length) > 0 && h('div', { class: 'notice pu-note' },
         h('strong', {}, 'Player umpires'),
@@ -197,7 +197,7 @@ export async function viewAdminHome(ctx) {
     if (state.syncing) return;
     state.syncing = true; state.error = ''; draw();
     try { await syncFromPlayCricket(store, { today }); await load(); }
-    catch (e) { console.error(e); state.error = `Could not load the fixtures from Play Cricket (${e.message || e}).`; }
+    catch (e) { console.error(e); state.error = `Could not load the fixtures (${e.message || e}).`; }
     state.syncing = false; draw();
   }
 
@@ -555,7 +555,7 @@ export async function viewSeasonAvailability(ctx) {
   const today = todayLocal();
   const season = await store.getSeason();
   if (!season || !season.calendar || !season.calendar.length) {
-    return h('div', {}, h('h1', {}, 'Availability'), h('p', { class: 'notice' }, 'No season dates yet. They load from Play Cricket when you open Allocate.'));
+    return h('div', {}, h('h1', {}, 'Availability'), h('p', { class: 'notice' }, 'No season dates yet. They load from the fixtures when you open Allocate.'));
   }
   const seasonId = season.id || 'manual';
   const [umpires, availList] = await Promise.all([store.listUmpires(), store.listAvailability(seasonId)]);
@@ -875,7 +875,7 @@ export async function viewUmpires(ctx) {
   function availabilityImport() {
     const comps = COMPS.filter(c => groupNeedsUmpires(c.key) && season && (season.calendar || []).some(e => (e.comp || firstGroup()) === c.key));
     if (!season || !comps.length) return h('div', { class: 'import-step' }, h('h3', {}, '2. Availability files'),
-      h('p', { class: 'muted' }, 'The season dates are not loaded yet. Open Allocate once so they come in from Play Cricket, then come back here.'));
+      h('p', { class: 'muted' }, 'The season dates are not loaded yet. Open Allocate once so they come in from the fixtures, then come back here.'));
     if (!comps.some(c => c.key === ui.comp)) ui.comp = comps[0].key;
     const pick = h('select', { 'aria-label': 'Group', onchange: e => { ui.comp = e.target.value; draw(); } },
       comps.map(c => h('option', { value: c.key, selected: c.key === ui.comp }, c.label)));

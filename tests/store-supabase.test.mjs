@@ -70,3 +70,19 @@ test('saving the association never sends the plan', async () => {
   assert.equal(u.payload.plan, undefined);
   assert.equal(u.payload.playhq_org_id, 'abc');
 });
+
+test('playhq asks the Edge Function for the open association and surfaces its error message', async () => {
+  const { c, s } = await mk({ associations: [{ id: 'pdca', name: 'P', plan: 'trial', config: {} }] });
+  const sent = [];
+  let reply = { data: { seasons: [] }, error: null };
+  c.functions = { invoke: async (name, opts) => { sent.push([name, opts.body]); return reply; } };
+  await s.useOrg('pdca');
+  assert.deepEqual(await s.playhq('seasons'), { seasons: [] });
+  assert.deepEqual(sent[0], ['playhq', { action: 'seasons', associationId: 'pdca' }]);
+  await s.playhq('check', { orgId: 'abc' });
+  assert.equal(sent[1][1].orgId, 'abc');
+  reply = { data: { error: 'PlayHQ has no organisation with that ID.' }, error: null };
+  await assert.rejects(s.playhq('check', { orgId: 'x' }), /no organisation/);
+  reply = { data: null, error: { message: 'boom' } };
+  await assert.rejects(s.playhq('seasons'), /Could not reach the fixture service/);
+});
