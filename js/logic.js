@@ -624,10 +624,11 @@ export function buildCalendar(games) {
 // What the umpire page needs, per competition in Senior, T20, Junior order, from `today` on:
 //   { comp, label, mode: 'rounds', rounds: [{ label, rows: [{ date, dayNo, of }] }], dates }
 //   { comp, label, mode: 'dates',  rounds: [],                                       dates }
-export function upcomingDates(calendar, today) {
+// groups: another association's [{ key, label }]; by default the open association's.
+export function upcomingDates(calendar, today, groups = COMPS) {
   const by = new Map();
-  for (const r of calendar || []) { const k = r.comp || firstGroup(); if (!by.has(k)) by.set(k, []); by.get(k).push(r); }
-  return COMPS.filter(c => by.has(c.key)).map(c => {
+  for (const r of calendar || []) { const k = r.comp || (groups[0] && groups[0].key) || firstGroup(); if (!by.has(k)) by.set(k, []); by.get(k).push(r); }
+  return groups.filter(c => by.has(c.key)).map(c => {
     const entries = by.get(c.key);
     if (entries.every(e => e.label)) {
       const rounds = entries.map(e => ({

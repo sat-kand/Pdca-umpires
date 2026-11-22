@@ -547,7 +547,7 @@ async function otherOrgCards(ctx, email, today) {
       if (!org) continue;
       const avail = season ? await view.getAvailability(season.id, email) : null;
       const groups = (org.groups && org.groups.length) ? org.groups : [{ key: 'all', name: 'All grades' }];
-      const comps = season ? upcomingDates(season.calendar, today) : [];
+      const comps = season ? upcomingDates(season.calendar, today, groups.map(g => ({ key: g.key, label: g.name }))) : [];   // that association's groups, not the open one's
       const saved = (avail && avail.days) || {};
       const go = key => ctx.chooseOrg(m.orgId, { open: key });
       const line = (key, title, summary, chip) => h('li', { class: 'comp-section' },

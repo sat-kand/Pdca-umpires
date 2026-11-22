@@ -418,3 +418,9 @@ test('games filled: a two-day game is one game, filled only when every place on 
   const r = recount([two('a', 'u1', 'u1'), two('b', 'u2', null), one('c', 'u3'), one('d', null)]);
   assert.deepEqual([r.gamesFilled, r.games, r.filled, r.needed], [2, 4, 4, 6]);
 });
+
+test('upcomingDates can use another association\'s groups (My availability lists every association)', async () => {
+  const { upcomingDates } = await import('../js/logic.js');
+  const cal = [{ comp: 'bcdca-senior', dates: ['2099-01-03'] }];
+  assert.equal(upcomingDates(cal, '2026-01-01', [{ key: 'bcdca-senior', label: 'BCDCA Senior' }])[0].label, 'BCDCA Senior');
+});
