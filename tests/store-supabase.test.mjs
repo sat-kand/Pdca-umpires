@@ -104,3 +104,18 @@ test('completeLink: the code is used once; a second start-up or an already signe
     await assert.rejects(s.completeLink(), e => e.signInLink && /cannot be used/.test(e.message) && /used already/.test(e.message) && /different browser/.test(e.message));
   } finally { delete globalThis.location; delete globalThis.history; }
 });
+
+test('completeLink: an already-used emailed link comes back with error_code in the address', async () => {
+  const c = fake();
+  const s = await createSupabaseStore({ url: 'u', anonKey: 'k' }, { createClient: () => c });
+  const url = { search: '', hash: '#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired', pathname: '/' };
+  globalThis.location = url; globalThis.history = { replaceState: (_a, _b, to) => { url.search = ''; url.hash = to.slice(to.indexOf('#')); } };
+  try {
+    assert.equal(await s.completeLink(), true);                  // signed in already (fake getSession): no error
+    assert.equal(url.hash, '#/');                                // and the address is cleaned up
+    url.search = '?error=access_denied&error_code=otp_expired'; url.hash = '#/';
+    c.auth.getSession = async () => ({ data: { session: null } });
+    await assert.rejects(s.completeLink(), e => e.signInLink && /cannot be used/.test(e.message));   // not signed in: say so, offer a new link
+    assert.equal(url.search, '');
+  } finally { delete globalThis.location; delete globalThis.history; }
+});

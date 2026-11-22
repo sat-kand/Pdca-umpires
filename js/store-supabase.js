@@ -13,6 +13,8 @@ import {
 const PAGE = 1000;                                              // PostgREST returns at most 1000 rows a call
 const fail = ({ error }) => { if (error) throw Object.assign(new Error(error.message), { code: error.code }); };
 
+const LINK_MESSAGE = 'This sign-in link cannot be used. It may have been used already, be more than an hour old, or have been opened in a different browser from the one you asked for it in. Get a new link below and open it in this same browser.';
+
 export async function createSupabaseStore(cfg, { createClient } = {}) {
   createClient ||= (await import(SUPABASE_SDK)).createClient;
   const sb = createClient(cfg.url, cfg.anonKey, { auth: { flowType: 'pkce', detectSessionInUrl: false, persistSession: true } });
@@ -88,6 +90,15 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
     },
     // Call once at start-up. Returns true if the page was opened from an emailed link (?code=...).
     async completeLink() {
+      // Supabase sends an already-used or expired emailed link back here with the error in the address (in the query or after the #).
+      const bad = new URLSearchParams(location.search).get('error_code') ? new URLSearchParams(location.search)
+        : /(^|[#&?])error_code=/.test(location.hash || '') ? new URLSearchParams(location.hash.replace(/^#\/?\??/, '')) : null;
+      if (bad) {
+        history.replaceState(null, '', location.pathname + '#/');
+        const { data } = await sb.auth.getSession();
+        if (data && data.session) return true;                  // already signed in: the old link does not matter
+        throw Object.assign(new Error(LINK_MESSAGE), { signInLink: true });
+      }
       const code = new URLSearchParams(location.search).get('code');
       if (!code) return false;
       // The code is single-use: take it out of the address first, so a second start-up (or a reload) cannot try it again.
@@ -98,7 +109,7 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
         if (data && data.session) return true;
         // A used link and a link opened in another browser look the same from here (a used link also loses its key in this browser),
         // so the message names the likely causes instead of guessing one.
-        throw Object.assign(new Error('This sign-in link cannot be used. It may have been used already, be more than an hour old, or have been opened in a different browser from the one you asked for it in. Get a new link below and open it in this same browser.'), { signInLink: true });
+        throw Object.assign(new Error(LINK_MESSAGE), { signInLink: true });
       }
       return true;
     },
