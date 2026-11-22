@@ -1741,7 +1741,7 @@ with sync_playwright() as p:
     page.goto(BASE + "#/my")
     page.wait_for_selector(".avail-head")
     mine = page.locator(".avail-head").first
-    check("Parramatta District Cricket Association" in mine.inner_text() and "My availability" in mine.inner_text(), "the heading says which association it is for")
+    check("Parramatta District Cricket Association" in mine.inner_text() and page.locator("h2.page-h:has-text('My availability')").count() == 1, "one My availability heading above the cards, each card names its association")
     cur = page.locator(".avail-card:not(.other-org)")
     check(cur.locator(".comp-section:has(h2:has-text('Night Cricket')) .comp-head .chip").inner_text() == "Newly Added", "a group added after they answered shows as Newly Added")
     page.wait_for_selector(".other-org")

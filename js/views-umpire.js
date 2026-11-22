@@ -70,15 +70,16 @@ export async function viewProfile(ctx) {
 
 // The umpire's one and only page: upcoming appointments (if any) and the
 // season's availability, answered with two buttons per day and one Save.
+const availTitle = () => h('h2', { class: 'page-h' }, 'My availability');
 export async function viewMy(ctx) {
   const { store, S } = ctx;
   const u = S.umpire;
   if (!u) {
-    const page = h('div', { class: 'narrow-page' }, h('section', { class: 'card avail-card' },
-      h('div', { class: 'avail-head' }, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, (store.org && store.org.name) || '')),
+    const page = h('div', { class: 'narrow-page' }, availTitle(), h('section', { class: 'card avail-card' },
+      h('div', { class: 'avail-head' }, h('h2', {}, (store.org && store.org.name) || '')),
       h('p', { class: 'muted' }, 'To give your own availability here, add your umpire details first.'),
       h('a', { class: 'btn primary', href: '#/profile' }, 'Add my details')));
-    placeOtherOrgs(ctx, page, page.firstChild, S.user.email);
+    placeOtherOrgs(ctx, page, page.lastChild, S.user.email);
     return page;
   }
   const [season, rounds] = await Promise.all([store.getSeason(), store.listRounds()]);
@@ -232,8 +233,9 @@ export async function viewMy(ctx) {
   for (let i = mine.length - 1; i >= 0; i--) if (gaveBack(mine[i])) mine.splice(i, 1);
   if (mine.length) {
     drawAppointments();
-    root.append(apptCard = h('section', { class: 'card' }, h('h2', {}, 'My appointments'),
-      apptList));
+    const apptHead = h('h2', { class: 'page-h' }, 'My appointments');
+    apptCard = { remove() { apptHead.remove(); apptList.remove(); } };
+    root.append(apptHead, apptList);
   }
 
   // ---- the cards: one for each group, and one for player umpiring. Each has its own status, Edit, Save and Cancel.
@@ -330,9 +332,9 @@ export async function viewMy(ctx) {
   const statusChips = Object.fromEntries([...ALL_COMPS, 'player'].map(k => [k, h('span', { class: 'chip' })]));
   if (!season) {
     const card = h('section', { class: 'card avail-card' },
-      h('div', { class: 'avail-head' }, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, orgName)),
+      h('div', { class: 'avail-head' }, h('h2', {}, orgName)),
       h('p', { class: 'muted' }, 'No dates to answer yet.'));
-    root.append(card);
+    root.append(availTitle(), card);
     placeOtherOrgs(ctx, root, card, u.email);
     return root;
   }
@@ -503,9 +505,9 @@ export async function viewMy(ctx) {
   drawPlayer();
   // One compact card for the association: a line for each group (and player umpiring), each opened and saved on its own.
   const mineCard = h('section', { class: 'card avail-card' },
-    h('div', { class: 'avail-head' }, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, orgName)),
+    h('div', { class: 'avail-head' }, h('h2', {}, orgName)),
     groupCards.length ? h('ul', { class: 'plain group-list' }, groupCards.map(g => g.el), playerCard) : h('p', { class: 'muted' }, 'No dates to answer yet.'));
-  root.append(mineCard);
+  root.append(availTitle(), mineCard);
   placeOtherOrgs(ctx, root, mineCard, u.email);
   return root;
 }
@@ -567,7 +569,7 @@ async function otherOrgCards(ctx, email, today) {
       if (puOn) items.push(line('player', (pu.title || '').trim() || 'Player umpire', nPicks ? `${nPicks} game${nPicks === 1 ? '' : 's'} chosen` : '',
         chipOf(nPicks > 0, !nPicks && isNewFor({ key: '\u0000', addedAt: pu.addedAt }, avail))));
       cards.push({ orgId: m.orgId, el: h('section', { class: 'card avail-card other-org' },
-        h('div', { class: 'avail-head' }, h('div', { class: 'muted small' }, 'My availability'), h('h2', {}, org.name || m.orgName || m.orgId)),
+        h('div', { class: 'avail-head' }, h('h2', {}, org.name || m.orgName || m.orgId)),
         items.length ? h('ul', { class: 'plain group-list' }, items) : h('p', { class: 'muted' }, 'No dates to answer yet.')) });
     } catch (e) { console.warn('association', m.orgId, e); }
   }
