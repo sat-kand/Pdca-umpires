@@ -124,7 +124,18 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
 
     // ----- associations -----
     get org() { return org; },
-    async useOrg(id) { org = id ? rowToOrg(await one(sb.from('associations').select('*').eq('id', id))) : null; return org; },
+    async useOrg(id) {
+      org = id ? rowToOrg(await one(sb.from('associations').select('*').eq('id', id))) : null;
+      // Features the platform owner has switched on for this association (defaults, then the association's own).
+      if (org) {
+        const [defs, own] = await Promise.all([
+          ok(sb.from('feature_flags').select('key, enabled_by_default')),
+          ok(sb.from('association_flags').select('key, enabled').eq('association_id', id)),
+        ]);
+        org.flags = Object.fromEntries([...(defs || []).map(f => [f.key, !!f.enabled_by_default]), ...(own || []).map(f => [f.key, !!f.enabled])]);
+      }
+      return org;
+    },
     async getOrg(id) { return rowToOrg(await one(sb.from('associations').select('*').eq('id', id))); },
     async listMyOrgs(email) {
       const [m, o] = await Promise.all([
@@ -144,7 +155,7 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
     },
     async saveOrg(patch) {
       const next = { ...org, ...patch };
-      const { id, createdBy, plan, ...rest } = next;            // the plan is the product owner's to change
+      const { id, createdBy, plan, flags, playhqOrgId, ...rest } = next;   // the plan, flags and PlayHQ organisation are the platform owner's to change
       const row = orgToRow(rest); delete row.created_by;
       await ok(sb.from('associations').update(row).eq('id', org.id));
       org = next;

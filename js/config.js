@@ -23,6 +23,7 @@ export const DEMO_ORG = {
   name: 'Parramatta District Cricket Association',
   playhqOrgId: '00000000-0000-4000-8000-000000000001',        // a made-up id: the demo never calls PlayHQ
   plan: 'trial',
+  flags: { player_umpire: true },                              // features the platform owner switches on per association
   notifyEmail: 'admin@demo.test',
   playerUmpire: { description: 'Pick any Senior round, grade or fixture you want to umpire.' },
   membership: { renewalDay: '06-30', types: [{ name: 'Ordinary member', fee: 60 }, { name: 'Junior member', fee: 25 }, { name: 'Life member', fee: 0 }] },

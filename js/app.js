@@ -18,15 +18,16 @@ let renderId = 0;
 const go = path => { if (location.hash === '#' + path) render(); else location.hash = '#' + path; };
 
 async function loadUser(user) {
-  S.user = user; S.isAdmin = false; S.umpire = null; S.org = null;
+  S.user = user; S.isAdmin = false; S.umpire = null; S.org = null; S.myOrgs = [];
   await S.store.useOrg(null);
   if (!user) return;
   try {
     let id = localStorage.getItem(ORG_KEY);
     // Arriving by a link (or having just picked one) wins. Otherwise use the association this browser last used,
     // unless this person belongs to others and not that one (a shared computer).
+    S.myOrgs = await S.store.listMyOrgs(user.email);             // every association they are an officer or member of: the switcher
     if (!localStorage.getItem(JOIN_KEY)) {
-      const mine = (await S.store.listMyOrgs(user.email)).map(o => o.id);
+      const mine = S.myOrgs.map(o => o.id);
       if (mine.length && !mine.includes(id)) id = mine.length === 1 ? mine[0] : null;
     }
     if (!id && S.store.mode === 'demo') id = DEMO_ORG.id;      // the demo has one built-in association: nobody needs a link to try it
@@ -46,6 +47,13 @@ async function chooseOrg(id) {
   localStorage.setItem(ORG_KEY, id); localStorage.setItem(JOIN_KEY, '1');
   if (S.user) await loadUser(S.user);
   go('/');
+}
+// Someone in more than one association (an officer of several, say) can switch at any time from the menu.
+function switchItems() {
+  const others = (S.myOrgs || []).filter(o => !S.org || o.id !== S.org.id);
+  if (!others.length) return [];
+  return [h('hr'), h('div', { class: 'menu-head muted small' }, 'Switch association'),
+    ...others.map(o => h('button', { class: 'nav-link menu-switch', type: 'button', onclick: () => chooseOrg(o.id) }, o.name))];
 }
 const ctx = { get store() { return S.store; }, S, go, refreshUser: () => loadUser(S.user), chooseOrg, redrawHeader: () => drawHeader() };
 
@@ -85,7 +93,8 @@ function drawHeader() {
       S.isAdmin && h('nav', { class: 'nav' }, link('#/admin', 'Allocate'), link('#/admin/availability', 'Availability'),
         // Members, Settings and the association picker sit together, out of the way of the weekly work.
         h('details', { class: 'menu' }, h('summary', { class: 'nav-link' }, 'My Organisation'),
-          h('div', { class: 'menu-items' }, link('#/admin/members', 'Members'), link('#/admin/past', 'Past allocations'), link('#/admin/settings', 'Settings'), link('#/associations', 'Your associations')))),
+          h('div', { class: 'menu-items' }, S.org && h('div', { class: 'menu-head' }, h('strong', {}, S.org.name)),
+            link('#/admin/members', 'Members'), link('#/admin/past', 'Past allocations'), link('#/admin/settings', 'Settings'), ...switchItems()))),
       // The account menu, top right as on most sites: their name, then profile, availability and Sign out.
       S.user && (() => {
         const name = (S.umpire && S.umpire.name) || S.user.email;
@@ -96,6 +105,7 @@ function drawHeader() {
             h('div', { class: 'menu-items' },
               h('div', { class: 'menu-head' }, h('strong', {}, name), name !== S.user.email && h('span', { class: 'muted small' }, S.user.email)),
               link('#/profile', 'My profile'), link('#/my', 'My availability'),
+              ...(S.isAdmin ? [] : switchItems()),
               h('hr'),
               h('button', { class: 'nav-link menu-signout', type: 'button', onclick: async () => { await S.store.signOut(); await loadUser(null); location.hash = '#/'; render(); } }, 'Sign out'))));
       })()),

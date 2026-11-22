@@ -137,7 +137,7 @@ const isFixtureSource = src => !!src && (src.type === 'playhq' || src.type === '
 // The association's PlayHQ organisation id (the Edge Function reads it from the database itself).
 function playhqOrgId(store) {
   const id = (store.org || {}).playhqOrgId;
-  if (!id) throw new Error('Add your association\'s PlayHQ organisation ID in Settings first');
+  if (!id) throw new Error('This association is not connected to PlayHQ yet. Contact Third Umpire to set it up.');
   return id;
 }
 

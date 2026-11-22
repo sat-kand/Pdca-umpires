@@ -39,7 +39,7 @@ After that, new members apply through the join link and give their availability 
 
 ## Player umpires
 
-Player umpiring is switched on by the appointments officer in **My Organisation → Settings → Player umpires**, which also holds what it is called (empty = “Player umpire”) and the line members are shown about it (empty = nothing shown). When it is off, members only give their availability; games already chosen stay on the boards. When it is on, a member can umpire in two ways, and can do both:
+Player umpiring is a feature the platform owner switches on for each association that asks for it (`platform_set_flag`, below). Once it is on, the appointments officer sets it up in **My Organisation → Settings → Player umpires**, which also holds what it is called (empty = “Player umpire”) and the line members are shown about it (empty = nothing shown). When it is off, members only give their availability; games already chosen stay on the boards. When it is on, a member can umpire in two ways, and can do both:
 
 - **Availability** (everyone, unless they only choose games as a player umpire) — tick the association's groups they umpire (any mix), answer each date for those, and the appointments officer gives them games. The groups and the player-umpire option sit together in a card headed with the association's name; the date form comes next, then the games chosen as a player umpire. Player umpiring is never ticked for them. The tick boxes only show or hide parts of the page. Every ticked competition is sent with Save, whether it is a first submit or an edit, so every one of its dates must be answered Available or Not available — a blank date stops the save and is highlighted. Unticked competitions are not checked. Senior, Junior, T20 and Player umpire each show their own status at all times, ticked or not (*Not submitted*, *Unsaved changes*, *✓ Submitted*); Save is greyed out until a ticked part changes and sends only the ticked parts — an unticked competition, Full umpire or Player umpire keeps what was last saved. A game is given back by removing it and saving. Competitions they don't tick are hidden from the form and are left exactly as last saved, and the officer's Availability page doesn't count them as missing.
 - **Choose my own games (player umpire)** — Senior games only, as PDCA allows player umpires in the Senior competition alone: pick a round, narrow it to a grade if they like, then choose any game in it (Day 1, Day 2 or both days of a two-day game). Choosing a game does not touch their date answers, so the officer's Availability sheet only ever shows regular availability. One game per competition per day.
@@ -78,16 +78,22 @@ The email goes through the `mail_queue` table; sending it needs a mail sender wi
 
 The app holds many associations, each completely separate: its own officers, umpires, PlayHQ organisation, fixtures, availability and allocations.
 
-- **Starting one:** only the product owner sets an association up, in the Supabase SQL Editor: insert a row into `associations` (`id` such as `pdca`, `name`), then the first officer into `officers` (`association_id`, lower-case `email`). Nobody can create one from inside the app.
-- **My Organisation → Settings** (officers only): rename the association, enter its **PlayHQ organisation ID** (checked with PlayHQ when saved, and never stored in the repo), add or remove officers, and copy the **link for umpires**. Umpires open that link, sign in, add their name and wait for approval.
-- **Switching:** **My Organisation → Your associations** lists the ones a person belongs to, for anyone in more than one.
+- **Starting one (platform owner):** in the Supabase **SQL Editor** of the project, run
+  ```sql
+  select platform_setup_association('pdca', 'Parramatta District Cricket Association', '<PlayHQ organisation ID>', 'officer@example.com');
+  ```
+  This creates the association (or updates its name and PlayHQ ID if it exists) and makes that email its appointments officer. More officers: `select platform_add_officer('pdca', 'someone@example.com');` and to remove one, `select platform_remove_officer('pdca', 'someone@example.com');`. One email can be an officer of several associations. Nobody can create an association or change its PlayHQ ID from inside the app; the PlayHQ ID is never stored in the repo.
+- **Features (platform owner):** switch a feature on or off for one association with `select platform_set_flag('pdca', 'player_umpire', true);` (or `false`). The app reads the flags each time the association is opened.
+- **Who sees what:** someone who signs in with an officer's email sees the officer pages (Allocate, Availability, My Organisation); everyone else sees the umpire pages.
+- **My Organisation → Settings** (officers only): rename the association, set where alerts go, add or remove officers, set up groups, membership and (if switched on) player umpires, and copy the **link for umpires**. Umpires open that link, sign in, add their name and wait for approval.
+- **Switching:** anyone in more than one association (an officer of several, say) switches from the menu at any time: **My Organisation → Switch association** for officers, the account menu for umpires. **Your associations** lists them all too.
 - **Read-only:** an association can be set to `plan = 'suspended'` by hand, which makes it read-only. The tool is free and says nothing about plans or payment.
 
 ## One-time setup for the product owner
 
 Do this once per environment (dev, staging, prod), each with its own Supabase project.
 
-1. **Create the project** in Supabase (Sydney region). In the SQL Editor run `supabase/migrations/0001_schema.sql` to `0005_grants.sql` in order.
+1. **Create the project** in Supabase (Sydney region). In the SQL Editor run `supabase/migrations/0001_schema.sql` to `0006_platform_setup.sql` in order.
 2. **Put the project's URL and publishable key** (both public by design) in [`js/config.js`](js/config.js). Leave them blank for demo mode.
 3. **Authentication → URL Configuration:** set the Site URL and add the app's address (for local work `http://localhost:8000/**`) to Redirect URLs.
 4. **Email:** Supabase's built-in sender allows only 2 emails an hour per project. Set up custom SMTP (for example Resend) under Authentication → Emails → SMTP Settings, then raise the hourly email limit under Authentication → Rate Limits. Google sign-in is optional (Authentication → Sign In / Providers).

@@ -418,3 +418,4 @@ button.tagbtn:hover { outline: 2px solid currentColor; outline-offset: 1px; }
 .comp-head { cursor: pointer; }
 .group-foot .discard { color: var(--red, #a12622); font-size: .9rem; margin-left: .3rem; }
 .group-foot .discard[hidden] { display: none; }
+.menu-switch { background: none; border: 0; text-align: left; font: inherit; cursor: pointer; width: 100%; }

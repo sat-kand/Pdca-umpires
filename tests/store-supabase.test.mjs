@@ -62,13 +62,22 @@ test('an officer adding a member never overwrites an existing person record', as
   assert.equal(mem.payload.name, undefined);
 });
 
-test('saving the association never sends the plan', async () => {
+test('saving the association never sends the plan, the flags or the PlayHQ organisation (the platform owner sets those)', async () => {
   const { c, s } = await mk({ associations: [{ id: 'pdca', name: 'P', plan: 'trial', config: {} }] });
   await s.useOrg('pdca');
   await s.saveOrg({ name: 'New name', plan: 'active', playhqOrgId: 'abc' });
   const u = c.calls.find(x => x.op === 'update');
   assert.equal(u.payload.plan, undefined);
-  assert.equal(u.payload.playhq_org_id, 'abc');
+  assert.equal(u.payload.playhq_org_id, undefined);
+  assert.equal((u.payload.config || {}).flags, undefined);
+});
+
+test('useOrg reads the association\'s feature flags: defaults first, then its own', async () => {
+  const { s } = await mk({ associations: [{ id: 'pdca', name: 'P', plan: 'trial', config: {} }],
+    feature_flags: [{ key: 'player_umpire', enabled_by_default: false }, { key: 'clash_checks', enabled_by_default: true }],
+    association_flags: [{ key: 'player_umpire', enabled: true }] });
+  const o = await s.useOrg('pdca');
+  assert.deepEqual(o.flags, { player_umpire: true, clash_checks: true });
 });
 
 test('playhq asks the Edge Function for the open association and surfaces its error message', async () => {

@@ -2,6 +2,7 @@
 // Every association has its own umpires, officers, fixtures and allocations.
 
 import { h, toast, busy, copyText, setChildren } from './ui.js';
+import { playerUmpireAllowed } from './player-umpire.js';
 import { emailKey, COMPS, DEFAULT_GROUPS, guessGroup, groupKeyOf, suggestGroupName, suggestUmpires, suggestGroups, compareGrades, gradeShort } from './logic.js';
 import { applyOrg } from './org-setup.js';
 
@@ -110,6 +111,7 @@ export async function viewOrgSettings(ctx) {
   // Player umpires: whether members may choose their own games, in which groups, and the line they see about it.
   function playerUmpireCard() {
     const org = store.org;
+    if (!playerUmpireAllowed(org)) return null;           // switched on per association by the platform owner
     const p = org.playerUmpire || {};
     const on = h('input', { type: 'checkbox', checked: !!p.enabled });
     const text = h('textarea', { rows: 2, placeholder: 'e.g. Pick any round, grade or fixture you want to umpire.' }, p.description || '');
@@ -234,7 +236,6 @@ export async function viewOrgSettings(ctx) {
     const link = joinLink(org.id);
     const name = h('input', { required: true, value: org.name || '' });
     const live = !!store.playhq;                                 // only the live store reads PlayHQ; demo mode has made-up fixtures
-    const pc = live ? h('input', { value: org.playhqOrgId || '', placeholder: 'e.g. 4059f1b9-86d8-eb11-a7ad-2818780da0cc', autocomplete: 'off', spellcheck: 'false' }) : null;
     const notify = h('input', { type: 'email', value: org.notifyEmail || '', placeholder: S.user.email });
     const save = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
     const add = h('input', { type: 'email', placeholder: 'officer@example.com', 'aria-label': 'Email of the new officer' });
@@ -244,31 +245,15 @@ export async function viewOrgSettings(ctx) {
       h('h1', {}, 'Settings'),
       saveButton(h('form', { class: 'card', onsubmit: busy(save, async e => {
         e.preventDefault();
-        const id = live ? playhqIdFrom(pc.value) : '';
-        if (live && pc.value.trim() && !id) { toast('That does not look like a PlayHQ organisation ID.', 'err'); return; }
-        const moved = live && id !== (store.org.playhqOrgId || '');
-        // A new PlayHQ ID is checked with PlayHQ first; a wrong one is refused and nothing is saved.
-        if (live && moved && id) {
-          const found = await store.playhq('check', { orgId: id });
-          if (!found.ok) { toast(found.error || 'PlayHQ did not recognise that ID.', 'err'); return; }
-          toast(`Found: ${found.name || 'organisation'} ✓`, 'ok');
-        }
-        await store.saveOrg({ name: name.value.trim(), ...(live ? { playhqOrgId: id } : {}), notifyEmail: (notify.value || '').trim().toLowerCase(), updatedAt: new Date().toISOString() });
-        if (moved) {
-          // Another association's fixtures: load them the next time Allocate opens; their groups are
-          // suggested then, and groups left with no grades are removed.
-          const season = await store.getSeason();
-          if (season) await store.saveSeason({ ...season, updatedAt: '1970-01-01T00:00:00.000Z' });
-        }
+        await store.saveOrg({ name: name.value.trim(), notifyEmail: (notify.value || '').trim().toLowerCase(), updatedAt: new Date().toISOString() });
         saved.add('assoc');
         await ctx.refreshUser(); ctx.redrawHeader();
-        toast(moved ? 'Saved. Allocate will load the fixtures from PlayHQ.' : 'Saved', 'ok');
+        toast('Saved', 'ok');
         await draw();
       }) },
       h('h2', {}, 'Association'),
       h('label', {}, 'Name', name),
-      live && h('label', {}, 'PlayHQ organisation ID', pc),
-      h('p', { class: 'muted small' }, live ? 'Fixtures are read from PlayHQ for this organisation. PlayHQ can give you the ID; it is checked when you save.' : 'Demo mode: the fixtures are made up. A live association reads its fixtures from PlayHQ.'),
+      h('p', { class: 'muted small' }, live ? (org.playhqOrgId ? 'Fixtures are read from PlayHQ. The PlayHQ link is set up by Third Umpire: contact us to change it.' : 'Your PlayHQ link has not been set up yet. Contact Third Umpire to connect your fixtures.') : 'Demo mode: the fixtures are made up. A live association reads its fixtures from PlayHQ.'),
       h('label', {}, 'Send alerts to', notify),
       h('p', { class: 'muted small' }, 'Where to email when an umpire pulls out of a published game.'),
       save), save, 'assoc'),

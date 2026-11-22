@@ -2,7 +2,7 @@
 
 import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
 import { recordWithdrawal } from './withdrawals.js';
-import { PLAYER_UMPIRE_COMPS } from './player-umpire.js';
+import { PLAYER_UMPIRE_COMPS, playerUmpireAllowed } from './player-umpire.js';
 import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS, groupNeedsUmpires, needsUmpires, membershipOf } from './logic.js';
 
 export function viewLogin(ctx) {
@@ -106,7 +106,7 @@ export async function viewMy(ctx) {
   // Player umpiring is switched on, and described, by the appointments officer in Settings.
   const pu = (store.org && store.org.playerUmpire) || {};
   const orgName = (store.org && store.org.name) || 'Availability';
-  const puOn = !!pu.enabled && PLAYER_UMPIRE_COMPS.length > 0;    // on, with at least one group to choose from
+  const puOn = playerUmpireAllowed(store.org) && !!pu.enabled && PLAYER_UMPIRE_COMPS.length > 0;    // on, with at least one group to choose from
   modes.regular = true;                          // Full umpire is a heading; each competition is ticked on its own
   // Which competitions they give availability for. Before they have said, the ones they have
   // answered in, or all of them for someone new.

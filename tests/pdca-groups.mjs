@@ -5,5 +5,5 @@ export const PDCA = {
   name: 'Parramatta District Cricket Association',
   groups: [{ key: 'senior', name: 'Senior' }, { key: 'junior', name: 'Junior' }, { key: 't20', name: 'T20' }],
 };
-export function usePdcaGroups() { setGroups(PDCA); setPlayerUmpireGroups({ playerUmpire: { groups: ['senior'] } }, ['senior', 'junior', 't20']); }
+export function usePdcaGroups() { setGroups(PDCA); setPlayerUmpireGroups({ flags: { player_umpire: true }, playerUmpire: { groups: ['senior'] } }, ['senior', 'junior', 't20']); }
 usePdcaGroups();

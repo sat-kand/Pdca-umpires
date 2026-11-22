@@ -13,8 +13,11 @@ import { fmtDay, gradeShort, summarise } from './logic.js';
 // The groups whose games player umpires may choose: the association's choice (org.playerUmpire.groups);
 // none until it has ticked some.
 export const PLAYER_UMPIRE_COMPS = [];
+// A feature the platform owner switches on per association.
+export const hasFlag = (org, key) => !!(org && org.flags && org.flags[key]);
+export const playerUmpireAllowed = org => hasFlag(org, 'player_umpire');
 export function setPlayerUmpireGroups(org, groupKeys) {
-  const wanted = (org && org.playerUmpire && Array.isArray(org.playerUmpire.groups) && org.playerUmpire.groups.length)
+  const wanted = (playerUmpireAllowed(org) && org.playerUmpire && Array.isArray(org.playerUmpire.groups) && org.playerUmpire.groups.length)
     ? org.playerUmpire.groups : [];
   PLAYER_UMPIRE_COMPS.splice(0, PLAYER_UMPIRE_COMPS.length, ...wanted.filter(k => groupKeys.includes(k)));
 }

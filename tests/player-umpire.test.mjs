@@ -169,3 +169,11 @@ test('a chosen game whose board is not there yet is added once it is', async () 
   await applyPlayerUmpires(s, { today: TODAY });
   assert.equal(s.db.games.r1[0].alloc['2026-11-21'][0].p, 'p1');
 });
+
+test('player umpiring is off unless the platform owner has switched it on for the association', async () => {
+  const { setPlayerUmpireGroups, PLAYER_UMPIRE_COMPS } = await import('../js/player-umpire.js');
+  setPlayerUmpireGroups({ playerUmpire: { enabled: true, groups: ['senior'] } }, ['senior']);
+  assert.deepEqual([...PLAYER_UMPIRE_COMPS], []);
+  setPlayerUmpireGroups({ flags: { player_umpire: true }, playerUmpire: { enabled: true, groups: ['senior'] } }, ['senior']);
+  assert.deepEqual([...PLAYER_UMPIRE_COMPS], ['senior']);
+});

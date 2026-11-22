@@ -8,8 +8,8 @@ import {
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
-import { applyPlayerUmpires, claimsFrom } from './player-umpire.js';
-const puEnabled = store => !!(store.org && store.org.playerUmpire && store.org.playerUmpire.enabled);
+import { applyPlayerUmpires, claimsFrom, playerUmpireAllowed } from './player-umpire.js';
+const puEnabled = store => playerUmpireAllowed(store.org) && !!(store.org.playerUmpire && store.org.playerUmpire.enabled);
 import { membershipTypes, feeFor, money } from './views-org.js';
 import { membershipLink } from './views-member.js';
 const profileLink = u => h('a', { class: 'member-link', href: `#/admin/member/${encodeURIComponent(u.pid)}`, title: 'Open profile' }, u.name);

@@ -1776,6 +1776,35 @@ with sync_playwright() as p:
     check(page.locator(".comp-section:has(h2:has-text('T20'))").count() == 0,
           "and members are not asked for T20 availability")
 
+    print("Platform owner: player umpiring is a per-association feature; officers of several associations switch")
+    page.evaluate("""() => { const k = 'pdca-umpires-demo-v2', db = JSON.parse(localStorage.getItem(k));
+      db.orgs.pdca.org.flags = { player_umpire: false };
+      db.users['admin@demo.test'] = [...new Set([...(db.users['admin@demo.test'] || []), 'pdca', 'second'])];
+      db.orgs.second.admins = [...new Set([...(db.orgs.second.admins || []), 'admin@demo.test'])];
+      localStorage.setItem(k, JSON.stringify(db)); }""")
+    page.reload()
+    page.wait_for_selector(".who, #login-email")
+    if page.locator(".who").count(): sign_out(page)
+    sign_in(page, "admin@demo.test", open_form=False)
+    page.goto(BASE + "#/admin/settings")
+    page.wait_for_selector("h2:has-text('Association')")
+    check(page.locator("form:has(h2:has-text('Player umpires'))").count() == 0, "with the feature off, Settings has no Player umpires section")
+    check(page.locator("label:has-text('PlayHQ organisation ID')").count() == 0, "and officers cannot enter a PlayHQ organisation ID")
+    page.click("nav .menu > summary")
+    check(page.locator(".menu-items .menu-switch:has-text('Second Association')").count() == 1, "an officer of two associations can switch from the menu")
+    page.locator(".menu-items .menu-switch:has-text('Second Association')").click()
+    page.wait_for_timeout(800)
+    page.click("nav .menu > summary")
+    check(page.locator(".menu-items .menu-head").first.inner_text() == "Second Association"
+          and page.locator(".menu-items .menu-switch:has-text('Parramatta')").count() == 1, "now in Second Association, with a way back")
+    page.locator(".menu-items .menu-switch:has-text('Parramatta')").click()
+    page.wait_for_timeout(800)
+    sign_out(page)
+    sign_in(page, "umpire4@demo.test", open_form=False)
+    page.goto(BASE + "#/my")
+    page.wait_for_selector(".comp-section")
+    check(page.locator(".player-card:visible").count() == 0, "members do not see player umpiring when the feature is off")
+
     browser.close()
 
 httpd.shutdown()
