@@ -107,3 +107,12 @@ test('mergeFixtures with no differences writes nothing', () => {
   const r = mergeFixtures([base], [normaliseMatch(apiMatch, grade, comp)]);
   assert.equal(r.games.length, 0);
 });
+
+test('mergeFixtures: a game that has not changed is not rewritten, whatever order its keys come back in', async () => {
+  const { mergeFixtures } = await import('../js/fixtures.js');
+  const fresh = { id: 'g1', grade: 'A', comp: 'c', home: 'X', away: 'Y', venue: 'V', status: 'UPCOMING', days: [{ day: 1, date: '2026-12-05', time: '13:30' }] };
+  const stored = { slots: 1, alloc: {}, removed: false, days: [{ time: '13:30', date: '2026-12-05', day: 1 }], ...fresh };   // same game, keys in another order
+  stored.days = [{ time: '13:30', date: '2026-12-05', day: 1 }];
+  assert.equal(mergeFixtures([stored], [fresh]).games.length, 0);
+  assert.equal(mergeFixtures([stored], [{ ...fresh, ground: 'W' }]).games.length, 1);
+});

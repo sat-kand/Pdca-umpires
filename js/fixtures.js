@@ -197,6 +197,9 @@ function changeNotes(old, neu) {
 
 // existing: games already stored; fresh: newly fetched. Keeps slots/alloc.
 // Returns { games (to write), added, changed, removed } where removed games stay but are flagged.
+// JSON with the keys sorted, so a game read back from the database (whose keys come in another order) equals the same game as fetched.
+const canon = v => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x)) ? Object.fromEntries(Object.keys(x).sort().map(key => [key, x[key]])) : x);
+
 export function mergeFixtures(existing, fresh, defaultSlots = () => 1) {
   const byId = new Map(existing.map(g => [g.id, g]));
   const seen = new Set();
@@ -215,7 +218,7 @@ export function mergeFixtures(existing, fresh, defaultSlots = () => 1) {
     for (const k of FIXTURE_FIELDS) merged[k] = f[k];
     merged.removed = false;
     if (notes.length) { merged.changeNote = notes.join('; '); changed++; }
-    if (JSON.stringify(merged) !== JSON.stringify(old)) out.push(merged);
+    if (canon(merged) !== canon(old)) out.push(merged);
   }
   for (const old of existing) {
     if (!seen.has(old.id) && !old.removed && !old.manual) {
