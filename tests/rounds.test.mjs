@@ -334,6 +334,8 @@ test('groups follow the fixtures: suggested the first time, new grades placed, e
     // a grade PlayHQ now lists under another competition moves to that competition's group
     await ensureGroups(store, [game('1', 'Sydney Shires Competition', 'First Grade (The RB Clark Cup)', ['2026-11-21']), game('3', "Frank Gray Shield (U24's)", 'Second Grade', ['2026-11-21'])]);
     assert.notEqual(store.org.gradeGroups['Second Grade'], store.org.gradeGroups['First Grade (The RB Clark Cup)']);
+    // Settings lists exactly what PlayHQ lists now: a competition that is gone leaves no grade behind
+    assert.deepEqual(store.org.gradeComps, { 'First Grade (The RB Clark Cup)': 'Sydney Shires Competition', 'Second Grade': "Frank Gray Shield (U24's)" });
     // a different association's fixtures entirely: the old groups go, new ones are suggested
     store.org.name = 'Parramatta District Cricket Association';
     await ensureGroups(store, [game('9', 'PDCA Senior Competition', 'Senior A Grade', ['2026-11-21'])]);

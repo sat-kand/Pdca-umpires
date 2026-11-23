@@ -182,9 +182,11 @@ export async function ensureGroups(store, games, comps = []) {
   const had = (org.groups || []).map(g => g.key);
   const rank = g => (had.includes(g.key) ? had.indexOf(g.key) : 1000 + sug.groups.findIndex(x => x.key === g.key));
   groups.sort((a, b) => rank(a) - rank(b));
-  const same = JSON.stringify([org.groups, org.gradeGroups, org.gradeUmpires]) === JSON.stringify([groups, gradeGroups, gradeUmpires]);
+  // The grades and competitions as PlayHQ lists them now: Settings shows exactly these, not games kept from earlier syncs.
+  const gradeComps = Object.fromEntries(gradeComp);
+  const same = JSON.stringify([org.groups, org.gradeGroups, org.gradeUmpires, org.gradeComps]) === JSON.stringify([groups, gradeGroups, gradeUmpires, gradeComps]);
   if (same) return false;
-  await store.saveOrg({ groups, gradeGroups, gradeUmpires, updatedAt: new Date().toISOString() });
+  await store.saveOrg({ groups, gradeGroups, gradeUmpires, gradeComps, updatedAt: new Date().toISOString() });
   applyOrg(store.org);
   return true;
 }

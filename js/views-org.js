@@ -166,9 +166,12 @@ export async function viewOrgSettings(ctx) {
     const org = store.org;
     let lists = [];
     try { lists = store.listFixtureLists ? await store.listFixtureLists() : []; } catch (e) { console.error(e); }
-    const seen = new Map();
-    for (const l of lists) for (const g of l.games || []) if (!seen.has(g.grade)) seen.set(g.grade, g.comp || '');
-    for (const gr of Object.keys(org.gradeGroups || {})) if (!seen.has(gr)) seen.set(gr, '');
+    // The grades and competitions from the last fixture sync, as PlayHQ lists them. Before the first sync, from the games held.
+    const seen = new Map(Object.entries(org.gradeComps || {}));
+    if (!seen.size) {
+      for (const l of lists) for (const g of l.games || []) if (!g.removed && !seen.has(g.grade)) seen.set(g.grade, g.comp || '');
+      for (const gr of Object.keys(org.gradeGroups || {})) if (!seen.has(gr)) seen.set(gr, '');
+    }
     let grades = [...seen.keys()];
     const ui = {
       groups: ((org.groups && org.groups.length) ? org.groups : DEFAULT_GROUPS).map(g => ({ ...g })),
