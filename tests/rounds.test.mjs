@@ -74,6 +74,8 @@ test('currentRound picks a competition\'s earliest unfinished round; needsSync r
   const now = Date.now();
   assert.equal(needsSync(null, rounds, '2026-11-16', now), true);                                        // never synced
   assert.equal(needsSync(fresh, rounds, '2026-11-16', now), false);
+  assert.equal(needsSync(fresh, rounds, '2026-11-16', now, { name: 'x' }), true);                       // grade list from PlayHQ not saved yet
+  assert.equal(needsSync(fresh, rounds, '2026-11-16', now, { gradeComps: {} }), false);
   assert.equal(needsSync(fresh, rounds, '2026-11-16', now + STALE_MS + 1000), true);                     // stale
   assert.equal(needsSync({ ...fresh, calendar: [{ comp: 't20', dates: ['2026-11-21'] }] }, rounds, '2026-11-16', now), true); // T20 has dates but no round
   assert.equal(needsSync({ ...fresh, calendar: [{ comp: 't20', dates: ['2026-10-01'] }] }, rounds, '2026-11-16', now), false); // T20 finished

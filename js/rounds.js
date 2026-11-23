@@ -98,7 +98,8 @@ export function visibleRounds(rounds, today, more = 0, startDay = 1) {
   return { sets: sets.slice(0, n), hasMore: n < sets.length };
 }
 
-export function needsSync(season, rounds, today, now = Date.now()) {
+export function needsSync(season, rounds, today, now = Date.now(), org = null) {
+  if (org && !org.gradeComps) return true;                   // the grade list from PlayHQ has not been saved yet
   if (!season || !season.calendar || season.schema !== SCHEMA) return true;
   if (now - Date.parse(season.updatedAt || 0) > STALE_MS) return true;
   return season.calendar.some(c => !currentRound(rounds, c.comp || firstGroup(), today) && c.dates.some(d => d >= today));

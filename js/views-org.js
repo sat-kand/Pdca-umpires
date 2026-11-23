@@ -1,7 +1,8 @@
 // Screens about associations: choosing one, creating one, and its settings.
 // Every association has its own umpires, officers, fixtures and allocations.
 
-import { h, toast, busy, copyText, setChildren } from './ui.js';
+import { h, toast, busy, copyText, setChildren, todayLocal } from './ui.js';
+import { syncFixtures } from './rounds.js';
 import { playerUmpireAllowed } from './player-umpire.js';
 import { emailKey, joinSettings, JOIN_FIELDS, JOIN_LEVELS, COMPS, DEFAULT_GROUPS, guessGroup, groupKeyOf, suggestGroupName, suggestUmpires, suggestGroups, compareGrades, gradeShort } from './logic.js';
 import { applyOrg } from './org-setup.js';
@@ -216,6 +217,13 @@ export async function viewOrgSettings(ctx) {
           ui.groups.length > 1 && !used(g.key) && h('button', { class: 'link', type: 'button', onclick: () => { ui.groups.splice(i, 1); draw2(); } }, 'Remove')))),
         h('button', { class: 'btn small', type: 'button', onclick: () => { ui.groups.push({ key: 'g' + Date.now().toString(36), name: 'New group', addedAt: new Date().toISOString() }); draw2(); } }, 'Add group'),
         h('h3', {}, 'Grades'),
+        store.playhq && h('p', { class: 'row-gap' },
+          h('button', { class: 'btn small', type: 'button', onclick: async ev => {
+            const b = ev.currentTarget; b.disabled = true; b.textContent = 'Updating from PlayHQ…';
+            try { await syncFixtures(store, { today: todayLocal() }); toast('Grades updated from PlayHQ'); location.reload(); }
+            catch (e) { console.error(e); b.disabled = false; b.textContent = 'Update from PlayHQ'; toast(`Could not update (${e.message || e})`, 'err'); }
+          } }, 'Update from PlayHQ'),
+          h('span', { class: 'muted small' }, ' Reloads the grades and competitions as PlayHQ lists them now.')),
         !grades.length ? h('p', { class: 'muted' }, 'Grades appear here once fixtures have been loaded on Allocate.')
           : h('div', { class: 'table-wrap' }, h('table', { class: 'board grades-table' },
             h('thead', {}, h('tr', {}, ['Grade', 'Competition', 'Group', 'Umpires'].map(c => h('th', {}, c)))),

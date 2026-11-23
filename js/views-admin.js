@@ -208,7 +208,7 @@ export async function viewAdminHome(ctx) {
   await load();
   draw();
   // First visit, or fixtures more than half a day old, or a competition has no round yet: fetch in the background.
-  if (store.playhq && needsSync(state.season, state.rounds, today)) sync();
+  if (store.playhq && needsSync(state.season, state.rounds, today, Date.now(), store.org)) sync();
   return wrap;
 }
 
