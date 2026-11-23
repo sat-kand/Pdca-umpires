@@ -148,17 +148,15 @@ export async function syncFixtures(store, { today, onProgress } = {}) {
   const seasons = await fetchSeasons(api, pc);
   const cur = seasons.find(x => x.current) || seasons[0];
   if (!cur) throw new Error('No season found');
-  // Competitions the association has left out (run by someone else, say) are not brought in.
-  const left = new Set((store.org && store.org.leftOutComps) || []);
-  const comps = (await fetchCompetitions(api, pc, cur.id)).filter(c => !left.has(c.name));
+  const comps = await fetchCompetitions(api, pc, cur.id);
   const games = await loadFixtures({ api, comps, from: '0000-01-01', to: '9999-12-31', onProgress });
   return saveSeasonAndRounds(store, { season: { id: cur.id, name: cur.name }, games, comps, today });
 }
 
 // Keep the association's groups in step with its fixtures. The first time, groups are suggested from
-// its competitions' own names ("Shires", "Frank Gray", ...). Later, a grade that is new gets the group
-// its competition suggests (an existing group of that name, or a new one), grades no longer in the
-// fixtures are dropped, and groups left with no grades are removed. The officer's choices stand.
+// its competitions' own names ("Shires", "Frank Gray", ...). Every sync after that puts each grade in the
+// group of the competition PlayHQ currently lists it under (an existing group of that name, or a new one),
+// drops grades no longer in the fixtures, and removes groups left with no grades. Umpire counts stand.
 export async function ensureGroups(store, games, comps = []) {
   const org = store.org;
   if (!org || !store.saveOrg || !games.length) return false;
@@ -169,18 +167,13 @@ export async function ensureGroups(store, games, comps = []) {
   const gradeGroups = { ...(org.gradeGroups || {}) };
   const gradeUmpires = { ...(org.gradeUmpires || {}) };
   const sug = suggestGroups(compNames, org.name || '', groups);
-  // A competition the officer already placed: its new grades join the group its other grades are in.
-  const placed = {};
-  for (const [grade, comp] of gradeComp) if (gradeGroups[grade] && groups.some(g => g.key === gradeGroups[grade])) placed[comp] ||= gradeGroups[grade];
   for (const [grade, comp] of gradeComp) {
     if (!(grade in gradeUmpires)) gradeUmpires[grade] = suggestUmpires(grade, comp);
-    if (gradeGroups[grade] && groups.some(g => g.key === gradeGroups[grade])) continue;
-    if (placed[comp]) { gradeGroups[grade] = placed[comp]; continue; }
     const s = sug.groups.find(g => g.key === sug.compGroup[comp]) || sug.groups[0];
     const same = groups.find(g => g.name === s.name);
     if (same) gradeGroups[grade] = same.key;
     // A group added once the association already had groups is new to members who already answered.
-    else { groups.push({ ...s, ...((org.groups || []).length ? { addedAt: new Date().toISOString() } : {}) }); gradeGroups[grade] = s.key; }
+    else { const g = { ...s, ...((org.groups || []).length ? { addedAt: new Date().toISOString() } : {}) }; groups.push(g); gradeGroups[grade] = g.key; }
   }
   for (const gr of Object.keys(gradeGroups)) if (!gradeComp.has(gr)) delete gradeGroups[gr];
   for (const gr of Object.keys(gradeUmpires)) if (!gradeComp.has(gr)) delete gradeUmpires[gr];

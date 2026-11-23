@@ -45,12 +45,12 @@ export async function viewAssociations(ctx) {
   const have = new Set(standings.map(x => x.orgId));
   const toJoin = orgs.filter(o => !have.has(o.id) && joinSettings(o).open).sort(byName);
 
-  const joinRow = o => h('li', { class: 'org-row' }, h('strong', { class: 'org-name' }, o.name), joinBtn(o));
+  const joinRow = o => h('li', { class: 'org-row' }, h('strong', { class: 'assoc-name' }, o.name), joinBtn(o));
   const mineRow = ({ st, org }) => {
     const s = statusOf(st);
     const here = S.org && S.org.id === org.id;
     return h('li', { class: 'org-row', 'data-org': org.id },
-      h('div', { class: 'org-main' }, h('strong', { class: 'org-name' }, org.name), standingChip(st, org)),
+      h('div', { class: 'org-main' }, h('strong', { class: 'assoc-name' }, org.name), standingChip(st, org)),
       h('div', { class: 'org-actions' },
         h('button', { class: 'btn small', type: 'button', onclick: () => ctx.chooseOrg(org.id) }, here ? 'Open now' : 'Open'),
         s === 'applied' && joinSettings(org).membershipRequired && cancelButton(ctx, org)));
@@ -127,9 +127,9 @@ export async function otherAssociationsCard(ctx) {
   return h('section', { class: 'card other-associations' }, h('h2', {}, 'Other associations'),
     h('ul', { class: 'plain org-list' },
       waiting.map(({ st, org }) => h('li', { class: 'org-row', 'data-org': org.id },
-        h('div', { class: 'org-main' }, h('strong', { class: 'org-name' }, org.name), standingChip(st, org)),
+        h('div', { class: 'org-main' }, h('strong', { class: 'assoc-name' }, org.name), standingChip(st, org)),
         h('div', { class: 'org-actions' }, cancelButton(ctx, org)))),
-      toJoin.map(o => h('li', { class: 'org-row', 'data-org': o.id }, h('strong', { class: 'org-name' }, o.name), joinBtn(o)))));
+      toJoin.map(o => h('li', { class: 'org-row', 'data-org': o.id }, h('strong', { class: 'assoc-name' }, o.name), joinBtn(o)))));
 }
 
 // The wait itself, shown in place of the availability form on a pending request.

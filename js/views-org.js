@@ -166,10 +166,8 @@ export async function viewOrgSettings(ctx) {
     const org = store.org;
     let lists = [];
     try { lists = store.listFixtureLists ? await store.listFixtureLists() : []; } catch (e) { console.error(e); }
-    // Competitions the association has left out (run by someone else, for instance): their grades are not shown or allocated.
-    const leftOut = new Set(org.leftOutComps || []);
     const seen = new Map();
-    for (const l of lists) for (const g of l.games || []) if (!seen.has(g.grade) && !leftOut.has(g.comp || '')) seen.set(g.grade, g.comp || '');
+    for (const l of lists) for (const g of l.games || []) if (!seen.has(g.grade)) seen.set(g.grade, g.comp || '');
     for (const gr of Object.keys(org.gradeGroups || {})) if (!seen.has(gr)) seen.set(gr, '');
     let grades = [...seen.keys()];
     const ui = {
@@ -220,32 +218,15 @@ export async function viewOrgSettings(ctx) {
             h('thead', {}, h('tr', {}, ['Grade', 'Competition', 'Group', 'Umpires'].map(c => h('th', {}, c)))),
             h('tbody', {}, grades.map(gr => h('tr', { class: umpOf(gr) === 0 ? 'inactive' : '' },
               h('td', {}, h('span', { class: 'chip grade' }, gradeShort(gr)), ' ', h('span', { class: 'muted small' }, gr)),
-              h('td', { class: 'muted small' }, seen.get(gr) || '', ' ', seen.get(gr) && h('button', { class: 'link', type: 'button', onclick: () => leaveOut(seen.get(gr)) }, 'Leave out')),
+              h('td', { class: 'muted small' }, seen.get(gr) || ''),
               h('td', {}, h('select', { 'aria-label': `Group for ${gr}`, onchange: e => { ui.gradeGroups[gr] = e.target.value; draw2(); } },
                 ui.groups.map(g => h('option', { value: g.key, selected: groupOf(gr) === g.key }, g.name || '(no name)')))),
               h('td', {}, h('select', { 'aria-label': `Umpires for ${gr}`, onchange: e => { ui.gradeUmpires[gr] = Number(e.target.value); draw2(); } },
                 [0, 1, 2].map(n => h('option', { value: n, selected: umpOf(gr) === n }, n === 0 ? 'None' : String(n)))))))))),
-        (org.leftOutComps || []).length > 0 && h('div', { class: 'left-out' }, h('h3', {}, 'Left out'),
-          h('ul', { class: 'plain' }, org.leftOutComps.map(c => h('li', { class: 'row-gap' }, c, ' ',
-            h('button', { class: 'link', type: 'button', onclick: () => putBack(c) }, 'Put back'))))),
         h('p', { class: 'row-gap' },
           h('button', { class: 'link', type: 'button', onclick: useSuggestions }, 'Use the suggestions')));
     };
     draw2();
-    // Leave a whole competition out: its grades are dropped here and at the next fixture sync.
-    const leaveOut = async comp => {
-      if (!confirm(`Leave out ${comp} from ${org.name || 'this association'}?\n\nIts grades will not be allocated. You can put it back below.`)) return;
-      await store.saveOrg({ leftOutComps: [...new Set([...(org.leftOutComps || []), comp])], updatedAt: new Date().toISOString() });
-      applyOrg(store.org);
-      toast(`${comp} left out. It will be removed when fixtures next refresh.`, 'ok');
-      await draw();
-    };
-    const putBack = async comp => {
-      await store.saveOrg({ leftOutComps: (org.leftOutComps || []).filter(c => c !== comp), updatedAt: new Date().toISOString() });
-      applyOrg(store.org);
-      toast(`${comp} is back in`, 'ok');
-      await draw();
-    };
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
     return saveButton(h('form', { class: 'card groups-card', onsubmit: busy(saveBtn, async e => {
       e.preventDefault();

@@ -326,12 +326,14 @@ test('groups follow the fixtures: suggested the first time, new grades placed, e
     assert.deepEqual(store.org.groups.map(g => g.name), ['Shires', 'Frank Gray']);
     assert.equal(store.org.gradeUmpires["Frank Gray Shield (U24's)"], 1);
     const shires = store.org.groups[0].key;
-    // the officer renames a group; a new grade arrives in that competition; Frank Gray finishes
-    store.org.groups[0].name = 'Saturday';
+    // a new grade arrives in a competition; Frank Gray finishes
     await ensureGroups(store, [game('1', 'Sydney Shires Competition', 'First Grade (The RB Clark Cup)', ['2026-11-21']), game('3', 'Sydney Shires Competition', 'Second Grade', ['2026-11-21'])]);
-    assert.deepEqual(store.org.groups.map(g => g.name), ['Saturday'], 'the new grade joins its competition\'s group; the empty Frank Gray group goes');
+    assert.deepEqual(store.org.groups.map(g => g.name), ['Shires'], 'the new grade joins its competition\'s group; the empty Frank Gray group goes');
     assert.equal(store.org.gradeGroups['Second Grade'], shires);
-    assert.equal(store.org.gradeGroups['First Grade (The RB Clark Cup)'], shires, 'the officer\'s grades keep their group');
+    assert.equal(store.org.gradeGroups['First Grade (The RB Clark Cup)'], shires, 'existing grades stay in their competition\'s group');
+    // a grade PlayHQ now lists under another competition moves to that competition's group
+    await ensureGroups(store, [game('1', 'Sydney Shires Competition', 'First Grade (The RB Clark Cup)', ['2026-11-21']), game('3', "Frank Gray Shield (U24's)", 'Second Grade', ['2026-11-21'])]);
+    assert.notEqual(store.org.gradeGroups['Second Grade'], store.org.gradeGroups['First Grade (The RB Clark Cup)']);
     // a different association's fixtures entirely: the old groups go, new ones are suggested
     store.org.name = 'Parramatta District Cricket Association';
     await ensureGroups(store, [game('9', 'PDCA Senior Competition', 'Senior A Grade', ['2026-11-21'])]);
