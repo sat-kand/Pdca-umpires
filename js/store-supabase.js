@@ -121,6 +121,11 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
       }
       return true;
     },
+    // Staging only (the form is shown only when the build switches it on): the automated test accounts.
+    async signInPassword(email, password) {
+      if (!/@thirdumpire\.test$/.test(email)) throw new Error('Password sign-in is only for the test accounts.');
+      fail(await sb.auth.signInWithPassword({ email, password }));
+    },
     async signInGoogle() { fail(await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + '/' } })); },
     async signOut() {
       // If the server cannot be reached the library keeps the session; always end it in this browser.

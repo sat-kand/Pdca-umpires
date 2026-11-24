@@ -152,3 +152,22 @@ Changing groups rebuilds the weeks the next time Allocate opens; games keep thei
 ## Hosting (Cloudflare Pages)
 
 One Pages project per environment, each watching one branch (`dev`, `staging`, `main`). The build command is `npm run build` and the output folder is `dist`. The build points the site at that environment's Supabase project from two environment variables (both public values): `SUPABASE_URL` and `SUPABASE_ANON_KEY`. Each deployed address must also be added to that Supabase project's Authentication → URL Configuration. Secrets (the PlayHQ key) never go in Pages; they stay in Supabase.
+
+## Staging tests (real data, after every deploy)
+
+Every push to `staging` runs `.github/workflows/staging-e2e.yml`: it waits until Cloudflare Pages is serving that commit
+(`/version.json` carries the commit), then signs in to the real staging site as three test accounts in the Parramatta District
+association and checks it with real data (`tests/e2e_staging.py`): the officer's board, **Update from PlayHQ** and the grade list,
+the Members table; an umpire's My availability and Associations list on a phone; an applicant asking to join, the officer seeing
+the request, and the request being taken back so the test leaves nothing behind.
+
+One-time setup (staging only):
+1. **Cloudflare Pages -> the project -> Settings -> Environment variables -> Preview:** add `PASSWORD_LOGIN` = `1`, then redeploy `staging`.
+   This shows a "Test accounts" password sign-in. It only accepts addresses ending `@thirdumpire.test`. Never set it on production.
+2. **Supabase (staging) -> Authentication -> Users -> Add user** (tick Auto Confirm User): `test-officer@thirdumpire.test`,
+   `test-umpire@thirdumpire.test`, `test-applicant@thirdumpire.test`, each with its own long random password.
+3. **Supabase SQL editor:** run `supabase/staging/test-users.sql` (makes them officer / member / not-yet-member of `pdca`). Safe to re-run.
+   Migrations `0006` and `0007` must already be run (the test takes the applicant's request back under the 0007 rule).
+4. **GitHub -> Settings -> Secrets and variables -> Actions:** add `TEST_OFFICER_PASSWORD`, `TEST_UMPIRE_PASSWORD`, `TEST_APPLICANT_PASSWORD`.
+
+Run it by hand any time from the Actions tab (Run workflow). A failing run keeps screenshots as the `staging-failures` artifact.

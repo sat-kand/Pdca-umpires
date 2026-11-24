@@ -1,5 +1,6 @@
 // Screens for umpires: sign-in, profile, availability, my appointments.
 
+import { CONFIG } from './config.js';
 import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
 import { recordWithdrawal } from './withdrawals.js';
 import { PLAYER_UMPIRE_COMPS, playerUmpireAllowed } from './player-umpire.js';
@@ -30,7 +31,16 @@ export function viewLogin(ctx) {
     : 'Enter your email address and we will send you a link to sign in.'),
   h('label', {}, 'Email address', email), btn, msg,
   google && h('p', { class: 'muted center' }, 'or'), google);
-  return form;
+  if (!(CONFIG.passwordLogin && store.signInPassword)) return form;
+  // Staging only: the test accounts used by the automated tests.
+  const pwEmail = h('input', { type: 'email', id: 'pw-email', autocomplete: 'username', placeholder: 'test-...@thirdumpire.test', required: true });
+  const pwPass = h('input', { type: 'password', id: 'pw-password', autocomplete: 'current-password', required: true });
+  const pwBtn = h('button', { class: 'btn', type: 'submit', id: 'pw-submit' }, 'Sign in with password');
+  const pwForm = h('form', { class: 'card narrow test-login', onsubmit: busy(pwBtn, async e => { e.preventDefault(); await store.signInPassword(emailKey(pwEmail.value), pwPass.value); }) },
+    h('h2', {}, 'Test accounts (staging only)'),
+    h('p', { class: 'muted small' }, 'For the automated tests. Real sign-in is by email link or Google, above.'),
+    h('label', {}, 'Email', pwEmail), h('label', {}, 'Password', pwPass), pwBtn);
+  return h('div', {}, form, pwForm);
 }
 
 export async function viewProfile(ctx) {

@@ -13,6 +13,10 @@ export const CONFIG = {
   // row-level security, not by hiding these. Leave blank for demo mode. Each environment
   // (dev, staging, prod) uses its own project.
   supabase: { url: 'https://vziphltqtkuzlpltudqy.supabase.co', anonKey: 'sb_publishable_IxGIQNMptZZFoZNwCcv8dw_pX-L4k9C' },
+
+  // Staging only: shows a password sign-in for the automated test accounts (addresses ending @thirdumpire.test).
+  // Switched on by the build with PASSWORD_LOGIN=1 (see README, "Staging tests"). Never on in production.
+  passwordLogin: false,
 };
 
 export const SUPABASE_SDK = 'https://esm.sh/@supabase/supabase-js@2.45.4';

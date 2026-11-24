@@ -149,3 +149,14 @@ test('saveWithdrawal: an officer handling a pull-out updates it (an upsert is ch
   const ops2 = c2.calls.filter(x => x.table === 'withdrawals').map(x => x.op);
   assert.ok(ops2.includes('insert') && !ops2.includes('upsert'), `ops: ${ops2}`);
 });
+
+test('password sign-in is only for the @thirdumpire.test accounts', async () => {
+  const c = fake();
+  const seen = [];
+  c.auth.signInWithPassword = async a => { seen.push(a); return { error: null }; };
+  const s = await createSupabaseStore({ url: 'u', anonKey: 'k' }, { createClient: () => c });
+  await s.signInPassword('test-umpire@thirdumpire.test', 'pw');
+  assert.deepEqual(seen, [{ email: 'test-umpire@thirdumpire.test', password: 'pw' }]);
+  await assert.rejects(s.signInPassword('someone@gmail.com', 'pw'), /test accounts/);
+  assert.equal(seen.length, 1, 'a real address never reaches the password sign-in');
+});

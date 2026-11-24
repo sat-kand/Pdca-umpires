@@ -1,0 +1,68 @@
+# After every push to the staging branch: wait for Cloudflare Pages to deploy that commit, then sign in to the
+# real staging site with the three test accounts and check it with real data.
+# The passwords are GitHub Actions secrets (Settings -> Secrets and variables -> Actions); they are not in the repo.
+name: Staging end-to-end
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+concurrency:
+  group: staging-e2e
+  cancel-in-progress: true
+
+env:
+  STAGING_URL: https://third-umpire-staging.pages.dev
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node --test tests/*.test.mjs
+
+  e2e:
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+
+      - name: Install the browser
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Wait for the staging deploy of this commit
+        run: |
+          want="${{ github.sha }}"
+          for i in $(seq 1 60); do
+            got=$(curl -fsS "$STAGING_URL/version.json?t=$RANDOM" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))" 2>/dev/null || true)
+            echo "attempt $i: staging is on '${got:-?}', want '$want'"
+            if [ "$got" = "$want" ]; then exit 0; fi
+            sleep 15
+          done
+          echo "Staging did not show this commit within 15 minutes (is the Cloudflare Pages build failing?)"
+          exit 1
+
+      - name: Test the staging site with real data
+        env:
+          TEST_OFFICER_PASSWORD: ${{ secrets.TEST_OFFICER_PASSWORD }}
+          TEST_UMPIRE_PASSWORD: ${{ secrets.TEST_UMPIRE_PASSWORD }}
+          TEST_APPLICANT_PASSWORD: ${{ secrets.TEST_APPLICANT_PASSWORD }}
+        run: python tests/e2e_staging.py
+
+      - name: Keep screenshots of any failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-failures
+          path: staging-failures/
+          if-no-files-found: ignore
