@@ -2028,6 +2028,17 @@ with sync_playwright() as p:
     sign_in(page, "umpire1@demo.test", open_form=False)
     page.wait_for_selector(".comp-section")
     check(closed_name in page.locator(".comp-section h2.comp-title").all_inner_texts(), "opening it again offers it to umpires")
+    for path in ["", "profile", "associations"]:
+        goto(page, BASE + path)
+        page.wait_for_timeout(500)
+        txt = page.inner_text("body")
+        check("officer" not in txt.lower(), f"members' pages never say officer ({path or 'my availability'})")
+    page.evaluate("() => { const d = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')); for (const o of Object.values(d.orgs)) for (const g of (o.org.groups || [])) g.closed = true; localStorage.setItem('pdca-umpires-demo-v2', JSON.stringify(d)); }")
+    page.reload()
+    page.wait_for_selector("main")
+    goto(page, BASE + "my")
+    page.wait_for_timeout(600)
+    check("No availabilities are open yet" in page.inner_text("main") and "officer" not in page.inner_text("main").lower(), "with every group closed, umpires are told no availabilities are open, and the association will open them")
 
     browser.close()
 

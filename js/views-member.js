@@ -120,7 +120,7 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
         h('div', { class: 'date-chips' }, dates.map(d => {
           const st = v(d);
           const b = h('button', { type: 'button', class: 'chip date-btn ' + ({ yes: 'ok', no: 'no', none: 'muted-chip' })[st], 'data-date': d,
-            title: `${fmtDay(d)}: ${LABEL[st]}${(rec.edited || {})[availKey(c.key, d)] ? ' (set by the officer)' : ''}. Click to change.` },
+            title: `${fmtDay(d)}: ${LABEL[st]}${(rec.edited || {})[availKey(c.key, d)] ? ' (set by the association)' : ''}. Click to change.` },
             `${fmtDay(d)} ${({ yes: '✓', no: '✗', none: '–' })[st]}`);
           if (self) { b.disabled = true; b.classList.add('readonly'); return b; }     // shown, changed on My availability
           b.onclick = async () => {
@@ -288,7 +288,7 @@ export async function viewMyProfile(ctx) {
       row('First name', n.firstName), row('Last name', n.lastName), row('Email', me.email), row('Mobile', me.phone),
       row('Date of birth', fmtLong(me.dob)), row('Address', me.address),
       row('Accreditation no.', me.accreditation), row('Accreditation provider', me.accreditationProvider),
-      h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to the appointments officers of your associations.')),
+      h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to your associations.')),
     h('h2', { class: 'section-head' }, 'My associations'),
     sections.filter(Boolean),
     !sections.some(Boolean) && h('p', { class: 'muted' }, 'No memberships yet.'));

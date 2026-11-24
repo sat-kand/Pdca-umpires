@@ -64,7 +64,7 @@ export async function viewAssociations(ctx) {
       h('h2', {}, mine.length ? 'Join another association' : 'Associations on Third Umpire'),
       toJoin.length
         ? h('ul', { class: 'plain org-list' }, toJoin.map(joinRow))
-        : h('p', { class: 'muted' }, mine.length ? 'There are no other associations to join yet.' : 'No association has joined Third Umpire yet. If yours should be here, ask your appointments officer to get in touch.')));
+        : h('p', { class: 'muted' }, mine.length ? 'There are no other associations to join yet.' : 'No association has joined Third Umpire yet. If yours should be here, ask your association to get in touch.')));
 }
 
 // ---------- the join form ----------
@@ -101,13 +101,13 @@ export async function viewJoin(ctx, orgId) {
   }) },
   h('h1', {}, `Join ${org.name}`),
   h('p', { class: 'muted' }, set.membershipRequired
-    ? 'Send your details to the association. Its officers will approve your request, and then you can give your availability.'
+    ? 'Send your details to the association. The association will approve your request.'
     : 'Send your details to the association. You can give your availability straight away.'),
   filled > 0 && h('p', { class: 'notice' }, 'We have filled in what we already have from your profile. Check it, then send.'),
   h('div', { class: 'two-up' }, h('label', {}, 'First name', first), h('label', {}, 'Last name', last)),
   inputs.map(({ f, el }) => h('label', {}, f.label + (f.level === 'optional' ? ' (optional)' : ''), el)),
   fields.some(f => f.list) && h('datalist', { id: 'acc-providers' }, ['Cricket NSW', 'Cricket Australia', 'NSW Cricket Umpires & Scorers Association'].map(v => h('option', { value: v }))),
-  fields.some(f => ['dob', 'address', 'phone'].includes(f.key)) && h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to the association’s appointments officers.'),
+  fields.some(f => ['dob', 'address', 'phone'].includes(f.key)) && h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to the association.'),
   h('p', {}, btn, ' ', h('a', { class: 'btn', href: '/associations' }, 'Back')));
   return form;
 }
@@ -139,7 +139,7 @@ export function pendingCard(ctx, u) {
   return h('section', { class: 'card pending-card' },
     h('div', { class: 'avail-head' }, h('h2', {}, org.name)),
     h('p', {}, h('span', { class: 'chip warn' }, 'Waiting for approval')),
-    h('p', {}, 'Your request to join was sent', u && u.createdAt ? ` on ${fmtWhen(u.createdAt)}` : '', '. An officer of the association has to approve it before you can give your availability. We will show your availability here as soon as they do.'),
+    h('p', {}, 'Your request to join was sent', u && u.createdAt ? ` on ${fmtWhen(u.createdAt)}` : '', '. The association has to approve it before you can give your availability. We will show your availability here as soon as they do.'),
     h('p', {}, cancelButton(ctx, org)));
 }
 

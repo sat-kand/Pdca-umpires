@@ -311,7 +311,7 @@ export function missingJoinDetails(org, d) {
   return out;
 }
 // Where someone stands with an association they asked to join, in words for them.
-export const JOIN_STATUS_LABEL = { officer: 'Appointments officer', member: 'Member', applied: 'Waiting for approval', suspended: 'Suspended', rejected: 'Not approved', nonmember: 'Waiting for approval' };
+export const JOIN_STATUS_LABEL = { officer: 'Admin', member: 'Member', applied: 'Waiting for approval', suspended: 'Suspended', rejected: 'Not approved', nonmember: 'Waiting for approval' };
 export const JOIN_STATUS_CHIP = { officer: 'ok', member: 'ok', applied: 'warn', suspended: 'no', rejected: 'muted-chip', nonmember: 'warn' };
 // Active umpire this season: Available to at least one date, or a game chosen as a player umpire.
 export const isActiveUmpire = (u, avail) => canUmpire(u) && !!avail

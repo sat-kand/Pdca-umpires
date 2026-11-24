@@ -65,7 +65,7 @@ export async function viewProfile(ctx) {
   h('label', {}, 'Mobile', phone),
   h('div', { class: 'two-up' }, h('label', {}, 'Umpire accreditation number', accreditation), h('label', {}, 'Accreditation provider', provider)),
   h('datalist', { id: 'acc-providers' }, ['Cricket NSW', 'Cricket Australia', 'NSW Cricket Umpires & Scorers Association'].map(v => h('option', { value: v }))),
-  h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to your appointments officers.')],
+  h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to your association.')],
   h('p', {}, btn, ' ', existing && h('a', { class: 'btn', href: '/profile' }, 'Cancel')));
 }
 
@@ -183,9 +183,9 @@ export async function viewMy(ctx) {
   // freed and the appointments officer is told. Doing nothing means the umpire is standing.
   const rOf = g => (mine.find(m => m.g === g) || {}).r || {};
   async function decline(g, d, btn) {
-    if (!season) { toast('The season dates are not set up yet. Please tell the appointments officer.', 'err'); return; }
+    if (!season) { toast('The season dates are not set up yet. Please tell your association.', 'err'); return; }
     const key = availKey(compKeyOf(g), d.date);
-    if (!confirm(`Tell the appointments officer you can't umpire ${gradeShort(g.grade)} on ${fmtDay(d.date)}?\n\nYou will be marked "Not available" for that day and taken off the game.`)) return;
+    if (!confirm(`Tell the association you can't umpire ${gradeShort(g.grade)} on ${fmtDay(d.date)}?\n\nYou will be marked "Not available" for that day and taken off the game.`)) return;
     btn.disabled = true;
     const before = savedDays;
     const next = { ...savedDays, [key]: 'no' };
@@ -500,7 +500,7 @@ export async function viewMy(ctx) {
     lastSaved = { days: savedDays, updatedAt: new Date().toISOString() };
     playerEditing = false;
     drawPlayer(); drawStatus();
-    toast(nextPicks.length ? 'Saved. The appointments officer will see the games you chose.' : `${puTitle} saved`);
+    toast(nextPicks.length ? 'Saved. The association will see the games you chose.' : `${puTitle} saved`);
   });
   pSave.onclick = async () => { await savePlayer(); drawStatus(); };
 
@@ -520,7 +520,7 @@ export async function viewMy(ctx) {
   // One compact card for the association: a line for each group (and player umpiring), each opened and saved on its own.
   const mineCard = h('section', { class: 'card avail-card' },
     h('div', { class: 'avail-head' }, h('h2', {}, orgName)),
-    groupCards.length ? h('ul', { class: 'plain group-list' }, groupCards.map(g => g.el), playerCard) : h('p', { class: 'muted' }, COMPS.some(c => c.closed) ? 'No group is open for availability yet. Your appointments officer will open one when its dates are ready.' : 'No dates to answer yet.'));
+    groupCards.length ? h('ul', { class: 'plain group-list' }, groupCards.map(g => g.el), playerCard) : h('p', { class: 'muted' }, COMPS.some(c => c.closed) ? 'No availabilities are open yet. Your association will open them when the dates are ready.' : 'No dates to answer yet.'));
   root.append(availTitle(), mineCard);
   placeOtherOrgs(ctx, root, mineCard, u.email);
   return root;

@@ -149,7 +149,7 @@ async function render(quiet) {
         if (!m) continue;
         matched = true;
         view = adminOnly && !S.isAdmin
-          ? h('p', { class: 'notice warn' }, 'This page is only for appointments officers.')
+          ? h('p', { class: 'notice warn' }, 'This page is only for the association.')
           : await fn(...m.slice(1).map(decodeURIComponent));
         break;
       }
