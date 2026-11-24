@@ -9,15 +9,17 @@ import { h, toast, busy, routePath } from './ui.js';
 import { membershipOf, joinSettings, joinFieldsFor, missingJoinDetails, nameParts, fullName, JOIN_STATUS_LABEL, JOIN_STATUS_CHIP } from './logic.js';
 
 const byName = (a, b) => (a.name || '').localeCompare(b.name || '');
-const statusOf = st => (st.officer ? 'officer' : membershipOf(st.u));
+const statusOf = st => (st.officer && !st.u ? 'officer' : membershipOf(st.u));
 const fmtWhen = iso => (iso ? new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 
 // Where someone stands, in words: the same wording as the officer's Members table (Member, Waiting for approval, ...).
 // Where membership is not needed to umpire, someone waiting can already give their availability, and it says so.
 function standingChip(st, org) {
-  const s = statusOf(st);
+  const s = st.u ? membershipOf(st.u) : null;          // an admin with no membership row of their own has none
   const early = s === 'applied' && !joinSettings(org).membershipRequired;
-  return h('span', { class: 'standing' }, h('span', { class: 'chip ' + JOIN_STATUS_CHIP[s] }, JOIN_STATUS_LABEL[s]),
+  // Someone who is both an admin and a member shows both tags.
+  const tags = [st.officer && 'officer', s].filter(Boolean);
+  return h('span', { class: 'standing' }, tags.map(t => h('span', { class: 'chip ' + JOIN_STATUS_CHIP[t] }, JOIN_STATUS_LABEL[t])),
     early && h('span', { class: 'muted small' }, ' You can give your availability now'));
 }
 
@@ -53,7 +55,7 @@ export async function viewAssociations(ctx) {
     return h('li', { class: 'org-row', 'data-org': org.id },
       h('div', { class: 'org-main' }, h('strong', { class: 'assoc-name' }, org.name), standingChip(st, org)),
       h('div', { class: 'org-actions' },
-        h('button', { class: 'btn small', type: 'button', onclick: () => ctx.chooseOrg(org.id) }, here ? 'Open now' : 'Open'),
+        !here && h('button', { class: 'btn small', type: 'button', onclick: () => ctx.chooseOrg(org.id) }, 'Open'),
         s === 'applied' && joinSettings(org).membershipRequired && cancelButton(ctx, org)));
   };
 

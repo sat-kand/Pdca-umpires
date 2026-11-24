@@ -450,3 +450,10 @@ button.tagbtn:hover { outline: 2px solid currentColor; outline-offset: 1px; }
 @media (max-width: 600px) { .request-actions { width: 100%; } .request-actions .btn { flex: 1; padding: .55rem; } }
 .open-toggle { display: inline-flex; align-items: center; gap: .3rem; font-size: .85rem; white-space: nowrap; margin: 0; }
 .open-toggle input { margin: 0; }
+
+/* Settings > Groups: a compact row (name, grade count, open switch, remove) that does not stretch or overlap. */
+.group-row { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem 1rem; padding: .45rem 0; border-top: 1px solid var(--line); }
+.group-row:first-child { border-top: 0; }
+.group-row > input:not([type=checkbox]) { flex: 0 1 16rem; width: auto; min-width: 8rem; margin: 0; padding: .4rem .6rem; }
+.group-row > .muted { min-width: 4.5rem; white-space: nowrap; }
+@media (max-width: 640px) { .group-row > input:not([type=checkbox]) { flex: 1 1 100%; } }

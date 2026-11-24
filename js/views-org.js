@@ -138,11 +138,18 @@ export async function viewOrgSettings(ctx) {
     const chosen = Array.isArray(p.groups) ? p.groups : [];             // none until the officer ticks some
     const groupBoxes = COMPS.map(c => [c.key, h('input', { type: 'checkbox', checked: chosen.includes(c.key) })]);
     const title = h('input', { value: p.title || '', placeholder: 'Player umpire', 'aria-label': 'Name for player umpiring' });
+    const groupErr = h('p', { class: 'notice warn', hidden: true, role: 'alert' }, 'Choose at least one group, or switch player umpires off.');
+    groupBoxes.forEach(([, bx]) => bx.addEventListener('change', () => { if (groupBoxes.some(([, x]) => x.checked)) groupErr.hidden = true; }));
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
     return saveButton(h('form', { class: 'card', onsubmit: busy(saveBtn, async e => {
       e.preventDefault();
-      saved.add('playerUmpire');
       const groups = groupBoxes.filter(([, b]) => b.checked).map(([k]) => k);
+      if (on.checked && !groups.length) {                 // switched on with nowhere to choose games: nothing for members to see
+        groupErr.hidden = false; toast('Choose at least one group for player umpires', 'err');
+        return;
+      }
+      groupErr.hidden = true;
+      saved.add('playerUmpire');
       // Switched on, or given a group it did not have: new to members who already answered.
       const added = on.checked && groups.length && (!p.enabled || !(p.groups || []).length || groups.some(k => !(p.groups || []).includes(k)));
       await store.saveOrg({ playerUmpire: { ...p, enabled: on.checked, groups, title: title.value.trim(), description: text.value.trim(),
@@ -155,6 +162,7 @@ export async function viewOrgSettings(ctx) {
     h('label', { class: 'inline' }, on, ' Let members choose their own games to umpire'),
     h('p', { class: 'muted small' }, 'In these groups:'),
     h('div', { class: 'row-gap' }, groupBoxes.map(([k, b]) => h('label', { class: 'inline' }, b, ' ', COMPS.find(c => c.key === k).label))),
+    groupErr,
     h('p', { class: 'muted small' }, 'When this is off, members only give their availability. Games already chosen stay where they are.'),
     h('label', {}, 'What it is called (leave empty for "Player umpire")', title),
     h('label', {}, 'What members are told (leave empty to show nothing)', text),
@@ -208,7 +216,7 @@ export async function viewOrgSettings(ctx) {
       const used = k => grades.some(gr => groupOf(gr) === k);
       setChildren(box,
         h('h3', {}, 'Groups'),
-        h('ul', { class: 'plain group-list' }, ui.groups.map((g, i) => h('li', { class: 'row-gap' },
+        h('ul', { class: 'plain group-list' }, ui.groups.map((g, i) => h('li', { class: 'group-row' },
           h('input', { value: g.name, 'aria-label': `Group ${i + 1} name`, oninput: e => {
             g.name = e.target.value;                        // rename it in the grade drop-downs as you type
             box.querySelectorAll(`option[value="${g.key}"]`).forEach(o => { o.textContent = g.name || '(no name)'; });

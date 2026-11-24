@@ -1077,6 +1077,12 @@ with sync_playwright() as p:
     check([x.strip() for x in boxes][1:] == ["Senior", "T20", "Junior"] and not any(b.is_checked() for b in pu_form.locator("input[type=checkbox]").all()),
           f"the officer picks which groups player umpires choose from; nothing is ticked to start with, not even the switch ({boxes})")
     check("Senior round" in pu_form.locator("textarea").input_value(), "Settings has a Player umpires switch and the text members see")
+    pu_form.locator("input[type=checkbox]").first.check()
+    pu_form.locator("button:has-text('Save')").click()
+    page.wait_for_selector(".toast:has-text('at least one group')")
+    check(pu_form.locator("[role=alert]").is_visible() and page.locator(".toast:has-text('Saved')").count() == 0,
+          "player umpires cannot be saved switched on without a group ticked")
+    pu_form.locator("input[type=checkbox]").first.uncheck()
     sign_out(page)
     sign_in(page, "umpire4@demo.test")
     page.wait_for_selector(".comp-section")
@@ -1594,7 +1600,9 @@ with sync_playwright() as p:
     page.wait_for_selector(".org-list")
     check(page.locator(".org-row[data-org=pdca]").count() == 1 and page.locator(".org-row:has-text('Hills') a:has-text('Join')").count() == 1,
           "the list shows PDCA as theirs and Hills as one they can still join")
-    page.locator(".org-row[data-org=pdca] button:has-text('Open')").click()
+    check(page.locator(".org-row[data-org=pdca] button").count() == 0 and page.locator(".org-row[data-org=pdca] .chip:has-text('Admin')").count() == 1,
+          "the association they are in now has no Open button, and shows its Admin tag")
+    goto(page, BASE + "admin")
     page.wait_for_selector(".tile-round")
     page.click("nav .menu > summary")
     page.click(".menu-items .nav-link:has-text('Members')")
