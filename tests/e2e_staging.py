@@ -130,12 +130,12 @@ def run_umpire(browser):
     page.on("pageerror", lambda e: errors.append(f"PAGE ERROR (umpire): {e}"))
     try:
         sign_in(page, "umpire")
-        page.wait_for_selector("main", timeout=30000)
-        page.wait_for_timeout(2500)
+        page.wait_for_selector(".avail-card, .pending-card", timeout=60000)     # wait for the page itself, not a fixed time
+        page.wait_for_timeout(1000)
         txt = page.inner_text("body")
         check("officer" not in txt.lower(), "My availability never says officer")
         check(page.locator(".comp-section").count() > 0 or "No availabilities are open" in txt or "No dates to answer" in txt or page.locator(".pending-card").count() > 0,
-              "My availability shows groups, or says none are open")
+              f"My availability shows groups, or says none are open ({txt[:200]!r})")
         check(page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1"), "no sideways scrolling on a phone")
         go(page, "associations")
         page.wait_for_selector(".org-list", timeout=30000)
