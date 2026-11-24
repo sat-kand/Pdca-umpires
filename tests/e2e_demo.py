@@ -1914,6 +1914,14 @@ with sync_playwright() as p:
     page.click(".join-form button:has-text('Join Hills')")
     page.wait_for_selector(".avail-head h2:has-text('Hills')")
     check(page.locator(".pending-card").count() == 0 and "No dates to answer yet" in page.inner_text("main"), "with membership not required they are in at once, with no wait for approval")
+    check(page.locator(".notice.warn:has-text('Hills')").count() == 1 and "waiting for approval" in page.inner_text(".notice.warn") and "can still give your availability for" in page.inner_text(".notice.warn"),
+          "the notice names the association, says it is waiting for approval, and that availability can still be given")
+    goto(page, BASE + "associations")
+    page.wait_for_selector(".org-list")
+    hills_row = page.locator(".org-row:has-text('Hills')")
+    check("Waiting for approval" in hills_row.inner_text() and "Joined" not in hills_row.inner_text() and "give your availability now" in hills_row.inner_text(),
+          "the Associations page uses the table's wording (Waiting for approval) and says availability can be given now")
+    check("Choose the association you umpire for" not in page.inner_text("main"), "no long introduction above the list")
     sign_out(page)
     sign_in(page, "founder@demo.test", open_form=False)
     goto(page, BASE + "admin/members")

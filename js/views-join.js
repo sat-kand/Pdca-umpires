@@ -12,12 +12,13 @@ const byName = (a, b) => (a.name || '').localeCompare(b.name || '');
 const statusOf = st => (st.officer ? 'officer' : membershipOf(st.u));
 const fmtWhen = iso => (iso ? new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 
-// Where someone stands, in words. Someone who has asked to join an association that does not need approval
-// is already in, so it says so.
+// Where someone stands, in words: the same wording as the officer's Members table (Member, Waiting for approval, ...).
+// Where membership is not needed to umpire, someone waiting can already give their availability, and it says so.
 function standingChip(st, org) {
   const s = statusOf(st);
-  const open = s === 'applied' && !joinSettings(org).membershipRequired;
-  return h('span', { class: 'chip ' + (open ? 'ok' : JOIN_STATUS_CHIP[s]) }, open ? 'Joined' : JOIN_STATUS_LABEL[s]);
+  const early = s === 'applied' && !joinSettings(org).membershipRequired;
+  return h('span', { class: 'standing' }, h('span', { class: 'chip ' + JOIN_STATUS_CHIP[s] }, JOIN_STATUS_LABEL[s]),
+    early && h('span', { class: 'muted small' }, ' You can give your availability now'));
 }
 
 // Take back a request that is still waiting, then redraw wherever the person is.
@@ -58,7 +59,6 @@ export async function viewAssociations(ctx) {
 
   return h('div', { class: 'narrow-page' },
     h('h1', {}, mine.length ? 'Associations' : 'Join an association'),
-    !mine.length && h('p', { class: 'muted' }, 'Choose the association you umpire for. You will be asked for the details it needs, and its officers approve your request before you give your availability.'),
     mine.length > 0 && h('section', { class: 'card' }, h('h2', {}, 'Your associations'), h('ul', { class: 'plain org-list' }, mine.map(mineRow))),
     h('section', { class: 'card' },
       h('h2', {}, mine.length ? 'Join another association' : 'Associations on Third Umpire'),

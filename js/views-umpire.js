@@ -103,7 +103,12 @@ export async function viewMy(ctx) {
     placeOtherOrgs(ctx, root, card, u.email);
     return root;
   }
-  if (status === 'applied') root.append(h('p', { class: 'notice warn' }, 'Your membership is waiting for approval by the association. You can already give your availability.'));
+  if (status === 'applied') {
+    const name = (S.org && S.org.name) || 'the association';
+    root.append(h('div', { class: 'notice warn', role: 'status' },
+      h('strong', {}, `${name}: your membership is waiting for approval.`),
+      h('div', {}, `You can still give your availability for ${name} below while you wait.`)));
+  }
 
   // ---- what the umpire has already answered (needed by the appointments below as well)
   const existing = season ? await store.getAvailability(season.id, u.email) : null;
