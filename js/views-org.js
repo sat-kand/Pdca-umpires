@@ -196,7 +196,7 @@ export async function viewOrgSettings(ctx) {
       if (!sug.groups.length) return;
       const before = new Map(ui.groups.map(g => [g.key, g]));
       const now = new Date().toISOString();
-      ui.groups = sug.groups.map(g => ({ ...g, ...(before.has(g.key) ? (before.get(g.key).addedAt ? { addedAt: before.get(g.key).addedAt } : {}) : { addedAt: now }) }));
+      ui.groups = sug.groups.map(g => ({ ...g, ...(before.has(g.key) ? { ...(before.get(g.key).addedAt ? { addedAt: before.get(g.key).addedAt } : {}), ...(before.get(g.key).closed ? { closed: true } : {}) } : { addedAt: now }) }));
       ui.gradeGroups = Object.fromEntries(grades.map(gr => [gr, sug.compGroup[seen.get(gr)] || ui.groups[0].key]));
       ui.groups = ui.groups.filter(g => Object.values(ui.gradeGroups).includes(g.key));
       ui.gradeUmpires = {};
@@ -214,6 +214,8 @@ export async function viewOrgSettings(ctx) {
             box.querySelectorAll(`option[value="${g.key}"]`).forEach(o => { o.textContent = g.name || '(no name)'; });
           } }),
           h('span', { class: 'muted small' }, `${grades.filter(gr => groupOf(gr) === g.key).length} grades`),
+          h('label', { class: 'inline open-toggle', title: 'When off, members do not see this group on My availability' },
+            h('input', { type: 'checkbox', 'aria-label': `${g.name || 'Group'} open for availability`, checked: !g.closed, onchange: e => { if (e.target.checked) delete g.closed; else g.closed = true; } }), ' Open for availability'),
           ui.groups.length > 1 && !used(g.key) && h('button', { class: 'link', type: 'button', onclick: () => { ui.groups.splice(i, 1); draw2(); } }, 'Remove')))),
         h('button', { class: 'btn small', type: 'button', onclick: () => { ui.groups.push({ key: 'g' + Date.now().toString(36), name: 'New group', addedAt: new Date().toISOString() }); draw2(); } }, 'Add group'),
         h('h3', {}, 'Grades'),
@@ -241,7 +243,7 @@ export async function viewOrgSettings(ctx) {
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
     return saveButton(h('form', { class: 'card groups-card', onsubmit: busy(saveBtn, async e => {
       e.preventDefault();
-      const groups = ui.groups.map(g => ({ key: g.key, name: (g.name || '').trim() || 'Group', ...(g.addedAt ? { addedAt: g.addedAt } : {}) }));
+      const groups = ui.groups.map(g => ({ key: g.key, name: (g.name || '').trim() || 'Group', ...(g.addedAt ? { addedAt: g.addedAt } : {}), ...(g.closed ? { closed: true } : {}) }));
       const gradeGroups = Object.fromEntries(grades.map(gr => [gr, groupOf(gr)]));
       const gradeUmpires = Object.fromEntries(grades.map(gr => [gr, umpOf(gr)]));
       await store.saveOrg({ groups, gradeGroups, gradeUmpires, updatedAt: new Date().toISOString() });
@@ -254,7 +256,7 @@ export async function viewOrgSettings(ctx) {
       await draw();
     }) },
     h('h2', {}, 'Groups and grades'),
-    h('p', { class: 'muted' }, 'A group is a set of grades you allocate together, such as Seniors, Juniors or Friday Girls. Each has its own tile on Allocate, and members give their availability per group. Grades set to "None" never need umpires and are left off the board.'),
+    h('p', { class: 'muted' }, 'A group is a set of grades you allocate together, such as Seniors, Juniors or Friday Girls. Each has its own tile on Allocate, and members give their availability per group, and you choose which groups are open for it. Grades set to "None" never need umpires and are left off the board.'),
     box,
     h('p', { class: 'muted small' }, 'Moving a grade to another group moves its upcoming games there. Members\' availability is kept per group, so check it after moving grades.'),
     saveBtn), saveBtn, 'groups');

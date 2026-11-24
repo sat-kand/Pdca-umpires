@@ -884,7 +884,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(300)
     check(page.locator(".warn-icon").count() >= 1, "choosing them raises a warning like the others")
     page.click("details:has-text('Show warnings') summary")
-    check("Not a member in good standing" in page.inner_text("details:has-text('Show warnings')"), "the warning says they are not a member")
+    check("Not a member of this association" in page.inner_text("details:has-text('Show warnings')"), "the warning says why they cannot be appointed")
     page.locator("select.slot").first.select_option(value="")
     page.wait_for_timeout(300)
     page.click(".publish button:has-text('Re-publish')")
@@ -1729,14 +1729,14 @@ with sync_playwright() as p:
     page.wait_for_selector(".groups-card")
     gc = page.locator(".groups-card")
     check(gc.locator("button[type=submit]").is_disabled(), "Save is greyed out until something changes")
-    start_groups = [i.input_value() for i in gc.locator(".group-list input").all()]
+    start_groups = [i.input_value() for i in gc.locator(".group-list input:not([type=checkbox])").all()]
     check(sorted(start_groups) == ["Junior", "Senior", "T20"], f"PDCA's groups come from its own competitions ({start_groups})")
     check(gc.locator("table.grades-table tbody tr").count() > 5, "every grade is listed with its group and umpires needed")
     u10 = gc.locator("tr:has-text('U10')").first
     check(u10.count() == 0 or u10.locator("select").nth(1).input_value() == "0", "the youngest grades are suggested as needing no umpires")
-    gc.locator(".group-list input").first.fill("Seniors")
+    gc.locator(".group-list input:not([type=checkbox])").first.fill("Seniors")
     gc.locator("button:has-text('Add group')").click()
-    gc.locator(".group-list input").last.fill("Women")
+    gc.locator(".group-list input:not([type=checkbox])").last.fill("Women")
     women = gc.locator("tr:has-text('Senior Women')").first
     if women.count():
         women.locator("select").first.select_option(label="Women")
@@ -1767,7 +1767,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".groups-card")
     gc = page.locator(".groups-card")
     gc.locator("button:has-text('Use the suggestions')").click()
-    sug = [i.input_value() for i in gc.locator(".group-list input").all()]
+    sug = [i.input_value() for i in gc.locator(".group-list input:not([type=checkbox])").all()]
     picked = set(s.input_value() for s in gc.locator("table.grades-table tbody tr td:nth-child(3) select").all())
     check(len(sug) > 1 and len(picked) == len(sug) and "Senior" in sug, f"Use the suggestions names groups from the competitions and spreads the grades over them ({sug})")
     gc.locator("button:has-text('Save')").click()
@@ -1998,6 +1998,36 @@ with sync_playwright() as p:
     page.goto(BASE + "no/such/page")
     page.wait_for_selector(".notice.warn")
     check("Page not found" in page.inner_text("main"), "an unknown address says the page was not found")
+
+    print("\nGroups open for availability")
+    sign_out(page)
+    sign_in(page, "admin@demo.test", open_form=False)
+    page.evaluate("() => localStorage.setItem('pdca-org', 'pdca')")
+    goto(page, BASE + "admin/settings")
+    page.wait_for_selector(".groups-card .group-list")
+    toggles = page.locator(".groups-card .open-toggle input")
+    check(toggles.count() >= 2 and all(toggles.nth(i).is_checked() for i in range(toggles.count())), "every group has an Open for availability switch, on by default")
+    closed_name = page.locator(".groups-card .group-list li input:not([type=checkbox])").first.input_value()
+    toggles.first.uncheck()
+    page.click(".groups-card button:has-text('Save')")
+    page.wait_for_timeout(600)
+    sign_out(page)
+    sign_in(page, "umpire1@demo.test", open_form=False)
+    page.wait_for_selector(".comp-section")
+    titles = page.locator(".comp-section h2.comp-title").all_inner_texts()
+    check(closed_name not in titles and len(titles) >= 1, f"a group the officer closed is not offered to umpires ({closed_name} not in {titles})")
+    sign_out(page)
+    sign_in(page, "admin@demo.test", open_form=False)
+    goto(page, BASE + "admin/settings")
+    page.wait_for_selector(".groups-card .group-list")
+    check(not page.locator(".groups-card .open-toggle input").first.is_checked(), "the switch stays off after saving")
+    page.locator(".groups-card .open-toggle input").first.check()
+    page.click(".groups-card button:has-text('Save')")
+    page.wait_for_timeout(600)
+    sign_out(page)
+    sign_in(page, "umpire1@demo.test", open_form=False)
+    page.wait_for_selector(".comp-section")
+    check(closed_name in page.locator(".comp-section h2.comp-title").all_inner_texts(), "opening it again offers it to umpires")
 
     browser.close()
 

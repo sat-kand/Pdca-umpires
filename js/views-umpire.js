@@ -3,7 +3,7 @@
 import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
 import { recordWithdrawal } from './withdrawals.js';
 import { PLAYER_UMPIRE_COMPS, playerUmpireAllowed } from './player-umpire.js';
-import { fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS, groupNeedsUmpires, needsUmpires, membershipOf, joinSettings } from './logic.js';
+import { groupOpen, fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS, groupNeedsUmpires, needsUmpires, membershipOf, joinSettings } from './logic.js';
 import { otherAssociationsCard, pendingCard } from './views-join.js';
 
 export function viewLogin(ctx) {
@@ -282,7 +282,7 @@ export async function viewMy(ctx) {
       setChildren(playerBody, h('p', { class: 'muted' }, 'Loading the fixtures\u2026'));
       try {
         lists = (await store.listFixtureLists()).map(l => ({ ...l, games: (l.games || []).filter(needsUmpires) }))   // no grades set to None
-          .filter(l => PLAYER_UMPIRE_COMPS.includes(l.comp) && groupNeedsUmpires(l.comp) && (l.end || '') >= today && l.games.length).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+          .filter(l => PLAYER_UMPIRE_COMPS.includes(l.comp) && groupNeedsUmpires(l.comp) && groupOpen(l.comp) && (l.end || '') >= today && l.games.length).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
       }
       catch (e) { console.error(e); lists = []; }
     }
@@ -340,7 +340,7 @@ export async function viewMy(ctx) {
 
 
   // ---- availability: one card for each group, answered and saved on its own
-  const comps = season ? upcomingDates(season.calendar, today).filter(c => groupNeedsUmpires(c.comp)) : [];   // not groups that need no umpires
+  const comps = season ? upcomingDates(season.calendar, today).filter(c => groupNeedsUmpires(c.comp) && groupOpen(c.comp)) : [];   // not groups that need no umpires, or that the officer has not opened
   const compsOffered = comps.map(c => c.comp);
   // A status for each group and for player umpiring.
   const statusChips = Object.fromEntries([...ALL_COMPS, 'player'].map(k => [k, h('span', { class: 'chip' })]));
@@ -520,7 +520,7 @@ export async function viewMy(ctx) {
   // One compact card for the association: a line for each group (and player umpiring), each opened and saved on its own.
   const mineCard = h('section', { class: 'card avail-card' },
     h('div', { class: 'avail-head' }, h('h2', {}, orgName)),
-    groupCards.length ? h('ul', { class: 'plain group-list' }, groupCards.map(g => g.el), playerCard) : h('p', { class: 'muted' }, 'No dates to answer yet.'));
+    groupCards.length ? h('ul', { class: 'plain group-list' }, groupCards.map(g => g.el), playerCard) : h('p', { class: 'muted' }, COMPS.some(c => c.closed) ? 'No group is open for availability yet. Your appointments officer will open one when its dates are ready.' : 'No dates to answer yet.'));
   root.append(availTitle(), mineCard);
   placeOtherOrgs(ctx, root, mineCard, u.email);
   return root;
@@ -577,7 +577,7 @@ async function otherOrgCards(ctx, email, today) {
           onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(key); } } },
           h('div', { class: 'comp-headline' }, h('span', { class: 'chev', 'aria-hidden': 'true' }), h('h2', { class: 'comp-title' }, title), summary && h('span', { class: 'muted group-summary' }, summary)), chip));
       const chipOf = (sent, fresh) => h('span', { class: 'chip ' + (sent ? 'ok' : fresh ? 'new' : 'muted-chip') }, sent ? '✓ Submitted' : fresh ? 'Newly Added' : 'Not submitted');
-      const items = groups.filter(g => comps.some(c => c.comp === g.key) && groupNeedsUmpires(g.key, org.gradeGroups, org.gradeUmpires)).map(g => {
+      const items = groups.filter(g => comps.some(c => c.comp === g.key) && groupNeedsUmpires(g.key, org.gradeGroups, org.gradeUmpires) && !g.closed).map(g => {
         const keys = comps.filter(c => c.comp === g.key).flatMap(c => c.dates.map(d => availKey(g.key, d)));
         const sent = Object.keys(saved).some(x => x.startsWith(g.key + ':'));
         return line(g.key, g.name, sent ? `${keys.filter(x => saved[x] === 'yes').length} available · ${keys.filter(x => saved[x] === 'no').length} not available` : '',

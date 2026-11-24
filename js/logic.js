@@ -37,11 +37,13 @@ export function guessGroup(compName) {
 
 export function setGroups(org) {
   const list = (org && Array.isArray(org.groups) && org.groups.length) ? org.groups : DEFAULT_GROUPS;
-  COMPS.splice(0, COMPS.length, ...list.map(g => ({ key: g.key, label: g.name, ...(g.addedAt ? { addedAt: g.addedAt } : {}) })));
+  COMPS.splice(0, COMPS.length, ...list.map(g => ({ key: g.key, label: g.name, ...(g.addedAt ? { addedAt: g.addedAt } : {}), ...(g.closed ? { closed: true } : {}) })));
   GRADE_GROUP = { ...((org && org.gradeGroups) || {}) };
   GRADE_UMPIRES = { ...((org && org.gradeUmpires) || {}) };
   ORG_NAME = (org && org.name) || '';
 }
+// Whether members can give availability for a group. Every group is open unless the officer closed it in Settings.
+export const groupOpen = key => { const c = COMPS.find(x => x.key === key); return !(c && c.closed); };
 // The association's first group: where a game with no group of its own goes.
 export const firstGroup = () => (COMPS[0] ? COMPS[0].key : DEFAULT_GROUPS[0].key);
 
@@ -265,7 +267,13 @@ export function membershipOf(u) {
 }
 export const MEMBERSHIP_LABEL = { applied: 'Waiting for approval', member: 'Member', suspended: 'Suspended', rejected: 'Rejected', nonmember: 'Not a member' };
 export const MEMBERSHIP_CHIP = { applied: 'warn', member: 'ok', suspended: 'no', rejected: 'muted-chip', nonmember: 'muted-chip' };
-// Whether someone can be appointed: a member in good standing.
+// Why someone cannot be appointed, in words the officer can act on.
+export const notAppointableReason = u => ({
+  applied: 'Membership is waiting for approval',
+  suspended: 'Membership is suspended',
+  rejected: 'Membership request was not approved',
+}[membershipOf(u)] || 'Not a member of this association');
+// Whether someone can be appointed: a member (approved, and not suspended).
 export const canUmpire = u => { const m = membershipOf(u); return m === 'member' || (openUmpiring && m === 'applied'); };
 // An association can say membership is not needed to umpire (Settings -> New umpires): then someone who has asked to
 // join is treated as a member for availability and allocation, until the officer turns them down or suspends them.
@@ -400,7 +408,7 @@ export function availStatus(availByEmail, umpire, comp, date) {
 // nothing). Their choice comes first: that day they are not given any other game of that competition.
 export function assignmentWarnings({ game, date, slotIndex, umpire, availByEmail, busy, chosen = false, claimOf }) {
   const w = [];
-  if (!canUmpire(umpire)) w.push('Not a member in good standing');
+  if (!canUmpire(umpire)) w.push(notAppointableReason(umpire));
   const comp = compKeyOf(game);
   const claim = claimOf ? claimOf(umpire.pid, date, comp) : null;
   if (claim === game.id) chosen = true;

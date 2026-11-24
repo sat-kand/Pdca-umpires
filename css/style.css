@@ -448,3 +448,5 @@ button.tagbtn:hover { outline: 2px solid currentColor; outline-offset: 1px; }
 .request-details dd { margin: 0; overflow-wrap: anywhere; }
 .request-actions { display: flex; gap: .5rem; flex: none; }
 @media (max-width: 600px) { .request-actions { width: 100%; } .request-actions .btn { flex: 1; padding: .55rem; } }
+.open-toggle { display: inline-flex; align-items: center; gap: .3rem; font-size: .85rem; white-space: nowrap; margin: 0; }
+.open-toggle input { margin: 0; }

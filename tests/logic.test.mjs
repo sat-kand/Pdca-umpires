@@ -81,7 +81,7 @@ test('slotOptions groups yes / no response / non-member / allocated / unavailabl
   const quiet = slotOptions({ game: g, date: D1, slotIndex: 0, umpires: [U('u7', 'Gus', false)], availByEmail: avail({}), busy: {}, loads: {} });
   assert.equal(quiet[0].group, 'unavailable', 'a non-member who has not said they are available is not offered as available');
   const warn = assignmentWarnings({ game: g, date: D1, slotIndex: 0, umpire: U('u6', 'Fay', false), availByEmail: a, busy: {} });
-  assert.deepEqual(warn, ['Not a member in good standing']);
+  assert.deepEqual(warn, ['Membership is waiting for approval']);
   const chosen = assignmentWarnings({ game: g, date: D1, slotIndex: 0, umpire: U('u7', 'Gus'), availByEmail: avail({}), busy: {}, chosen: true });
   assert.deepEqual(chosen, [], 'a player umpire who chose the game is not warned about their date answers');
 });
@@ -425,4 +425,18 @@ test('upcomingDates can use another association\'s groups (My availability lists
   const { upcomingDates } = await import('../js/logic.js');
   const cal = [{ comp: 'bcdca-senior', dates: ['2099-01-03'] }];
   assert.equal(upcomingDates(cal, '2026-01-01', [{ key: 'bcdca-senior', label: 'BCDCA Senior' }])[0].label, 'BCDCA Senior');
+});
+
+test('a group is open for availability unless the officer closed it', async () => {
+  const { setGroups, groupOpen } = await import('../js/logic.js');
+  setGroups({ groups: [{ key: 'senior', name: 'Senior' }, { key: 'junior', name: 'Junior', closed: true }] });
+  assert.equal(groupOpen('senior'), true);
+  assert.equal(groupOpen('junior'), false);
+  setGroups({ groups: [{ key: 'all', name: 'All grades' }] });
+});
+
+test('the warning says why someone cannot be appointed', async () => {
+  const { notAppointableReason } = await import('../js/logic.js');
+  assert.match(notAppointableReason({ membership: 'applied' }), /waiting for approval/);
+  assert.match(notAppointableReason({ suspended: true }), /suspended/);
 });
