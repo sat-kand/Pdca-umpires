@@ -1942,7 +1942,6 @@ with sync_playwright() as p:
     page.wait_for_selector(".join-requests")
     req = page.locator(".join-requests .request:has-text('umpire2@demo.test')")
     check("1 May 1990" in req.inner_text() and "0400 777 888" in req.inner_text() and "Address" not in req.inner_text(), "the officer sees the details Hills asked for, and nothing it did not")
-    check("can already give their availability" in page.inner_text(".join-requests"), "and is told they can already give availability")
 
     # Not listed: an association can stop taking new requests
     sign_out(page)

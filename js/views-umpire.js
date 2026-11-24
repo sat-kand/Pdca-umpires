@@ -90,7 +90,7 @@ export async function viewMy(ctx) {
       h('div', { class: 'avail-head' }, h('h2', {}, (store.org && store.org.name) || '')),
       h('p', { class: 'muted' }, 'To give your own availability here, add your umpire details first.'),
       h('a', { class: 'btn primary', href: '/profile' }, 'Add my details')));
-    placeOtherOrgs(ctx, page, page.lastChild, S.user.email);
+    await placeOtherOrgs(ctx, page, page.lastChild, S.user.email);
     return page;
   }
   const [season, rounds] = await Promise.all([store.getSeason(), store.listRounds()]);
@@ -102,7 +102,7 @@ export async function viewMy(ctx) {
     root.append(h('section', { class: 'card' }, h('h2', {}, (store.org && store.org.name) || 'Membership'),
       h('p', {}, status === 'suspended' ? 'Your membership is suspended at the moment. Contact the association if that is not right.' : 'Your application was not approved. Contact the association if you have questions.')));
     const here = root.lastChild;
-    placeOtherOrgs(ctx, root, here, u.email);
+    await placeOtherOrgs(ctx, root, here, u.email);
     return root;
   }
   // Asked to join and not approved yet: nothing to answer until an officer approves, unless the association
@@ -110,7 +110,7 @@ export async function viewMy(ctx) {
   if (status === 'applied' && joinSettings(store.org).membershipRequired) {
     const card = pendingCard(ctx, u);
     root.append(availTitle(), card);
-    placeOtherOrgs(ctx, root, card, u.email);
+    await placeOtherOrgs(ctx, root, card, u.email);
     return root;
   }
   // ---- what the umpire has already answered (needed by the appointments below as well)
@@ -352,7 +352,7 @@ export async function viewMy(ctx) {
       h('div', { class: 'avail-head' }, h('h2', {}, orgName)),
       h('p', { class: 'muted' }, 'No dates to answer yet.'));
     root.append(availTitle(), card);
-    placeOtherOrgs(ctx, root, card, u.email);
+    await placeOtherOrgs(ctx, root, card, u.email);
     return root;
   }
   const paintChip = (c, changed, has, fresh = false) => {
@@ -525,7 +525,7 @@ export async function viewMy(ctx) {
     h('div', { class: 'avail-head head-status' }, h('h2', {}, orgName), standingChip({ officer: !!(ctx.S && ctx.S.isAdmin), u: ctx.S && ctx.S.umpire }, store.org)),
     groupCards.length ? h('ul', { class: 'plain group-list' }, groupCards.map(g => g.el), playerCard) : h('p', { class: 'muted' }, COMPS.some(c => c.closed) ? 'No availabilities are open yet. Your association will open them when the dates are ready.' : 'No dates to answer yet.'));
   root.append(availTitle(), mineCard);
-  placeOtherOrgs(ctx, root, mineCard, u.email);
+  await placeOtherOrgs(ctx, root, mineCard, u.email);
   return root;
 }
 
@@ -544,17 +544,16 @@ function summaryRow(label, sent, yes, no, fresh) {
 // Summary cards for every other association this member belongs to, read with their member access there.
 // The member's other associations, each a compact card like this one, in the same order as the menu.
 // Tapping a group line switches to that association (staying on this page) with that group open.
-function placeOtherOrgs(ctx, root, current, email) {
+// Waits for every card, so the page appears once, complete and in its final order, instead of cards arriving and pushing each other down.
+async function placeOtherOrgs(ctx, root, current, email) {
   const order = ((ctx.S && ctx.S.myOrgs) || []).map(o => o.id);
   const here = ctx.store.org && ctx.store.org.id;
-  const warn = e => console.warn('other associations', e);
-  const placed = otherOrgCards(ctx, email, todayLocal()).then(cards => {
-    for (const { orgId, el } of cards) {
-      if (order.indexOf(orgId) > -1 && order.indexOf(orgId) < order.indexOf(here)) current.before(el); else root.append(el);
-    }
-  }).catch(warn);
-  // Last: the associations still waiting for approval, and the ones they have not joined (with a Join button).
-  placed.then(() => otherAssociationsCard(ctx)).then(card => { if (card) root.append(card); }).catch(warn);
+  const warn = e => { console.warn('other associations', e); return null; };
+  const [cards, joinCard] = await Promise.all([otherOrgCards(ctx, email, todayLocal()).catch(e => warn(e) || []), otherAssociationsCard(ctx).catch(warn)]);
+  for (const { orgId, el } of cards) {
+    if (order.indexOf(orgId) > -1 && order.indexOf(orgId) < order.indexOf(here)) current.before(el); else root.append(el);
+  }
+  if (joinCard) root.append(joinCard);                 // last: associations they have not joined (with a Join button)
 }
 
 async function otherOrgCards(ctx, email, today) {

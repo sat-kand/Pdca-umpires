@@ -941,9 +941,6 @@ export async function viewUmpires(ctx) {
     const detail = (u, f) => (f.key === 'dob' && u.dob ? new Date(`${u.dob}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : u[f.key]);
     const requestsCard = () => h('section', { class: 'card join-requests' },
       h('h2', {}, `Join requests (${requests.length})`),
-      h('p', { class: 'muted small' }, needApproval
-        ? 'These umpires asked to join. They can give their availability once you approve them.'
-        : 'These umpires asked to join and can already give their availability. Approve them to make them members.'),
       h('ul', { class: 'plain request-list' }, requests.map(u => h('li', { class: 'request', 'data-pid': u.pid },
         h('div', { class: 'request-main' },
           h('div', {}, profileLink(u), u.createdAt && h('span', { class: 'muted small' }, ` \u00b7 asked ${new Date(u.createdAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}`)),

@@ -138,8 +138,9 @@ async function render(quiet) {
   if (next && !join) { localStorage.removeItem(NEXT_KEY); go('/join/' + encodeURIComponent(next)); return; }
   if (joinId && (S.myOrgs || []).some(o => o.id === joinId)) { await chooseOrg(joinId); return; }   // already in it (or waiting): just open it
   if (S.user && S.org && S.isAdmin && path === '/') { go('/admin'); return; }
-  shownPath = null;                                    // the spinner's scroll position is not anyone's
-  if (quiet !== true) setChildren(main, spinner());       // a refresh on returning to the tab keeps the page as it is until the new one is ready
+  shownPath = null;
+  // The page on screen stays until the next one is ready (dimmed if that takes a moment); only an empty screen gets the ring.
+  if (quiet !== true) { if (main.querySelector('.loading') || !main.firstElementChild) setChildren(main, spinner()); else main.classList.add('busy'); }
   let view;
   try {
     if (!S.user) view = viewLogin(ctx);
@@ -165,7 +166,11 @@ async function render(quiet) {
       /permission|insufficient/i.test(String(e.message)) ? h('p', {}, 'This usually means this email is not allowed to see this page, or the database permissions have not been set up.') : null);
   }
   if (id !== renderId) return; // a newer navigation superseded this one
+  const fresh = main.dataset.path !== path;            // a new page fades in; redrawing the same page swaps in place
+  main.classList.remove('busy');
   setChildren(main, view);
+  main.dataset.path = path;
+  if (fresh) { main.classList.remove('enter'); void main.offsetWidth; main.classList.add('enter'); }
   restoreScroll(path);
 }
 
@@ -194,7 +199,7 @@ function restoreScroll(path) {
 }
 
 async function boot() {
-  setChildren(main, spinner('Starting…'));
+  // index.html already shows the loading ring: leave it, so nothing changes until the first page is ready.
   try {
     if (CONFIG.supabase && CONFIG.supabase.url) {
       const { createSupabaseStore } = await import('./store-supabase.js');

@@ -466,3 +466,14 @@ button.tagbtn:hover { outline: 2px solid currentColor; outline-offset: 1px; }
 .org-row { flex-wrap: nowrap; }
 .org-row > .assoc-name, .org-row > .org-main { flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; }
 .org-row > .btn, .org-row > .org-actions { flex: 0 0 auto; }
+
+/* Loading and page changes: no text that changes, no flashes. */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.loading { display: flex; justify-content: center; padding: 3.5rem 0; opacity: 0; animation: appear .2s ease .35s forwards; }
+.loading .ring { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--green); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes appear { to { opacity: 1; } }
+main.busy > * { opacity: .55; transition: opacity .2s ease .25s; pointer-events: none; }
+main.enter > * { animation: page-in .18s ease-out; }
+@keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { main.enter > *, .loading, .loading .ring { animation: none; opacity: 1; } main.busy > * { transition: none; } }

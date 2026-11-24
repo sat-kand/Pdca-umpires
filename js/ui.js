@@ -45,7 +45,8 @@ export async function copyText(text) {
   }
 }
 
-export const spinner = (msg = 'Loading…') => h('p', { class: 'muted center pad' }, msg);
+// One loading look everywhere: a small ring that only appears if loading takes a moment (no flash for quick pages).
+export const spinner = (msg = 'Loading…') => h('div', { class: 'loading', role: 'status' }, h('span', { class: 'ring', 'aria-hidden': 'true' }), h('span', { class: 'sr-only' }, msg));
 
 // Wrap an async click handler: disables the button, shows errors as toasts.
 export function busy(btn, fn) {
