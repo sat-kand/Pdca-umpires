@@ -52,7 +52,7 @@ def sign_in(page, who):
     page.goto(BASE)
     page.wait_for_selector("#login-email, .who", timeout=30000)
     if not page.locator("#pw-email").count():
-        raise RuntimeError("The test sign-in is not on this site. Set PASSWORD_LOGIN=1 for the staging build (Cloudflare Pages, Preview environment).")
+        raise RuntimeError("The test sign-in is not on this site. Set PASSWORD_LOGIN=1 for the staging build (Cloudflare Pages project third-umpire-staging, Variables and secrets).")
     page.fill("#pw-email", email)
     page.fill("#pw-password", password)
     page.click("#pw-submit")

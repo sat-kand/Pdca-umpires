@@ -162,7 +162,7 @@ the Members table; an umpire's My availability and Associations list on a phone;
 the request, and the request being taken back so the test leaves nothing behind.
 
 One-time setup (staging only):
-1. **Cloudflare Pages -> the project -> Settings -> Environment variables -> Preview:** add `PASSWORD_LOGIN` = `1`, then redeploy `staging`.
+1. **Cloudflare Pages -> `third-umpire-staging` -> Settings -> Variables and secrets (the Production environment: that project's production branch is `staging`):** add `PASSWORD_LOGIN` = `1`, then redeploy.
    This shows a "Test accounts" password sign-in. It only accepts addresses ending `@thirdumpire.test`. Never set it on production.
 2. **Supabase (staging) -> Authentication -> Users -> Add user** (tick Auto Confirm User): `test-officer@thirdumpire.test`,
    `test-umpire@thirdumpire.test`, `test-applicant@thirdumpire.test`, each with its own long random password.
