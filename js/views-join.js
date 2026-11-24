@@ -60,7 +60,7 @@ export async function viewAssociations(ctx) {
     h('h1', {}, mine.length ? 'Associations' : 'Join an association'),
     mine.length > 0 && h('section', { class: 'card' }, h('h2', {}, 'Your associations'), h('ul', { class: 'plain org-list' }, mine.map(mineRow))),
     h('section', { class: 'card' },
-      h('h2', {}, mine.length ? 'Join another association' : 'Associations on Third Umpire'),
+      mine.length > 0 && h('h2', {}, 'Join another association'),        // with nothing joined yet, the page heading already says it
       toJoin.length
         ? h('ul', { class: 'plain org-list' }, toJoin.map(joinRow))
         : h('p', { class: 'muted' }, mine.length ? 'There are no other associations to join yet.' : 'No association has joined Third Umpire yet. If yours should be here, ask your association to get in touch.')));

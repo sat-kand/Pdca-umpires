@@ -228,11 +228,12 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; }
   border-radius: 10px; padding: .3rem; box-shadow: 0 8px 24px rgba(0,0,0,.18); display: grid; }
 .menu-items .nav-link { color: var(--ink); padding: .45rem .6rem; border-radius: 7px; opacity: 1; }
 .menu-items .nav-link:hover { background: var(--green-l); }
-.who-menu .menu-items { left: auto; right: 0; min-width: 13rem; max-width: calc(100vw - 1.5rem); }
+.who-menu .menu-items { left: auto; right: 0; min-width: 13rem; width: max-content; max-width: calc(100vw - 1.5rem); }
 .who-menu > summary { display: flex; align-items: center; gap: .45rem; padding: .2rem .35rem; border-radius: 999px; }
 .who-menu > summary:hover { background: rgba(255,255,255,.12); text-decoration: none; }
 .avatar { width: 2rem; height: 2rem; border-radius: 50%; background: #fff; color: var(--green); display: inline-grid; place-items: center; font-weight: 700; font-size: .85rem; }
-.menu-head { display: grid; padding: .45rem .6rem .35rem; color: var(--ink); overflow-wrap: anywhere; } .menu-head .muted { color: var(--muted); }
+.menu-head { display: grid; padding: .45rem .6rem .35rem; color: var(--ink); min-width: 0; }
+.menu-head > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* a long email stays on one line */ .menu-head .muted { color: var(--muted); }
 .menu-items hr { border: 0; border-top: 1px solid var(--line); margin: .25rem 0; width: 100%; }
 .menu-signout { background: none; border: 0; text-align: left; font: inherit; cursor: pointer; color: var(--red) !important; }
 .mode { display: flex; gap: .7rem; align-items: flex-start; padding: .55rem 0; cursor: pointer; }
@@ -460,3 +461,8 @@ button.tagbtn:hover { outline: 2px solid currentColor; outline-offset: 1px; }
 
 .head-status { display: flex; align-items: center; flex-wrap: wrap; gap: .3rem .7rem; }
 .head-status h2 { margin: 0; }
+
+/* Association rows: the name takes the room and wraps by words; the button stays on the right of the same line. */
+.org-row { flex-wrap: nowrap; }
+.org-row > .assoc-name, .org-row > .org-main { flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; }
+.org-row > .btn, .org-row > .org-actions { flex: 0 0 auto; }

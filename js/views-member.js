@@ -317,7 +317,7 @@ export async function viewPersonProfile(ctx) {
           row('Accreditation no.', p.accreditation), row('Accreditation provider', p.accreditationProvider),
           h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to the associations you join.')),
         h('section', { class: 'card' }, h('h2', {}, 'My associations'),
-          h('p', { class: 'muted' }, 'You are not in an association yet. Your details here are filled in when you ask to join one.'),
+          h('p', { class: 'muted' }, 'You are not in an association yet.'),
           h('a', { class: 'btn primary', href: '/associations' }, 'Join an association')));
       return;
     }
