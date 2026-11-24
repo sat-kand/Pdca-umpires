@@ -73,8 +73,10 @@ def api(page, method, path, body=None):
 
 
 def go(page, path):
-    page.evaluate("p => { history.pushState(null, '', p); window.dispatchEvent(new Event('route')); }", "/" + path.lstrip("/"))
-    page.wait_for_timeout(400)
+    p = "/" + path.lstrip("/")
+    page.evaluate("p => { history.pushState(null, '', p); window.dispatchEvent(new Event('route')); }", p)
+    # the old page stays on screen until the new one is ready: wait for the new one, not for whatever is showing
+    page.wait_for_function("p => document.querySelector('main').dataset.path === p && !document.querySelector('main.busy')", arg=p, timeout=60000)
 
 
 def section(title):
