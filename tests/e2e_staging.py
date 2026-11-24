@@ -108,8 +108,10 @@ def run_officer(browser):
         grade_comps = ((cfg["body"] or [{}])[0].get("config") or {}).get("gradeComps") or {}
         check(len(grade_comps) >= 1, "the grade list from PlayHQ was saved (gradeComps)")
         shown = [r.locator("td").first.locator("span.muted").inner_text().strip() for r in rows.all()]   # the full grade name (the chip beside it is the short form)
-        stale = [g for g in shown if g and not any(g == k or g in k or k in g for k in grade_comps)]
-        check(not stale, f"every grade in Settings came from the last PlayHQ fetch (stale: {stale[:3]})")
+        norm = lambda x: " ".join(str(x).split())                        # the page collapses runs of spaces; so compare without them
+        keys = [norm(k) for k in grade_comps]
+        stale = [g for g in shown if g and norm(g) not in keys]
+        check(not stale, f"every grade in Settings came from the last PlayHQ fetch (stale: {stale[:3]}; the saved list has {len(keys)}: {[k for k in keys if "T20" in k][:4]})")
         # Members
         go(page, "admin/members")
         page.wait_for_selector("table.members, .muted", timeout=30000)
