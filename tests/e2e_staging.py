@@ -163,6 +163,10 @@ def run_applicant(browser, officer_page):
         check(join.count() == 1, "a new person sees Parramatta in the list to join")
         join.click()
         page.wait_for_selector(".join-form", timeout=30000)
+        for i, val in enumerate(("Test", "Applicant")):                   # first and last name: new people have no profile to fill them in
+            f = page.locator(".join-form input").nth(i)
+            if not f.input_value():
+                f.fill(val)
         for key, val in (("phone", "0400 000 000"), ("dob", "1990-01-01"), ("address", "1 Test St"), ("accreditation", "T-0001")):
             f = page.locator(f".join-form input[data-field={key}]")
             if f.count() and not f.input_value():
