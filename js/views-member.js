@@ -294,6 +294,55 @@ export async function viewMyProfile(ctx) {
     !sections.some(Boolean) && h('p', { class: 'muted' }, 'No memberships yet.'));
 }
 
+// The profile of someone who is not a member of any association yet (a new sign-up, or an officer with no
+// membership): every detail an association can ask for, as it stands, with a way to add or change any of it.
+export async function viewPersonProfile(ctx) {
+  const { store, S } = ctx;
+  const email = S.user.email;
+  const mine = { current: (store.getProfile ? await store.getProfile(email) : null) || {} };
+  const FIELDS = [['phone', 'Mobile', 'tel'], ['dob', 'Date of birth', 'date'], ['address', 'Address', 'text'],
+    ['accreditation', 'Umpire accreditation number', 'text'], ['accreditationProvider', 'Accreditation provider', 'text']];
+  const root = h('div', { class: 'member-profile' });
+  let editing = false;
+  const draw = () => {
+    const p = mine.current, n = nameParts(p);
+    const row = (label, value) => h('div', { class: 'kv' }, h('span', { class: 'muted' }, label), h('span', {}, value || '—'));
+    if (!editing) {
+      setChildren(root,
+        h('div', { class: 'row-between' }, h('h1', {}, p.name || `${n.firstName} ${n.lastName}`.trim() || 'My details'),
+          h('span', { class: 'row-gap' }, h('button', { class: 'btn primary', type: 'button', onclick: () => { editing = true; draw(); } }, 'Edit my details'), ' ', h('a', { class: 'btn', href: '/' }, '← Home'))),
+        h('section', { class: 'card' }, h('h2', {}, 'My details'),
+          row('First name', n.firstName), row('Last name', n.lastName), row('Email', email), row('Mobile', p.phone),
+          row('Date of birth', fmtLong(p.dob)), row('Address', p.address),
+          row('Accreditation no.', p.accreditation), row('Accreditation provider', p.accreditationProvider),
+          h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to the associations you join.')),
+        h('section', { class: 'card' }, h('h2', {}, 'My associations'),
+          h('p', { class: 'muted' }, 'You are not in an association yet. Your details here are filled in when you ask to join one.'),
+          h('a', { class: 'btn primary', href: '/associations' }, 'Join an association')));
+      return;
+    }
+    const first = h('input', { required: true, value: n.firstName, autocomplete: 'given-name' });
+    const last = h('input', { required: true, value: n.lastName, autocomplete: 'family-name' });
+    const inputs = FIELDS.map(([k, label, type]) => [k, label, h('input', { type, value: p[k] || '', placeholder: 'Optional', ...(k === 'accreditationProvider' ? { list: 'acc-providers' } : {}) })]);
+    const btn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
+    setChildren(root, h('form', { class: 'card narrow', onsubmit: busy(btn, async e => {
+      e.preventDefault();
+      const next = { email, firstName: first.value.trim(), lastName: last.value.trim(), name: `${first.value.trim()} ${last.value.trim()}`.trim() };
+      for (const [k, , el] of inputs) next[k] = el.value.trim();
+      await store.saveProfile(next);
+      mine.current = { ...mine.current, ...next };
+      editing = false; toast('Details saved'); draw();
+    }) },
+    h('h1', {}, 'My details'),
+    h('div', { class: 'two-up' }, h('label', {}, 'First name', first), h('label', {}, 'Last name', last)),
+    inputs.map(([, label, el]) => h('label', {}, label, el)),
+    h('datalist', { id: 'acc-providers' }, ['Cricket NSW', 'Cricket Australia', 'NSW Cricket Umpires & Scorers Association'].map(v => h('option', { value: v }))),
+    h('p', {}, btn, ' ', h('button', { class: 'btn', type: 'button', onclick: () => { editing = false; draw(); } }, 'Cancel'))));
+  };
+  draw();
+  return root;
+}
+
 async function membershipSection(org, view, u, today) {
   const season = await view.getSeason();
   const [avail, rounds] = await Promise.all([season ? view.getAvailability(season.id, u.email) : null, view.listRounds()]);

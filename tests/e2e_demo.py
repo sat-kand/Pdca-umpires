@@ -1616,7 +1616,7 @@ with sync_playwright() as p:
     sign_out(page)
     sign_in(page, "umpire2@demo.test", open_form=False)
     page.click(".who-name")
-    check([t.strip() for t in page.locator(".who-menu .nav-link").all_inner_texts()] == ["My profile", "My availability", "Associations", "Sign out"], "the account menu: My profile, My availability, Associations, then Sign out")
+    check([t.strip() for t in page.locator(".who-menu .nav-link").all_inner_texts()] == ["My profile", "Associations", "Sign out"], "the account menu for an umpire: My profile, Associations, then Sign out (they land on My availability, so no link to it)")
     page.set_viewport_size({"width": 390, "height": 800})
     box = page.locator(".who-menu .menu-items").bounding_box()
     check(box["x"] >= 0 and box["x"] + box["width"] <= 390, f"on a phone the menu stays on screen ({box})")
@@ -1919,7 +1919,7 @@ with sync_playwright() as p:
     other.locator(".org-row:has-text('Hills') a:has-text('Join')").click()
     page.wait_for_selector(".join-form")
     got = [page.locator(".join-form input").nth(0).input_value(), page.locator(".join-form input").nth(1).input_value(), page.locator(".join-form input[data-field=accreditationProvider]").input_value()]
-    check(got == ["D", "Everton", "Cricket NSW"] and "filled in what we already have" in page.inner_text(".join-form"), f"details already on their profile are filled in ({got})")
+    check(got == ["D", "Everton", "Cricket NSW"] and "filled in what we already have" not in page.inner_text(".join-form"), f"details already on their profile are filled in, with no notice about it ({got})")
     page.fill(".join-form input[data-field=phone]", "0400 777 888")
     check(page.locator(".join-form input[data-field=address]").count() == 0 and page.locator(".join-form input[data-field=dob][required]").count() == 1,
           "the form follows that association's settings: no address, date of birth required")
@@ -2007,6 +2007,39 @@ with sync_playwright() as p:
     goto(page, BASE + "admin/members")
     page.wait_for_selector("table.members")
     check(page.locator(".join-requests .request:has-text('cancelme@demo.test')").count() == 0, "the officer no longer sees the request")
+
+    print("Profile for someone not in an association yet")
+    sign_out(page)
+    sign_in(page, "fresh@demo.test", open_form=False)
+    page.wait_for_selector(".org-list")
+    page.click(".who-name")
+    check(page.locator(".menu-items a:has-text('My availability')").count() == 0 and page.locator(".menu-items a:has-text('My profile')").count() == 1,
+          "an umpire's menu has no My availability link (they land on it); My profile is there")
+    page.click(".menu-items a:has-text('My profile')")
+    page.wait_for_selector(".member-profile")
+    txt = page.inner_text(".member-profile")
+    check(all(x in txt for x in ["First name", "Last name", "Email", "Mobile", "Date of birth", "Address", "Accreditation no.", "Accreditation provider"]) and "fresh@demo.test" in txt,
+          "a new sign-up can open their profile: every detail an association can ask for, with their email")
+    page.click(".member-profile button:has-text('Edit my details')")
+    page.wait_for_selector("form.narrow")
+    page.locator("form.narrow input").nth(0).fill("Fiona")
+    page.locator("form.narrow input").nth(1).fill("Fresh")
+    page.locator("form.narrow input[type=tel]").fill("0400 123 456")
+    page.locator("form.narrow input[type=date]").fill("1991-02-03")
+    page.locator("form.narrow label:has-text('Umpire accreditation number') input").fill("A-77")
+    page.locator("form.narrow label:has-text('Accreditation provider') input").fill("Cricket NSW")
+    page.click("form.narrow button[type=submit]")
+    page.wait_for_selector(".member-profile .kv")
+    txt = page.inner_text(".member-profile")
+    check("Fiona" in txt and "0400 123 456" in txt and "A-77" in txt and "Cricket NSW" in txt and "3 Feb 1991" in txt, "they can add and save their details from there")
+    goto(page, BASE + "associations")
+    page.wait_for_selector(".org-list")
+    page.locator(".org-row:has-text('Parramatta') a:has-text('Join')").click()
+    page.wait_for_selector(".join-form")
+    check(page.locator(".join-form input").nth(0).input_value() == "Fiona" and page.locator(".join-form input[data-field=accreditation]").input_value() == "A-77",
+          "and the join form already has those details")
+    sign_out(page)
+    sign_in(page, "admin@demo.test", open_form=False)
 
     print("\nClean URLs")
     # the officer is signed in (demo): real page loads, not in-app moves

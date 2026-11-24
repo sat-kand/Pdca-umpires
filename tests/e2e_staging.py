@@ -159,6 +159,11 @@ def run_applicant(browser, officer_page):
         page.wait_for_selector("main", timeout=30000)
         page.wait_for_timeout(1500)
         api(page, "DELETE", f"memberships?association_id=eq.pdca&email=eq.{email}")      # start clean
+        go(page, "profile")                                                    # a new sign-up can open their profile
+        page.wait_for_selector(".member-profile", timeout=30000)
+        txt = page.inner_text(".member-profile")
+        check(all(x in txt for x in ("Mobile", "Date of birth", "Accreditation no.", "Accreditation provider")) and email in txt,
+              "a new sign-up's profile opens and shows every detail an association can ask for")
         go(page, "associations")
         page.wait_for_selector(".org-list", timeout=30000)
         join = page.locator(f".org-row:has-text('{ORG_NAME}') a:has-text('Join')")

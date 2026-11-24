@@ -63,6 +63,8 @@ export function createDemoStore() {
         const u = x.umpires[email];
         if (u) for (const k of ['firstName', 'lastName', 'name', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider']) if (u[k] && !out[k]) out[k] = u[k];
       }
+      const own = (db.profiles || {})[email];                        // details saved by someone not in any association yet
+      if (own) for (const k of Object.keys(own)) if (own[k] && !out[k]) out[k] = own[k];
       return Object.keys(out).length ? { email, ...out } : null;
     },
     async listStandings(email) {
@@ -73,6 +75,17 @@ export function createDemoStore() {
         if (u || officer) out.push({ orgId: id, u: u ? clone(u) : null, officer });
       }
       return out;
+    },
+    // A person's own details, kept whether or not they are in an association.
+    async saveProfile(details) {
+      fresh();
+      const keep = ['firstName', 'lastName', 'name', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider'];
+      (db.profiles ||= {})[details.email] = Object.fromEntries(keep.filter(k => k in details).map(k => [k, details[k]]));
+      for (const x of Object.values(db.orgs)) {                       // and on every association's copy
+        const u = x.umpires[details.email];
+        if (u) Object.assign(u, clone(db.profiles[details.email]));
+      }
+      save();
     },
     async joinOrg(orgId, details) {
       fresh();

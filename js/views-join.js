@@ -83,8 +83,6 @@ export async function viewJoin(ctx, orgId) {
   const inputs = fields.map(f => ({ f, el: h('input', {
     type: f.type, value: profile[f.key] || '', autocomplete: f.autocomplete || 'off', list: f.list, 'data-field': f.key,
     ...(f.level === 'required' ? { required: true } : { placeholder: 'Optional' }) }) }));
-  // Anything we already have is filled in; say so, so they know to check it rather than retype it.
-  const filled = (nm.firstName || nm.lastName ? 1 : 0) + inputs.filter(x => x.el.value).length;
 
   const btn = h('button', { class: 'btn primary', type: 'submit' }, set.membershipRequired ? 'Request to join' : `Join ${org.name}`);
   const form = h('form', { class: 'card narrow join-form', onsubmit: busy(btn, async e => {
@@ -102,7 +100,6 @@ export async function viewJoin(ctx, orgId) {
   h('p', { class: 'muted' }, set.membershipRequired
     ? 'Send your details to the association. The association will approve your request.'
     : 'Send your details to the association. You can give your availability straight away.'),
-  filled > 0 && h('p', { class: 'notice' }, 'We have filled in what we already have from your profile. Check it, then send.'),
   h('div', { class: 'two-up' }, h('label', {}, 'First name', first), h('label', {}, 'Last name', last)),
   inputs.map(({ f, el }) => h('label', {}, f.label + (f.level === 'optional' ? ' (optional)' : ''), el)),
   fields.some(f => f.list) && h('datalist', { id: 'acc-providers' }, ['Cricket NSW', 'Cricket Australia', 'NSW Cricket Umpires & Scorers Association'].map(v => h('option', { value: v }))),

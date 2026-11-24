@@ -169,6 +169,8 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
       const p = await one(sb.from('people').select('*').eq('email', email));
       return p ? rowToUmpire({ pid: '', email, people: p }) : null;
     },
+    // A person's own details (name, mobile, date of birth, address, accreditation), kept whether or not they are in an association.
+    async saveProfile(details) { await ok(sb.from('people').upsert(personRow({ ...details, email: (details.email || me).toLowerCase() }))); },
     // Where this person stands in every association they have asked to join or officiate for.
     async listStandings(email) {
       const [m, o] = await Promise.all([

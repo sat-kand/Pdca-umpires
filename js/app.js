@@ -1,5 +1,5 @@
 import { applyOrg } from './org-setup.js';
-import { viewMember, viewMyProfile } from './views-member.js';
+import { viewMember, viewMyProfile, viewPersonProfile } from './views-member.js';
 import { CONFIG, DEMO_ORG } from './config.js';
 import { h, setChildren, spinner, toast, navigate, routePath } from './ui.js';
 import { createDemoStore } from './store-demo.js';
@@ -118,7 +118,7 @@ function drawHeader() {
             h('summary', { class: 'who-name', 'aria-label': 'Account menu' }, h('span', { class: 'avatar' }, initials), h('span', { class: 'who-label' }, name)),
             h('div', { class: 'menu-items' },
               h('div', { class: 'menu-head' }, h('strong', {}, name), name !== S.user.email && h('span', { class: 'muted small' }, S.user.email)),
-              link('/profile', 'My profile'), link('/my', 'My availability'), link('/associations', 'Associations'),
+              link('/profile', 'My profile'), S.isAdmin && link('/my', 'My availability'), link('/associations', 'Associations'),   // umpires land on it, so only admins need the link
               ...(S.isAdmin || !(S.officerIn || []).length ? [] : switchItems()),   // only officers switch; everyone else sees all their associations on My availability
               h('hr'),
               h('button', { class: 'nav-link menu-signout', type: 'button', onclick: async () => { await S.store.signOut(); await loadUser(null); navigate('/'); } }, 'Sign out'))));
@@ -144,6 +144,7 @@ async function render(quiet) {
   try {
     if (!S.user) view = viewLogin(ctx);
     else if (joinId) view = await viewJoin(ctx, joinId);                 // the details that association asks for
+    else if (!S.umpire && /^\/profile(\/edit)?$/.test(path)) view = await viewPersonProfile(ctx);     // not in an association yet: still their own details
     else if (!S.org || path === '/associations' || (!S.umpire && !S.isAdmin)) view = await viewAssociations(ctx);   // new here: choose an association to join
     else {
       let matched = false;
