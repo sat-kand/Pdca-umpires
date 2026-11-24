@@ -23,7 +23,7 @@ import { syncFixtures, refreshRound, currentRound, visibleRounds, needsSync, add
 const EDIT_DAYS_AFTER = 4;
 // Suspended or rejected: not offered for games and left off availability sheets.
 const barred = u => ['suspended', 'rejected'].includes(membershipOf(u));
-const homeMembers = { filter: 'all', q: '', picked: new Set(), importOpen: false, comp: '', avail: { importOpen: true } };   // kept while the page is open
+const homeMembers = { filter: 'all', q: '', importOpen: false, comp: '', avail: { importOpen: true } };   // kept while the page is open
 const editableUntil = r => addDays(r.end || r.start || '', EDIT_DAYS_AFTER);
 const isLocked = (r, today = todayLocal()) => !!(r && (r.end || r.start)) && editableUntil(r) < today;
 
@@ -895,8 +895,8 @@ export async function viewUmpires(ctx) {
       holder);
   }
 
-  // The list: waiting for approval first, then everyone else, by last name. Approve or reject here
-  // (one at a time or ticked together); suspending is done on the member's profile.
+  // The list: waiting for approval first, then everyone else, by last name. Approving and rejecting is done in the
+  // Join requests card above it (or on the member's profile); so is suspending.
   const FILTERS = [['all', 'All'], ['active', 'Active umpires'], ['inactive', 'Inactive members'], ['applied', 'Waiting for approval'],
     ['suspended', 'Suspended'], ['rejected', 'Rejected'], ['nonmember', 'Not members']];
   const inFilter = u => { const st = statusOf(u); return ui.filter === 'all' ? !['rejected', 'nonmember'].includes(st) : st === ui.filter; };
@@ -907,16 +907,9 @@ export async function viewUmpires(ctx) {
       await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
       if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error('membership link', e));
     }
-    ui.picked.clear();
     draw();
     if (ctx.refreshPending) ctx.refreshPending();                // the count beside My Organisation
   })();
-  // What a bulk action can be applied to.
-  const CAN = {
-    approve: u => ['applied', 'rejected', 'nonmember'].includes(membershipOf(u)),
-    reject: u => membershipOf(u) === 'applied',
-  };
-
   const draw = () => {
     const by = s2 => members.filter(u => statusOf(u) === s2);
     const active = by('active'), inactive = by('inactive');
@@ -926,8 +919,6 @@ export async function viewUmpires(ctx) {
     const q = ui.q.trim().toLowerCase();
     const shown = members.filter(u => inFilter(u) && (!q || `${u.name} ${u.email}`.toLowerCase().includes(q)))
       .sort((a, b) => Number(membershipOf(b) === 'applied') - Number(membershipOf(a) === 'applied') || compareMembers(a, b));
-    for (const pid of [...ui.picked]) if (!shown.some(u => u.pid === pid)) ui.picked.delete(pid);
-    const picked = shown.filter(u => ui.picked.has(u.pid));
 
     // Umpiring: from this season's availability (Available to at least one date = Active umpire).
     const umpiringCell = u => {
@@ -935,19 +926,14 @@ export async function viewUmpires(ctx) {
       const on = statusOf(u) === 'active';
       return h('span', { class: 'chip ' + (on ? 'ok' : 'muted-chip'), title: on ? 'Available to at least one date this season' : 'No date marked Available this season' }, on ? 'Active umpire' : 'Inactive member');
     };
-    // Membership: Approve for someone waiting; otherwise where they stand.
+    // Membership: where they stand.
     const membershipCell = u => {
       const m = membershipOf(u);
-      if (m === 'applied') return h('button', { type: 'button', class: 'btn small primary', onclick: () => change([u], 'approve') }, 'Approve');
       return h('span', { class: 'chip ' + MEMBERSHIP_CHIP[m] }, MEMBERSHIP_LABEL[m]);
     };
-    const all = h('input', { type: 'checkbox', 'aria-label': 'Select all shown', checked: shown.length > 0 && picked.length === shown.length,
-      onchange: e => { for (const u of shown) e.target.checked ? ui.picked.add(u.pid) : ui.picked.delete(u.pid); draw(); } });
-    const bulk = (kind, label, cls = '') => { const n = picked.filter(CAN[kind]).length;
-      return h('button', { type: 'button', class: `btn small ${cls}`, disabled: !n, onclick: () => change(picked.filter(CAN[kind]), kind) }, `${label}${n ? ` (${n})` : ''}`); };
     const search = h('input', { type: 'search', class: 'member-search', placeholder: 'Search by name or email', value: ui.q, 'aria-label': 'Search members' });
     search.oninput = () => { ui.q = search.value; draw(); const s2 = wrap.querySelector('.member-search'); if (s2) { s2.focus(); s2.setSelectionRange(s2.value.length, s2.value.length); } };
-    const COLS = [all, 'Name', 'Umpiring', 'Membership', 'Membership type'];
+    const COLS = ['Name', 'Umpiring', 'Membership', 'Membership type'];
     // People who have asked to join, with the details they gave (the list below keeps those off the page).
     const requests = members.filter(u => membershipOf(u) === 'applied').sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || '') || compareMembers(a, b));
     const needApproval = joinSettings(store.org).membershipRequired;
@@ -975,14 +961,9 @@ export async function viewUmpires(ctx) {
         h('div', { class: 'member-tools' }, search,
           h('select', { 'aria-label': 'Show', onchange: e => { ui.filter = e.target.value; draw(); } },
             filters.map(([k, label]) => h('option', { value: k, selected: ui.filter === k }, `${label} (${counts[k]})`)))),
-        picked.length > 0 && h('div', { class: 'bulk-bar' }, h('strong', {}, `${picked.length} selected`),
-          bulk('approve', 'Approve', 'primary'), bulk('reject', 'Reject', 'danger'),
-          h('button', { type: 'button', class: 'link', onclick: () => { ui.picked.clear(); draw(); } }, 'Clear')),
         shown.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'board members' },        // stacks into cards on a phone
           h('thead', {}, h('tr', {}, COLS.map(c => h('th', {}, c)))),
           h('tbody', {}, shown.map(u => { const st = statusOf(u); return h('tr', { class: st === 'applied' ? 'needs' : st === 'active' ? '' : 'inactive', 'data-pid': u.pid },
-            h('td', {}, h('input', { type: 'checkbox', 'aria-label': 'Select', checked: ui.picked.has(u.pid),
-              onchange: e => { e.target.checked ? ui.picked.add(u.pid) : ui.picked.delete(u.pid); draw(); } })),
             h('td', {}, profileLink(u)),
             h('td', {}, umpiringCell(u)),
             h('td', {}, membershipCell(u)),

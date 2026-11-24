@@ -705,8 +705,8 @@ with sync_playwright() as p:
     check(page.locator("h1").first.inner_text() == "Members", "the Umpires page is now called Members")
     check(page.locator(".join-requests .request").count() == 5, "a Join requests card lists everyone waiting")
     check("0400 111 222" in page.locator(".join-requests .request:has-text('newbie@demo.test')").inner_text(), "it shows the details they gave when they asked to join")
-    check([t.strip() for t in page.locator("table.members thead th").all_inner_texts()] == ["", "NAME", "UMPIRING", "MEMBERSHIP", "MEMBERSHIP TYPE"],
-          "the Members list: a select box, name, umpiring, membership and membership type (member since is on the profile)")
+    check([t.strip() for t in page.locator("table.members thead th").all_inner_texts()] == ["NAME", "UMPIRING", "MEMBERSHIP", "MEMBERSHIP TYPE"],
+          "the Members list: name, umpiring, membership and membership type (member since is on the profile)")
     u1 = row_of(page, "umpire1@demo.test")
     check(u1.locator("input:not([type=checkbox])").count() == 0 and u1.locator("select").count() == 1 and "L1-2200" not in u1.inner_text() and "@" not in page.inner_text("table.members"),
           "personal details (email, mobile, date of birth, address, accreditation) are not on the list, only on profiles")
@@ -717,9 +717,10 @@ with sync_playwright() as p:
     check(waiting == 5 and {"Social Member", "New Umpire", "Priya Nair", "Tom Walsh", "Lena Okafor"} == set(names[:5]), f"people waiting for approval (two new, three in the sample data) are at the top ({names[:5]})")
     rest = [n.split()[-1].lower() for n in names[5:]]
     check(rest == sorted(rest), "then everyone by last name")
-    check(row_of(page, "newbie@demo.test").locator("button:has-text('Approve')").count() == 1 and "Waiting for approval" not in row_of(page, "newbie@demo.test").locator("td").nth(2).inner_text(),
-          "each person waiting has an Approve button")
-    row_of(page, "newbie@demo.test").locator("button:has-text('Approve')").click()
+    check(row_of(page, "newbie@demo.test").locator("button").count() == 0 and "Waiting for approval" in row_of(page, "newbie@demo.test").locator("td").nth(2).inner_text(),
+          "in the table a person waiting shows Waiting for approval, with no Approve / Reject buttons")
+    page.locator(".join-requests .request:has-text('newbie@demo.test') button:has-text('Approve')").click()
+    page.wait_for_selector(".join-requests .request:has-text('newbie@demo.test')", state="detached")
     page.wait_for_selector("tr[data-pid] >> text=Member")
     page.locator(".join-requests .request:has-text('socialmember@demo.test') button:has-text('Approve')").click()
     page.wait_for_selector(".join-requests .request:has-text('socialmember@demo.test')", state="detached")
@@ -788,11 +789,9 @@ with sync_playwright() as p:
     check(page.locator(".import-step:has(h3:has-text('2. Availability files')) select").count() == 1, "availability files are brought in per group, right here")
     page.select_option(".member-tools select", "inactive")
     check(row_of(page, "quiet@example.com").count() == 1 and row_of(page, "umpire1@demo.test").count() == 0, "the Show filter lists Inactive members")
-    row_of(page, "quiet@example.com").locator("input[type=checkbox]").check()
-    check("1 selected" in page.inner_text(".bulk-bar") and page.locator(".bulk-bar button:has-text('Make active')").count() == 0
-          and page.locator(".bulk-bar button:has-text('Approve')").count() == 1 and page.locator(".bulk-bar button:has-text('Reject')").count() == 1,
-          "ticked rows can be approved or rejected together (nothing to make active by hand)")
-    page.click(".bulk-bar button:has-text('Clear')")
+    check(page.locator("table.members input[type=checkbox]").count() == 0 and page.locator(".bulk-bar").count() == 0
+          and page.locator("table.members button:has-text('Approve'), table.members button:has-text('Reject')").count() == 0,
+          "the members table has no tick boxes or Approve / Reject buttons (those are in the Join requests card)")
     page.select_option(".member-tools select", "all")
     goto(page, BASE + "admin/members")
     page.wait_for_selector("table.members")
