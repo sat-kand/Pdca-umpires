@@ -122,6 +122,9 @@ export function createDemoStore() {
         async listRounds() { return Object.values(clone(x().rounds)).filter(r => r.published); },
         async listGames(rid) { return Object.values(clone(x().games[rid] || {})); },
         async getAvailability(seasonId, email) { return clone(x().availability[`${seasonId}__${email}`]) || null; },
+        async saveAvailability(a) { x().availability[`${a.seasonId}__${a.email}`] = clone(a); save(); },
+        async saveWithdrawal(w) { (x().withdrawals ||= {})[w.id] = clone(w); save(); },
+        async queueMail(m) { (x().mail ||= {})['m' + Date.now().toString(36)] = clone(m); save(); },
       };
     },
     async getUmpire(email) { return clone(o().umpires[email]) || null; },

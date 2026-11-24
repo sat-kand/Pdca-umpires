@@ -113,13 +113,6 @@ export async function viewMy(ctx) {
     placeOtherOrgs(ctx, root, card, u.email);
     return root;
   }
-  if (status === 'applied') {
-    const name = (S.org && S.org.name) || 'the association';
-    root.append(h('div', { class: 'notice warn', role: 'status' },
-      h('strong', {}, `${name}: your membership is waiting for approval.`),
-      h('div', {}, `You can still give your availability for ${name} below while you wait.`)));
-  }
-
   // ---- what the umpire has already answered (needed by the appointments below as well)
   const existing = season ? await store.getAvailability(season.id, u.email) : null;
   // Two copies: what is saved, and what is on screen. Only the parts that are ticked are ever saved,
@@ -587,18 +580,95 @@ async function otherOrgCards(ctx, email, today) {
       const groups = (org.groups && org.groups.length) ? org.groups : [{ key: 'all', name: 'All grades' }];
       const comps = season ? upcomingDates(season.calendar, today, groups.map(g => ({ key: g.key, label: g.name }))) : [];   // that association's groups, not the open one's
       const saved = (avail && avail.days) || {};
-      const go = key => ctx.chooseOrg(m.orgId, { open: key });
+      const go = key => ctx.chooseOrg(m.orgId, { open: key });          // only for player umpiring, which needs its own game list
+      const sv = Object.assign(view, { org });                         // this association, read and saved as the member
+      const umpire = { pid: m.u.pid, email, name: m.u.name };
+      let savedDays = { ...saved };
+      const days = { ...saved };
+      let last = avail;
+      const put = d => sv.saveAvailability({ ...(last || {}), seasonId: season.id, email, name: umpire.name, days: d,
+        modes: { regular: true, player: ((last && last.picks) || []).length > 0, comps: groups.map(g => g.key).filter(k => Object.keys(d).some(x => x.startsWith(k + ':'))) },
+        picks: (last && last.picks) || [], updatedAt: new Date().toISOString() });
+      const chipOf = (sent, fresh) => h('span', { class: 'chip ' + (sent ? 'ok' : fresh ? 'new' : 'muted-chip') }, sent ? '✓ Submitted' : fresh ? 'Newly Added' : 'Not submitted');
       const line = (key, title, summary, chip) => h('li', { class: 'comp-section' },
         h('div', { class: 'row-between comp-head tap', role: 'button', tabindex: '0', 'aria-expanded': 'false', onclick: () => go(key),
           onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(key); } } },
           h('div', { class: 'comp-headline' }, h('span', { class: 'chev', 'aria-hidden': 'true' }), h('h2', { class: 'comp-title' }, title), summary && h('span', { class: 'muted group-summary' }, summary)), chip));
-      const chipOf = (sent, fresh) => h('span', { class: 'chip ' + (sent ? 'ok' : fresh ? 'new' : 'muted-chip') }, sent ? '✓ Submitted' : fresh ? 'Newly Added' : 'Not submitted');
-      const items = groups.filter(g => comps.some(c => c.comp === g.key) && groupNeedsUmpires(g.key, org.gradeGroups, org.gradeUmpires) && !g.closed).map(g => {
-        const keys = comps.filter(c => c.comp === g.key).flatMap(c => c.dates.map(d => availKey(g.key, d)));
-        const sent = Object.keys(saved).some(x => x.startsWith(g.key + ':'));
-        return line(g.key, g.name, sent ? `${keys.filter(x => saved[x] === 'yes').length} available · ${keys.filter(x => saved[x] === 'no').length} not available` : '',
-          chipOf(sent, !sent && isNewFor(g, avail)));
-      });
+      // A group opens right here, on this page: its dates, Available / Not available, and its own Save.
+      const groupLine = (g, c) => {
+        const keys = c.dates.map(d => availKey(g.key, d));
+        const rowEls = {};
+        const row = (date, label, key = availKey(g.key, date)) => {
+          const yes = h('button', { type: 'button', class: 'opt yes', onclick: () => pick(key, 'yes') }, 'Available');
+          const no = h('button', { type: 'button', class: 'opt no', onclick: () => pick(key, 'no') }, 'Not available');
+          rowEls[key] = { el: h('div', { class: 'drow' }, h('span', { class: 'dlabel' }, label), h('div', { class: 'opts' }, yes, no)), yes, no };
+          return rowEls[key].el;
+        };
+        const tiles = c.mode === 'rounds'
+          ? c.rounds.map(r => h('div', { class: 'tile' }, h('h3', {}, r.label), r.rows.map(x => row(x.date, x.of > 1 ? `Day ${x.dayNo} · ${fmtDay(x.date)}` : fmtDay(x.date)))))
+          : byMonth(c.dates).map(mo => h('div', { class: 'tile' }, h('h3', {}, mo.month), mo.dates.map(date => row(date, fmtDay(date)))));
+        const chip = h('span', { class: 'chip' });
+        const summary = h('span', { class: 'muted group-summary' });
+        const hint = h('span', { class: 'muted' });
+        const markAll = h('button', { class: 'link', type: 'button', onclick: () => { keys.forEach(x => { days[x] = 'yes'; }); paint(); } }, 'Mark all available');
+        const closeBtn = h('button', { class: 'btn', type: 'button' }, 'Close');
+        const discardBtn = h('button', { class: 'link discard', type: 'button' }, 'Discard changes');
+        const saveBtn = h('button', { class: 'btn primary', type: 'button' }, `Save ${g.name}`);
+        const body = h('div', { class: 'group-dates' }, h('div', { class: 'group-tools' }, markAll), tiles);
+        const foot = h('div', { class: 'group-foot' }, h('span', {}, hint, ' ', discardBtn), h('span', { class: 'savebar-btns' }, closeBtn, saveBtn));
+        const head = h('div', { class: 'row-between comp-head', role: 'button', tabindex: '0' },
+          h('div', { class: 'comp-headline' }, h('span', { class: 'chev', 'aria-hidden': 'true' }), h('h2', { class: 'comp-title' }, g.name), summary), chip);
+        const el = h('li', { class: 'comp-section', 'data-comp': g.key }, head, body, foot);
+        let open = false;
+        const dirty = () => keys.some(x => days[x] !== savedDays[x]);
+        const paint = () => {
+          const sent = Object.keys(savedDays).some(x => x.startsWith(g.key + ':')), d = dirty(), fresh = !sent && isNewFor(g, last);
+          const yes = keys.filter(x => savedDays[x] === 'yes').length, no = keys.filter(x => savedDays[x] === 'no').length;
+          chip.className = 'chip ' + (d ? 'warn' : sent ? 'ok' : fresh ? 'new' : 'muted-chip');
+          chip.textContent = d ? 'Unsaved changes' : sent ? '✓ Submitted' : fresh ? 'Newly Added' : 'Not submitted';
+          summary.textContent = sent ? `${yes} available · ${no} not available` : '';
+          summary.hidden = open; body.hidden = !open; foot.hidden = !open;
+          head.classList.toggle('tap', !open); head.setAttribute('aria-expanded', String(open));
+          for (const x of keys) {
+            const r = rowEls[x]; if (!r) continue;
+            r.yes.classList.toggle('on', days[x] === 'yes'); r.no.classList.toggle('on', days[x] === 'no');
+            r.yes.setAttribute('aria-pressed', String(days[x] === 'yes')); r.no.setAttribute('aria-pressed', String(days[x] === 'no'));
+            if (days[x]) r.el.classList.remove('missing');
+          }
+          const left = keys.filter(x => !days[x]).length;
+          hint.textContent = left ? `${left} date${left > 1 ? 's' : ''} not answered yet` : 'All dates answered';
+          saveBtn.disabled = !d; discardBtn.hidden = !d;
+        };
+        function pick(key, v) { if (days[key] === v) delete days[key]; else days[key] = v; paint(); }
+        const tap = () => { open = !open; paint(); };
+        head.onclick = tap;
+        head.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tap(); } };
+        closeBtn.onclick = () => { open = false; paint(); };
+        discardBtn.onclick = () => { for (const x of keys) { if (savedDays[x]) days[x] = savedDays[x]; else delete days[x]; } paint(); };
+        saveBtn.onclick = busy(saveBtn, async () => {
+          if (!dirty()) return;
+          const blanks = keys.filter(x => !days[x]);
+          if (blanks.length) {                                         // every date of the group needs an answer
+            keys.forEach(x => rowEls[x] && rowEls[x].el.classList.remove('missing'));
+            blanks.forEach(x => rowEls[x] && rowEls[x].el.classList.add('missing'));
+            if (rowEls[blanks[0]].el.scrollIntoView) rowEls[blanks[0]].el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            toast(`Answer every date before saving ${g.name}: ${blanks.length} left.`, 'err');
+            return;
+          }
+          const before = savedDays, next = { ...savedDays };           // the other groups stay as last saved
+          for (const x of keys) { if (days[x]) next[x] = days[x]; else delete next[x]; }
+          await put(next);
+          savedDays = next; last = { ...(last || {}), days: next, updatedAt: new Date().toISOString() };
+          open = false; paint();
+          const w = await recordWithdrawal(sv, { umpire, before, after: next });
+          if (w) toast(`Saved ${g.name}. You were down for games on those dates, and ${org.name} has been told.`, 'warn');
+          else toast(`${g.name} availability saved`);
+        });
+        paint();
+        return el;
+      };
+      const items = groups.filter(g => comps.some(c => c.comp === g.key) && groupNeedsUmpires(g.key, org.gradeGroups, org.gradeUmpires) && !g.closed)
+        .map(g => groupLine(g, comps.find(c => c.comp === g.key)));
       const pu = org.playerUmpire || {};
       const puOn = !!(org.flags && org.flags.player_umpire) && pu.enabled && (pu.groups || []).length > 0;
       const nPicks = ((avail && avail.picks) || []).filter(p => (p.dates || []).some(d => d >= today)).length;

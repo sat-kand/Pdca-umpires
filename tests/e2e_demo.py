@@ -1820,22 +1820,28 @@ with sync_playwright() as p:
           and other.locator(".comp-head").count() >= 3, f"their other association is a compact card like this one, a line per group, no Open button ({other.count()}: {other.inner_text()[:200]!r})")
     cur.locator(".comp-section:has(h2:has-text('Junior')) .comp-head").click()
     check(cur.locator(".comp-section:has(h2:has-text('Junior')) .tile:visible").count() > 0, "the new group opens with its own Save")
-    other.locator(".comp-section:has(h2:has-text('Junior')) .comp-head").click()
-    page.wait_for_selector(".avail-card:not(.other-org) .avail-head h2:has-text('Second Association')")
-    check(page.url.endswith("/my"), "tapping a line there switches association and stays on My availability")
-    cur = page.locator(".avail-card:not(.other-org)")
-    check(cur.locator(".comp-section:has(h2:has-text('Junior')) .tile:visible").count() > 0 and cur.locator(".tile:visible").count() == cur.locator(".comp-section:has(h2:has-text('Junior')) .tile:visible").count(),
-          "with that group (and only that group) open")
-    check(page.locator(".other-org h2:has-text('Parramatta')").count() == 1, "and Parramatta is still listed, as a compact card")
+    # Tapping a group of another association opens it right there: no switching, no reload, and it saves on its own.
+    page.evaluate("() => { window.__stillHere = 1; }")
+    sec = other.locator(".comp-section:has(h2:has-text('Junior'))")
+    sec.locator(".comp-head").click()
+    check(sec.locator(".tile:visible").count() > 0 and page.evaluate("() => window.__stillHere === 1") and page.url.endswith("/my"),
+          "tapping a group in another association opens it on the same page, without reloading")
+    check(page.locator(".avail-card:not(.other-org) .avail-head h2:has-text('Parramatta')").count() == 1 and cur.locator(".tile:visible").count() > 0,
+          "the association above keeps what it had open; nothing is switched")
+    sec.locator("button:has-text('Mark all available')").click()
+    check("Unsaved changes" in sec.locator(".comp-head").inner_text(), "answering shows Unsaved changes on that group")
+    sec.locator(".group-foot button.primary").click()
+    page.wait_for_selector(".toast:has-text('availability saved')")
+    check("Submitted" in sec.locator(".comp-head").inner_text() and sec.locator(".tile:visible").count() == 0, "saving folds the group away and marks it Submitted")
+    saved_days = page.evaluate("() => { const db = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')); return Object.keys(db.orgs.second.availability).length; }")
+    check(saved_days >= 1, "the answers were saved to that association")
     # an association with no dates yet: its card says so, and the others still show
     page.evaluate("""() => { const k = 'pdca-umpires-demo-v2', db = JSON.parse(localStorage.getItem(k)); db.orgs.second.season = null; localStorage.setItem(k, JSON.stringify(db)); }""")
     page.reload()
     page.wait_for_selector(".avail-card")
     page.wait_for_selector(".other-org")
-    check("No dates to answer yet." in page.locator(".avail-card:not(.other-org)").inner_text() and "season dates have not been set up" not in page.inner_text("main")
-          and page.locator(".other-org h2:has-text('Parramatta')").count() == 1, "an association with no dates says 'No dates to answer yet', and the other association still shows")
-    page.locator(".other-org .comp-head").first.click()
-    page.wait_for_selector(".avail-card:not(.other-org) .avail-head h2:has-text('Parramatta')")
+    check("No dates to answer yet." in page.locator(".other-org:has-text('Second Association')").inner_text() and "season dates have not been set up" not in page.inner_text("main")
+          and page.locator(".avail-card:not(.other-org) h2:has-text('Parramatta')").count() == 1, "an association with no dates says 'No dates to answer yet', and the other association still shows")
 
     print("A group whose grades all need no umpires")
     sign_out(page)
@@ -1922,8 +1928,8 @@ with sync_playwright() as p:
     page.click(".join-form button:has-text('Join Hills')")
     page.wait_for_selector(".avail-head h2:has-text('Hills')")
     check(page.locator(".pending-card").count() == 0 and "No dates to answer yet" in page.inner_text("main"), "with membership not required they are in at once, with no wait for approval")
-    check(page.locator(".notice.warn:has-text('Hills')").count() == 1 and "waiting for approval" in page.inner_text(".notice.warn") and "can still give your availability for" in page.inner_text(".notice.warn"),
-          "the notice names the association, says it is waiting for approval, and that availability can still be given")
+    check(page.locator(".notice.warn").count() == 0 and page.locator(".avail-card .chip:has-text('Waiting for approval')").count() == 1 and "give your availability now" in page.inner_text(".avail-card"),
+          "no separate notice: the card's own tag says Waiting for approval and that availability can be given now")
     goto(page, BASE + "associations")
     page.wait_for_selector(".org-list")
     hills_row = page.locator(".org-row:has-text('Hills')")

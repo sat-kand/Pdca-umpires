@@ -60,6 +60,10 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
     async listRounds() { return (await all(() => sb.from('rounds').select('*').eq('association_id', id).eq('published', true))).map(rowToRound); },
     async listGames(rid) { return gamesOf(id, rid); },
     async getAvailability(seasonId, email) { const r = await one(sb.from('availability').select('data').eq('association_id', id).eq('season_id', seasonId).eq('email', email)); return r ? r.data : null; },
+    // Answering from another association's card on My availability, without opening that association.
+    async saveAvailability(a) { await ok(sb.from('availability').upsert({ association_id: id, season_id: a.seasonId, email: a.email, data: a, updated_at: new Date().toISOString() })); },
+    async saveWithdrawal(w) { await ok(sb.from('withdrawals').insert(withdrawalToRow(id, w))); },
+    async queueMail(m) { await ok(sb.from('mail_queue').insert({ association_id: id, to_email: m.to, message: m.message })); },
   });
   const flagsOf = async id => {
     const [defs, own] = await Promise.all([
