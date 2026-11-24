@@ -18,7 +18,12 @@ const LINK_MESSAGE = 'This sign-in link cannot be used. It may have been used al
 
 export async function createSupabaseStore(cfg, { createClient } = {}) {
   createClient ||= (await import(SUPABASE_SDK)).createClient;
-  const sb = createClient(cfg.url, cfg.anonKey, { auth: { flowType: 'pkce', detectSessionInUrl: false, persistSession: true } });
+  // The auth library's default lock is shared by every tab (navigator.locks). On phones a tab that is closed or asleep
+  // mid-refresh can hold it for good, and every later call in every tab then waits forever ("Starting..." never ends).
+  // A lock within this tab only is enough: it still stops two calls in this tab refreshing the session at once.
+  let chain = Promise.resolve();
+  const tabLock = (_name, _timeout, fn) => { const run = chain.then(fn, fn); chain = run.catch(() => {}); return run; };
+  const sb = createClient(cfg.url, cfg.anonKey, { auth: { flowType: 'pkce', detectSessionInUrl: false, persistSession: true, lock: tabLock } });
   let org = null;                                               // the association in use
   let me = '';
   const A = () => { if (!org) throw new Error('No association selected'); return org.id; };
@@ -91,8 +96,13 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
 
     // ----- auth -----
     onAuth(cb) {
-      sb.auth.getSession().then(({ data }) => { me = ((data.session && data.session.user.email) || '').toLowerCase(); cb(me ? { email: me } : null); });
-      const { data } = sb.auth.onAuthStateChange((_e, s) => { const e = ((s && s.user && s.user.email) || '').toLowerCase(); cb(e ? { email: e } : null); });
+      // One source of truth: the library announces the session it starts with (INITIAL_SESSION), then every change.
+      // The callback runs inside the library's lock, so the app's own work (which calls Supabase) starts just after it.
+      const { data } = sb.auth.onAuthStateChange((_e, s) => {
+        const e = ((s && s.user && s.user.email) || '').toLowerCase();
+        me = e;
+        setTimeout(() => cb(e ? { email: e } : null), 0);
+      });
       return () => data.subscription.unsubscribe();
     },
     async sendLink(email) {
@@ -115,7 +125,8 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
       if (!code) return false;
       // The code is single-use: take it out of the address first, so a second start-up (or a reload) cannot try it again.
       history.replaceState(null, '', '/');
-      const { error } = await sb.auth.exchangeCodeForSession(code);
+      const { error } = await Promise.race([sb.auth.exchangeCodeForSession(code),
+        new Promise(r => setTimeout(() => r({ error: new Error('timed out') }), 20000))]);
       if (error) {
         const { data } = await sb.auth.getSession();            // already signed in by an earlier attempt with this same link: not a problem
         if (data && data.session) return true;

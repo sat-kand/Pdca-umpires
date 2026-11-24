@@ -219,10 +219,24 @@ async function boot() {
   document.addEventListener('visibilitychange', () => { if (!document.hidden && routePath().startsWith('/admin')) render(true); });
   try { await S.store.completeLink(async () => prompt('To finish signing in, please type the email address the link was sent to:')); }
   catch (e) { if (e && e.signInLink) S.linkProblem = e.message; else toast('Sign-in problem: ' + (e.message || e), 'err'); }
+  // If starting takes far too long (a network that never answers, say), say so instead of showing "Starting..." for ever.
+  let started = false;
+  const slow = setTimeout(() => {
+    if (started) return;
+    setChildren(main, h('div', { class: 'card narrow' }, h('h2', {}, 'This is taking longer than it should'),
+      h('p', { class: 'muted' }, 'Check your connection, then try again. If it keeps happening, sign out and sign in again.'),
+      h('p', {}, h('button', { class: 'btn primary', type: 'button', onclick: () => location.reload() }, 'Try again'), ' ',
+        h('button', { class: 'btn', type: 'button', onclick: async () => { try { await S.store.signOut(); } catch { /* signed out locally anyway */ } location.replace('/'); } }, 'Sign out'))));
+  }, 20000);
+  let loading = null;
   S.store.onAuth(async user => {
     // The auth library re-announces the same person when the tab regains focus: reloading then would blank the association mid-draw.
     if (user && S.user && S.user.email === user.email && (S.org || S.isAdmin || S.umpire)) return;
-    await loadUser(user); render();
+    const mine = loading = (async () => { try { await loadUser(user); } catch (e) { console.error('loading the account failed', e); } })();
+    await mine;
+    if (mine !== loading) return;                     // a newer sign-in or sign-out has taken over
+    started = true; clearTimeout(slow);
+    render();                                         // always draw a page, even if part of the account failed to load
   });
 }
 
