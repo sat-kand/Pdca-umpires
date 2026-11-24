@@ -322,9 +322,9 @@ export async function viewBoard(ctx, rid) {
     const multi = g.days.length > 1;
     // Two-day games: umpires free on every day come first, so one pick can cover both days.
     const GROUPS = multi
-      ? [['chosen', 'Player umpire (chose this game)'], ['both', 'Available both days'], ['ok', 'Available this day only'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already allocated']]
-      : [['chosen', 'Player umpire (chose this game)'], ['ok', 'Available'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['avoid', 'Unavailable or already allocated']];
-    const label = o => `${o.umpire.name}${o.elsewhere ? ' · player umpire elsewhere' : o.busy ? ' · allocated' : ''}`;
+      ? [['chosen', 'Player umpire (chose this game)'], ['both', 'Available both days'], ['ok', 'Available this day only'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['allocated', 'Already allocated'], ['unavailable', 'Unavailable']]
+      : [['chosen', 'Player umpire (chose this game)'], ['ok', 'Available'], ['nonmember', 'Available Non-Member'], ['none', 'No response yet'], ['allocated', 'Already allocated'], ['unavailable', 'Unavailable']];
+    const label = o => `${o.umpire.name}${o.elsewhere ? ' · player umpire elsewhere' : ''}`;
     const sel = h('select', { class: 'slot' + (cur ? '' : ' empty'), 'aria-label': `Umpire ${i + 1}, ${gradeShort(g.grade)} ${g.home.name}, ${fmtDay(date)}`,
       onchange: guard(async () => {
         const u = B.umpires.find(x => x.pid === sel.value);

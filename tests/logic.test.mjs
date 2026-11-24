@@ -68,7 +68,7 @@ test('warnings: unavailable, no response, double-booked, same umpire twice', () 
   assert.deepEqual(assignmentWarnings({ game: g1, date: D1, slotIndex: 0, umpire: ann, availByEmail: avail({ u1: { [D1]: 'yes' } }), busy: buildBusyMap([g1]) }), []);
 });
 
-test('slotOptions groups yes / no response / non-member / avoid', () => {
+test('slotOptions groups yes / no response / non-member / allocated / unavailable', () => {
   const g = mk('1', 'Senior A Grade', 'A', 'B', [D1]);
   const g2 = mk('2', 'Senior B02', 'C', 'D', [D1], 1, { [D1]: [{ p: 'u4', n: 'Dee' }] });
   const umpires = [U('u1', 'Ann'), U('u2', 'Bob'), U('u3', 'Cat'), U('u4', 'Dee'), U('u5', 'Eve'), U('u6', 'Fay', false)];
@@ -76,10 +76,10 @@ test('slotOptions groups yes / no response / non-member / avoid', () => {
   const opts = slotOptions({ game: g, date: D1, slotIndex: 0, umpires, availByEmail: a, busy: buildBusyMap([g, g2]), loads: {} });
   const by = Object.fromEntries(opts.map(o => [o.umpire.name, o.group]));
   // Fay is not an active member: available, but in a group of her own so she is picked on purpose.
-  assert.deepEqual(by, { Ann: 'ok', Bob: 'ok', Cat: 'none', Dee: 'avoid', Eve: 'avoid', Fay: 'nonmember' });
+  assert.deepEqual(by, { Ann: 'ok', Bob: 'ok', Cat: 'none', Dee: 'allocated', Eve: 'unavailable', Fay: 'nonmember' });
 
   const quiet = slotOptions({ game: g, date: D1, slotIndex: 0, umpires: [U('u7', 'Gus', false)], availByEmail: avail({}), busy: {}, loads: {} });
-  assert.equal(quiet[0].group, 'avoid', 'a non-member who has not said they are available is not offered as available');
+  assert.equal(quiet[0].group, 'unavailable', 'a non-member who has not said they are available is not offered as available');
   const warn = assignmentWarnings({ game: g, date: D1, slotIndex: 0, umpire: U('u6', 'Fay', false), availByEmail: a, busy: {} });
   assert.deepEqual(warn, ['Not a member in good standing']);
   const chosen = assignmentWarnings({ game: g, date: D1, slotIndex: 0, umpire: U('u7', 'Gus'), availByEmail: avail({}), busy: {}, chosen: true });
@@ -324,7 +324,7 @@ test('umpires see the published copy, not later work on the board', async () => 
   assert.equal(publishedAllocFor({}, g, '2026-11-21')[0].p, 'b', 'rounds published before copies existed use the board');
 });
 
-test('in "unavailable or already allocated", allocated umpires come before unavailable ones', async () => {
+test('already allocated and unavailable umpires are in separate groups', async () => {
   const { slotOptions } = await import('../js/logic.js');
   const umpires = [
     { pid: 'a', email: 'a@x', name: 'A Adams', active: true },     // not available
@@ -333,11 +333,12 @@ test('in "unavailable or already allocated", allocated umpires come before unava
   const availByEmail = { 'a@x': { days: { 'senior:2026-11-21': 'no' } }, 'z@x': { days: { 'senior:2026-11-21': 'yes' } } };
   const game = { id: 'g', grade: 'Senior B09', comp: 'Senior', slots: 1, days: [{ date: '2026-11-21', day: 1 }], alloc: {} };
   const busy = { 'senior:2026-11-21': { z: ['other'] } };
-  const rows = slotOptions({ game, date: '2026-11-21', slotIndex: 0, umpires, availByEmail, busy, loads: {} }).filter(r => r.group === 'avoid');
-  assert.deepEqual(rows.map(r => r.umpire.pid), ['z', 'a']);
+  const rows = slotOptions({ game, date: '2026-11-21', slotIndex: 0, umpires, availByEmail, busy, loads: {} });
+  assert.deepEqual(rows.filter(r => r.group === 'allocated').map(r => r.umpire.pid), ['z']);
+  assert.deepEqual(rows.filter(r => r.group === 'unavailable').map(r => r.umpire.pid), ['a']);
 });
 
-test('player umpires elsewhere come after allocated umpires and before unavailable ones', async () => {
+test('player umpires elsewhere are listed as already allocated, after those on a game that day', async () => {
   const { slotOptions } = await import('../js/logic.js');
   const umpires = [
     { pid: 'a', email: 'a@x', name: 'A Adams', active: true },     // not available
@@ -348,8 +349,9 @@ test('player umpires elsewhere come after allocated umpires and before unavailab
   const game = { id: 'g', grade: 'Senior B09', comp: 'Senior', slots: 1, days: [{ date: '2026-11-21', day: 1 }], alloc: {} };
   const busy = { 'senior:2026-11-21': { z: ['other'] } };
   const claimOf = (pid, date, comp) => (pid === 'm' ? 'other2' : null);
-  const rows = slotOptions({ game, date: '2026-11-21', slotIndex: 0, umpires, availByEmail, busy, loads: {}, claimOf }).filter(r => r.group === 'avoid');
-  assert.deepEqual(rows.map(r => r.umpire.pid), ['z', 'm', 'a']);
+  const rows = slotOptions({ game, date: '2026-11-21', slotIndex: 0, umpires, availByEmail, busy, loads: {}, claimOf });
+  assert.deepEqual(rows.filter(r => r.group === 'allocated').map(r => r.umpire.pid), ['z', 'm']);
+  assert.deepEqual(rows.filter(r => r.group === 'unavailable').map(r => r.umpire.pid), ['a']);
 });
 
 test('group names are suggested from each association\'s own competition names', async () => {

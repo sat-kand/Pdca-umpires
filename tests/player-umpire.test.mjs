@@ -108,7 +108,7 @@ test('a player umpire comes first: offered for the game they chose, kept out of 
   const own = slotOptions({ game: g1, date: '2026-11-21', slotIndex: 0, umpires, availByEmail, busy: {}, claimOf }).find(o => o.umpire.pid === 'p1');
   assert.equal(own.group, 'chosen');
   const other = slotOptions({ game: g2, date: '2026-11-21', slotIndex: 0, umpires, availByEmail, busy: {}, claimOf }).find(o => o.umpire.pid === 'p1');
-  assert.equal(other.group, 'avoid');
+  assert.equal(other.group, 'allocated');
   assert.ok(other.elsewhere);
   assert.deepEqual(assignmentWarnings({ game: g1, date: '2026-11-21', slotIndex: 0, umpire: umpires[0], availByEmail, busy: {}, claimOf }), []);
   assert.match(assignmentWarnings({ game: g2, date: '2026-11-21', slotIndex: 0, umpire: umpires[0], availByEmail, busy: {}, claimOf }).join(), /player umpire/);

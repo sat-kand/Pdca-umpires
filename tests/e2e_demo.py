@@ -346,8 +346,8 @@ with sync_playwright() as p:
 
     print("Admin: manual allocation + warnings")
     first = page.locator("select.slot").first
-    avoid_val = first.evaluate("s => { const o = s.querySelector('optgroup[label^=\"Unavailable\"] option'); return o ? o.value : null }")
-    check(avoid_val is not None, "slot dropdown offers an 'Unavailable or already allocated' group")
+    avoid_val = first.evaluate("s => { const o = s.querySelector('optgroup[label=\"Unavailable\"] option, optgroup[label=\"Already allocated\"] option'); return o ? o.value : null }")
+    check(avoid_val is not None, "slot dropdown offers Unavailable / Already allocated groups, kept separate")
     first.select_option(value=avoid_val)
     page.wait_for_timeout(250)
     check(page.locator(".warn-icon").count() >= 1, "choosing an unavailable umpire shows a warning icon")
@@ -1007,10 +1007,10 @@ with sync_playwright() as p:
     page.locator(".dropouts a").first.click()
     page.wait_for_selector("table.board")
     check(page.locator(".change:has-text('no longer available')").count() >= 1, "the board flags the game")
-    # Each list in last-name order; the "unavailable or already allocated" list has the allocated ones first.
+    # Each list in last-name order; the Already allocated list has those on a game that day first.
     lasts = page.locator("select.slot").first.evaluate("""s => [...s.querySelectorAll('optgroup')].map(g => [...g.children].map(o =>
-        [!/Unavailable/.test(g.label) || /allocated/.test(o.text) ? 0 : /elsewhere/.test(o.text) ? 1 : 2, o.text.split(' \u00b7 ')[0].split(' ').slice(-1)[0].toLowerCase()]))""")
-    check(all(g == sorted(g) for g in lasts) and sum(len(g) for g in lasts) > 3, "names in the umpire lists are in last-name order (allocated, then player umpire elsewhere, then unavailable)")
+        [g.label !== 'Already allocated' || !/elsewhere/.test(o.text) ? 0 : 1, o.text.split(' \u00b7 ')[0].split(' ').slice(-1)[0].toLowerCase()]))""")
+    check(all(g == sorted(g) for g in lasts) and sum(len(g) for g in lasts) > 3, "names in the umpire lists are in last-name order (already allocated: on a game that day, then player umpire elsewhere)")
     page.click("a.tab:has-text('Back to Allocate')")
     page.wait_for_selector(".comp-tile")
     check(page.locator(".dropouts").count() == 1, "the banner is still there until the officer dismisses it")

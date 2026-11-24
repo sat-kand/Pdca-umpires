@@ -428,7 +428,8 @@ export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy
     const claim = claimed(u.pid, date);
     const chosen = claim === game.id;
     const elsewhere = !!claim && !chosen;
-    const avoid = (!chosen && st === 'no') || others.length > 0 || dup || elsewhere;
+    const allocated = others.length > 0 || dup || elsewhere;     // already on a game that day (or a player umpire for another)
+    const unavailable = !chosen && st === 'no';
     // For a multi-day game, who can do EVERY day (free, said yes, not already busy that day)?
     const days = game.days.map(d => d.date);
     const freeOn = dt => availStatus(availByEmail, u, compKeyOf(game), dt) === 'yes' && !claimed(u.pid, dt)
@@ -438,16 +439,17 @@ export function slotOptions({ game, date, slotIndex, umpires, availByEmail, busy
     // Someone who is not a member (yet) can still be allocated if they are available, but they are kept
     // in a group of their own ("Available Non-Member") so the officer chooses them on purpose.
     const member = canUmpire(u);
-    const group = avoid ? 'avoid'
+    const group = allocated ? 'allocated'
+      : unavailable ? 'unavailable'
       : chosen ? 'chosen'
-      : !member ? (st === 'yes' ? 'nonmember' : 'avoid')
+      : !member ? (st === 'yes' ? 'nonmember' : 'unavailable')
       : st === 'yes' ? (days.length > 1 ? (bothDays ? 'both' : 'ok') : 'ok') : 'none';
     rows.push({ umpire: u, status: st, busy: others.length > 0, dup, chosen, elsewhere, group, bothDays, okDays, member, load: (loads && loads[u.pid]) || 0 });
   }
-  // By last name; in the "unavailable or already allocated" group: those already on a game that day,
-  // then player umpires who chose another game, then those who said they are not available.
-  const taken = r => (r.busy || r.dup ? 0 : r.elsewhere ? 1 : 2);
-  rows.sort((a, b) => (a.group === 'avoid' && b.group === 'avoid' ? taken(a) - taken(b) : 0) || compareMembers(a.umpire, b.umpire));
+  // By last name; in the "Already allocated" group: those already on a game that day come before player umpires
+  // who chose another game.
+  const taken = r => (r.busy || r.dup ? 0 : 1);
+  rows.sort((a, b) => (a.group === 'allocated' && b.group === 'allocated' ? taken(a) - taken(b) : 0) || compareMembers(a.umpire, b.umpire));
   return rows;
 }
 
