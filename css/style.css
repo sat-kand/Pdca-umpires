@@ -457,3 +457,6 @@ button.tagbtn:hover { outline: 2px solid currentColor; outline-offset: 1px; }
 .group-row > input:not([type=checkbox]) { flex: 0 1 16rem; width: auto; min-width: 8rem; margin: 0; padding: .4rem .6rem; }
 .group-row > .muted { min-width: 4.5rem; white-space: nowrap; }
 @media (max-width: 640px) { .group-row > input:not([type=checkbox]) { flex: 1 1 100%; } }
+
+.head-status { display: flex; align-items: center; flex-wrap: wrap; gap: .3rem .7rem; }
+.head-status h2 { margin: 0; }

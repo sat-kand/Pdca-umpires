@@ -5,7 +5,7 @@ import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
 import { recordWithdrawal } from './withdrawals.js';
 import { PLAYER_UMPIRE_COMPS, playerUmpireAllowed } from './player-umpire.js';
 import { groupOpen, fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS, groupNeedsUmpires, needsUmpires, membershipOf, joinSettings } from './logic.js';
-import { otherAssociationsCard, pendingCard } from './views-join.js';
+import { otherAssociationsCard, pendingCard, standingChip, cancelButton } from './views-join.js';
 
 export function viewLogin(ctx) {
   const { store, S } = ctx;
@@ -529,7 +529,7 @@ export async function viewMy(ctx) {
   drawPlayer();
   // One compact card for the association: a line for each group (and player umpiring), each opened and saved on its own.
   const mineCard = h('section', { class: 'card avail-card' },
-    h('div', { class: 'avail-head' }, h('h2', {}, orgName)),
+    h('div', { class: 'avail-head head-status' }, h('h2', {}, orgName), standingChip({ officer: !!(ctx.S && ctx.S.isAdmin), u: ctx.S && ctx.S.umpire }, store.org)),
     groupCards.length ? h('ul', { class: 'plain group-list' }, groupCards.map(g => g.el), playerCard) : h('p', { class: 'muted' }, COMPS.some(c => c.closed) ? 'No availabilities are open yet. Your association will open them when the dates are ready.' : 'No dates to answer yet.'));
   root.append(availTitle(), mineCard);
   placeOtherOrgs(ctx, root, mineCard, u.email);
@@ -569,14 +569,20 @@ async function otherOrgCards(ctx, email, today) {
   if (!store.listStandings || !store.memberView) return [];
   // Members, and people who have asked to join an association that does not need to approve them first.
   const ms = (await store.listStandings(email)).filter(st => st.orgId !== (store.org && store.org.id) && st.u
-    && ((membershipOf(st.u) === 'member' && st.u.active) || membershipOf(st.u) === 'applied')).map(st => ({ orgId: st.orgId, orgName: '', u: st.u }));
+    && ((membershipOf(st.u) === 'member' && st.u.active) || membershipOf(st.u) === 'applied')).map(st => ({ orgId: st.orgId, orgName: '', u: st.u, st }));
   const cards = [];
   for (const m of ms) {
     try {
       const view = store.memberView(m.orgId);
       const [org, season] = await Promise.all([view.getOrg ? view.getOrg() : null, view.getSeason()]);
       if (!org) continue;
-      if (membershipOf(m.u) === 'applied' && joinSettings(org).membershipRequired) continue;     // still waiting: shown under Other associations
+      if (membershipOf(m.u) === 'applied' && joinSettings(org).membershipRequired) {            // still waiting: its own card, with where they stand
+        cards.push({ orgId: m.orgId, el: h('section', { class: 'card avail-card other-org waiting-org', 'data-org': m.orgId },
+          h('div', { class: 'avail-head head-status' }, h('h2', {}, org.name || m.orgId), standingChip(m.st, org)),
+          h('p', { class: 'muted' }, 'The association has to approve your request before you can give your availability. It will show here as soon as they do.'),
+          h('p', {}, cancelButton(ctx, org))) });
+        continue;
+      }
       const avail = season ? await view.getAvailability(season.id, email) : null;
       const groups = (org.groups && org.groups.length) ? org.groups : [{ key: 'all', name: 'All grades' }];
       const comps = season ? upcomingDates(season.calendar, today, groups.map(g => ({ key: g.key, label: g.name }))) : [];   // that association's groups, not the open one's
@@ -599,7 +605,7 @@ async function otherOrgCards(ctx, email, today) {
       if (puOn) items.push(line('player', (pu.title || '').trim() || 'Player umpire', nPicks ? `${nPicks} game${nPicks === 1 ? '' : 's'} chosen` : '',
         chipOf(nPicks > 0, !nPicks && isNewFor({ key: '\u0000', addedAt: pu.addedAt }, avail))));
       cards.push({ orgId: m.orgId, el: h('section', { class: 'card avail-card other-org' },
-        h('div', { class: 'avail-head' }, h('h2', {}, org.name || m.orgName || m.orgId)),
+        h('div', { class: 'avail-head head-status' }, h('h2', {}, org.name || m.orgName || m.orgId), standingChip(m.st, org)),
         items.length ? h('ul', { class: 'plain group-list' }, items) : h('p', { class: 'muted' }, 'No dates to answer yet.')) });
     } catch (e) { console.warn('association', m.orgId, e); }
   }

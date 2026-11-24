@@ -140,6 +140,10 @@ export async function viewOrgSettings(ctx) {
     const title = h('input', { value: p.title || '', placeholder: 'Player umpire', 'aria-label': 'Name for player umpiring' });
     const groupErr = h('p', { class: 'notice warn', hidden: true, role: 'alert' }, 'Choose at least one group, or switch player umpires off.');
     groupBoxes.forEach(([, bx]) => bx.addEventListener('change', () => { if (groupBoxes.some(([, x]) => x.checked)) groupErr.hidden = true; }));
+    // Off clears and locks the groups; on lets them be ticked (at least one is needed to save).
+    const syncBoxes = () => groupBoxes.forEach(([, bx]) => { if (!on.checked) bx.checked = false; bx.disabled = !on.checked; });
+    on.addEventListener('change', () => { syncBoxes(); if (!on.checked) groupErr.hidden = true; });
+    syncBoxes();
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
     return saveButton(h('form', { class: 'card', onsubmit: busy(saveBtn, async e => {
       e.preventDefault();

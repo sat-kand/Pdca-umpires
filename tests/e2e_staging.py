@@ -107,7 +107,7 @@ def run_officer(browser):
         cfg = api(page, "GET", "associations?select=id,config&id=eq.pdca")
         grade_comps = ((cfg["body"] or [{}])[0].get("config") or {}).get("gradeComps") or {}
         check(len(grade_comps) >= 1, "the grade list from PlayHQ was saved (gradeComps)")
-        shown = [r.locator("td").first.inner_text().split("\n")[-1].strip() for r in rows.all()]
+        shown = [r.locator("td").first.locator("span.muted").inner_text().strip() for r in rows.all()]   # the full grade name (the chip beside it is the short form)
         stale = [g for g in shown if g and not any(g == k or g in k or k in g for k in grade_comps)]
         check(not stale, f"every grade in Settings came from the last PlayHQ fetch (stale: {stale[:3]})")
         # Members
@@ -180,7 +180,9 @@ def run_applicant(browser, officer_page):
         check("Waiting for approval" in officer_page.inner_text("table.members") or officer_page.locator(".join-requests").count() == 1,
               "the Members table shows the person as Waiting for approval")
     except Exception:
-        errors.append("ERROR (applicant): " + traceback.format_exc())
+        try: seen_text = " | ".join(x.strip() for x in page.inner_text("body").splitlines() if x.strip())[:700] + f" [url {page.url}]"
+        except Exception: seen_text = "(page not readable)"
+        errors.append("ERROR (applicant): " + traceback.format_exc() + "\nThe page showed: " + seen_text)
         snap(page, "applicant-error")
     finally:
         try:

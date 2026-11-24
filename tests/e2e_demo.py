@@ -1082,7 +1082,10 @@ with sync_playwright() as p:
     page.wait_for_selector(".toast:has-text('at least one group')")
     check(pu_form.locator("[role=alert]").is_visible() and page.locator(".toast:has-text('Saved')").count() == 0,
           "player umpires cannot be saved switched on without a group ticked")
+    pu_form.locator("label:has-text('Senior') input").check()
     pu_form.locator("input[type=checkbox]").first.uncheck()
+    check(not any(b.is_checked() for b in pu_form.locator("input[type=checkbox]").all()) and pu_form.locator("label:has-text('Senior') input").is_disabled(),
+          "switching player umpires off unticks all the groups")
     sign_out(page)
     sign_in(page, "umpire4@demo.test")
     page.wait_for_selector(".comp-section")
@@ -1903,10 +1906,7 @@ with sync_playwright() as p:
     sign_out(page)
     sign_in(page, "umpire2@demo.test", open_form=False)
     goto(page, BASE + "my")
-    page.wait_for_selector(".comp-section, .org-list")
-    if page.locator(".org-list").count():                          # in more than one association and none remembered here: they choose
-        page.locator(".org-row[data-org=pdca] button:has-text('Open')").click()
-    page.wait_for_selector(".comp-section")
+    page.wait_for_selector(".comp-section")                         # no chooser: My availability shows every association they are in
     page.wait_for_selector(".other-associations")
     other = page.locator(".other-associations")
     check(other.count() == 1 and other.locator(".org-row:has-text('Hills') a:has-text('Join')").count() == 1, "My availability offers the associations they have not joined")
@@ -1942,9 +1942,10 @@ with sync_playwright() as p:
     sign_out(page)
     sign_in(page, "admin@demo.test", open_form=False)
     goto(page, BASE + "admin/settings")
-    page.wait_for_selector(".joining-card, .org-list")
-    if page.locator(".org-list").count():                          # an officer of two associations, with none remembered on this browser: they choose
-        page.locator(".org-row[data-org=pdca] button:has-text('Open')").click()
+    page.wait_for_selector(".joining-card, .nav")
+    if page.locator(".joining-card").count() == 0:                 # an officer of two, none remembered on this browser: the first by name opens; switch from the menu
+        page.click("nav .menu > summary")
+        page.click(".menu-items .menu-switch:has-text('Parramatta')")
     page.wait_for_selector(".joining-card")
     page.locator(".joining-card label:has-text('Show this association in the list') input").uncheck()
     page.locator(".joining-card button[type=submit]").click()
@@ -1977,8 +1978,23 @@ with sync_playwright() as p:
     other = page.locator(".other-associations")
     page.wait_for_selector(".other-associations")
     check(page.locator(".other-associations .org-row:has-text('Hills') a:has-text('Join')").count() == 1, "while waiting they can still join another association")
-    page.click(".pending-card button:has-text('Cancel request')")
-    page.wait_for_selector(".org-list")
+    # waiting in a second association too: My availability shows both, each with where they stand, and no association chooser
+    page.click(".other-associations .org-row:has-text('Hills') a:has-text('Join')")
+    page.wait_for_selector(".join-form")
+    for f in page.locator(".join-form input[required]").all():
+        if not f.input_value():
+            f.fill("1990-05-01" if f.get_attribute("type") == "date" else "0400 999 000")
+    page.click(".join-form button[type=submit]")
+    page.wait_for_selector(".avail-card, .pending-card")
+    goto(page, BASE + "my")
+    page.wait_for_selector(".avail-card, .pending-card")
+    page.wait_for_timeout(1200)
+    chips = page.locator(".avail-card .chip:has-text('Waiting for approval'), .pending-card .chip:has-text('Waiting for approval')").count()
+    check(chips == 2 and page.locator(".waiting-org").count() == 1,
+          f"My availability lists every association they have asked to join, each with Waiting for approval ({chips})")
+    check(page.locator(".menu-switch").count() == 0 and page.locator("button:has-text('Open')").count() == 0, "there is nothing to switch or open: no switcher in the menu, no Open buttons")
+    page.click(".waiting-org button:has-text('Cancel request')")          # take the Parramatta request back, from the card
+    page.wait_for_selector(".other-associations .org-row:has-text('Parramatta')")
     check(page.locator(".org-row:has-text('Parramatta') a:has-text('Join')").count() == 1 and page.locator(".pending-card").count() == 0, "cancelling puts the association back in the list to join")
     sign_out(page)
     sign_in(page, "admin@demo.test", open_form=False)

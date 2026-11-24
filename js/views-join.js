@@ -14,7 +14,7 @@ const fmtWhen = iso => (iso ? new Date(iso).toLocaleDateString('en-AU', { day: '
 
 // Where someone stands, in words: the same wording as the officer's Members table (Member, Waiting for approval, ...).
 // Where membership is not needed to umpire, someone waiting can already give their availability, and it says so.
-function standingChip(st, org) {
+export function standingChip(st, org) {
   const s = st.u ? membershipOf(st.u) : null;          // an admin with no membership row of their own has none
   const early = s === 'applied' && !joinSettings(org).membershipRequired;
   // Someone who is both an admin and a member shows both tags.
@@ -24,7 +24,7 @@ function standingChip(st, org) {
 }
 
 // Take back a request that is still waiting, then redraw wherever the person is.
-function cancelButton(ctx, org) {
+export function cancelButton(ctx, org) {
   const b = h('button', { class: 'link', type: 'button' }, 'Cancel request');
   b.onclick = busy(b, async () => {
     if (!confirm(`Cancel your request to join ${org.name}?`)) return;
@@ -51,12 +51,9 @@ export async function viewAssociations(ctx) {
   const joinRow = o => h('li', { class: 'org-row' }, h('strong', { class: 'assoc-name' }, o.name), joinBtn(o));
   const mineRow = ({ st, org }) => {
     const s = statusOf(st);
-    const here = S.org && S.org.id === org.id;
     return h('li', { class: 'org-row', 'data-org': org.id },
       h('div', { class: 'org-main' }, h('strong', { class: 'assoc-name' }, org.name), standingChip(st, org)),
-      h('div', { class: 'org-actions' },
-        !here && h('button', { class: 'btn small', type: 'button', onclick: () => ctx.chooseOrg(org.id) }, 'Open'),
-        s === 'applied' && joinSettings(org).membershipRequired && cancelButton(ctx, org)));
+      s === 'applied' && joinSettings(org).membershipRequired && h('div', { class: 'org-actions' }, cancelButton(ctx, org)));
   };
 
   return h('div', { class: 'narrow-page' },
@@ -120,17 +117,10 @@ export async function otherAssociationsCard(ctx) {
   const { store, S } = ctx;
   const [orgs, standings] = await Promise.all([store.listJoinableOrgs(), store.listStandings(S.user.email)]);
   const have = new Set(standings.map(x => x.orgId));
-  const here = S.org && S.org.id;
-  const waiting = standings
-    .filter(st => !st.officer && st.orgId !== here && membershipOf(st.u) === 'applied')
-    .map(st => ({ st, org: orgs.find(o => o.id === st.orgId) })).filter(x => x.org && joinSettings(x.org).membershipRequired);
   const toJoin = orgs.filter(o => !have.has(o.id) && joinSettings(o).open).sort(byName);
-  if (!waiting.length && !toJoin.length) return null;
+  if (!toJoin.length) return null;
   return h('section', { class: 'card other-associations' }, h('h2', {}, 'Other associations'),
     h('ul', { class: 'plain org-list' },
-      waiting.map(({ st, org }) => h('li', { class: 'org-row', 'data-org': org.id },
-        h('div', { class: 'org-main' }, h('strong', { class: 'assoc-name' }, org.name), standingChip(st, org)),
-        h('div', { class: 'org-actions' }, cancelButton(ctx, org)))),
       toJoin.map(o => h('li', { class: 'org-row', 'data-org': o.id }, h('strong', { class: 'assoc-name' }, o.name), joinBtn(o)))));
 }
 

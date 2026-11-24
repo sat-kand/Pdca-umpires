@@ -22,7 +22,7 @@ let renderId = 0;
 const go = path => navigate(path);
 
 async function loadUser(user) {
-  S.user = user; S.isAdmin = false; S.umpire = null; S.org = null; S.myOrgs = []; S.pending = 0;
+  S.user = user; S.isAdmin = false; S.umpire = null; S.org = null; S.myOrgs = []; S.officerIn = []; S.pending = 0;
   await S.store.useOrg(null);
   if (!user) return;
   try {
@@ -31,7 +31,10 @@ async function loadUser(user) {
     S.myOrgs = await S.store.listMyOrgs(user.email);             // every association they are an officer or member of (or waiting to join): the switcher
     const mine = S.myOrgs.map(o => o.id);
     let id = localStorage.getItem(ORG_KEY);
-    if (!mine.includes(id)) id = mine.length === 1 ? mine[0] : null;   // otherwise they choose, from the list of associations
+    // Nobody has to pick one: My page shows them all. Open the first by name until they use another.
+    S.myOrgs.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    if (!mine.includes(id)) id = S.myOrgs.length ? S.myOrgs[0].id : null;
+    try { S.officerIn = (S.store.listStandings ? await S.store.listStandings(user.email) : []).filter(st => st.officer).map(st => st.orgId); } catch { S.officerIn = []; }
     S.org = id ? await S.store.useOrg(id) : null;
     applyOrg(S.org);
     if (id && !S.org) localStorage.removeItem(ORG_KEY);
@@ -116,7 +119,7 @@ function drawHeader() {
             h('div', { class: 'menu-items' },
               h('div', { class: 'menu-head' }, h('strong', {}, name), name !== S.user.email && h('span', { class: 'muted small' }, S.user.email)),
               link('/profile', 'My profile'), link('/my', 'My availability'), link('/associations', 'Associations'),
-              ...(S.isAdmin ? [] : switchItems()),
+              ...(S.isAdmin || !(S.officerIn || []).length ? [] : switchItems()),   // only officers switch; everyone else sees all their associations on My availability
               h('hr'),
               h('button', { class: 'nav-link menu-signout', type: 'button', onclick: async () => { await S.store.signOut(); await loadUser(null); navigate('/'); } }, 'Sign out'))));
       })()),
