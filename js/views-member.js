@@ -28,7 +28,7 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
   const { store } = ctx;
   const today = todayLocal();
   const u = self ? ctx.S.umpire : (await store.listUmpires()).find(x => x.pid === pid);
-  if (!u) return h('p', { class: 'notice warn' }, 'Member not found. ', h('a', { href: '#/admin/members' }, 'Back to Members'));
+  if (!u) return h('p', { class: 'notice warn' }, 'Member not found. ', h('a', { href: '/admin/members' }, 'Back to Members'));
 
   const season = await store.getSeason();
   const [avail, rounds, withdrawals] = await Promise.all([
@@ -152,7 +152,7 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
       if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error(e));
       drawType(); toast('Saved', 'ok');
     });
-    setChildren(typeBox, types.length ? sel : h('a', { class: 'muted', href: '#/admin/settings' }, 'Set up types in Settings'), f ? h('span', { class: 'muted' }, money(f)) : null);
+    setChildren(typeBox, types.length ? sel : h('a', { class: 'muted', href: '/admin/settings' }, 'Set up types in Settings'), f ? h('span', { class: 'muted' }, money(f)) : null);
   };
   drawType();
 
@@ -193,15 +193,15 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
       a.g.days.length > 1 && (a.dates || []).length === 1 ? h('span', { class: 'muted' }, ` · Day ${a.d.day}`) : null),
     h('span', {}, a.pu && h('span', { class: 'chip pu' }, 'Player umpire'), ' ',
       a.d.date >= today && !a.published && h('span', { class: 'chip muted-chip' }, 'Not published yet'),
-      !self && h('a', { class: 'muted small', href: `#/admin/round/${a.r.id}` }, ' Open')));
+      !self && h('a', { class: 'muted small', href: `/admin/round/${a.r.id}` }, ' Open')));
 
   const stat = (big, label) => h('div', { class: 'stat' }, h('strong', {}, big), h('span', { class: 'muted' }, label));
 
   return h('div', { class: 'member-profile' },
     h('div', { class: 'row-between' },
       h('h1', {}, u.name || `${n.firstName} ${n.lastName}`),
-      self ? h('span', { class: 'row-gap' }, h('a', { class: 'btn primary', href: '#/profile/edit' }, 'Edit my details'), ' ', h('a', { class: 'btn', href: '#/' }, '← My availability'))
-        : h('a', { class: 'btn', href: '#/admin/members' }, '← Members')),
+      self ? h('span', { class: 'row-gap' }, h('a', { class: 'btn primary', href: '/profile/edit' }, 'Edit my details'), ' ', h('a', { class: 'btn', href: '/' }, '← My availability'))
+        : h('a', { class: 'btn', href: '/admin/members' }, '← Members')),
 
     h('div', { class: 'stats' },
       stat(String(gamesUmpired), gamesUmpired === 1 ? 'game umpired here' : 'games umpired here'),
@@ -228,7 +228,7 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
       !season ? h('p', { class: 'muted' }, 'No season set up yet.')
         : !byComp.size && !picks.length ? h('p', { class: 'muted' }, 'No playing dates left this season.')
         : h('div', {},
-          self ? h('p', { class: 'muted small' }, 'To change it, go to ', h('a', { href: '#/' }, 'My availability'), '.')
+          self ? h('p', { class: 'muted small' }, 'To change it, go to ', h('a', { href: '/' }, 'My availability'), '.')
             : h('p', { class: 'muted small' }, 'Click a date to change it: Available → Not available → no answer. Changes you make are marked as set by the officer.'),
           ORDER.map(k => COMPS.find(c => c.key === k)).filter(c => c && byComp.has(c.key)).map(c => availLine(c)),
           picks.length > 0 && h('div', { class: 'avail-line' },
@@ -283,7 +283,7 @@ export async function viewMyProfile(ctx) {
   return h('div', { class: 'member-profile' },
     h('div', { class: 'row-between' },
       h('h1', {}, me.name || `${n.firstName} ${n.lastName}`),
-      h('span', { class: 'row-gap' }, h('a', { class: 'btn primary', href: '#/profile/edit' }, 'Edit my details'), ' ', h('a', { class: 'btn', href: '#/' }, '← Home'))),
+      h('span', { class: 'row-gap' }, h('a', { class: 'btn primary', href: '/profile/edit' }, 'Edit my details'), ' ', h('a', { class: 'btn', href: '/' }, '← Home'))),
     h('section', { class: 'card' }, h('h2', {}, 'My details'),
       row('First name', n.firstName), row('Last name', n.lastName), row('Email', me.email), row('Mobile', me.phone),
       row('Date of birth', fmtLong(me.dob)), row('Address', me.address),

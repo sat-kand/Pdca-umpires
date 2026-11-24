@@ -65,3 +65,10 @@ export function mapsLink(g) {
   if (g.lat != null && g.lng != null) return `https://www.google.com/maps?q=${g.lat},${g.lng}`;
   return g.ground ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(g.ground + ' ' + (g.address || ''))}` : null;
 }
+
+// Pages are real paths (/admin/members, /join/bcdca). The server sends every path to index.html and this runs the screen.
+export const routePath = () => location.pathname.replace(/\/+$/, '') || '/';
+export function navigate(path, { replace = false } = {}) {
+  if (location.pathname + location.search !== path) history[replace ? 'replaceState' : 'pushState'](null, '', path);
+  window.dispatchEvent(new Event('route'));
+}

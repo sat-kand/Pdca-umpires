@@ -10,6 +10,14 @@ from playwright.sync_api import sync_playwright, expect
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PORT = 8765
 BASE = f"http://localhost:{PORT}/"
+
+
+def goto(pg, url):
+    """Open a page of the app. Once it is loaded, move inside it the way a link does (no reload); the first time, load it."""
+    if pg.url.startswith(BASE):
+        pg.evaluate("p => { history.pushState(null, '', p); window.dispatchEvent(new Event('route')); }", url[len(BASE) - 1:])
+    else:
+        pg.goto(url)
 CHROME = os.environ.get("CHROME", "/usr/bin/google-chrome")
 
 
@@ -19,6 +27,9 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
 
     # The tests run the app in demo mode, whatever Supabase project js/config.js points at.
     def do_GET(self):
+        route = self.path.split('?')[0]
+        if '.' not in os.path.basename(route) and not route.startswith(('/js/', '/css/')):
+            self.path = '/index.html'          # clean URLs: the host sends every page path to index.html
         if self.path.split("?")[0] == "/js/config.js":
             import re as _re
             src = open(os.path.join(ROOT, "js", "config.js"), encoding="utf-8").read()
@@ -140,7 +151,7 @@ def check(cond, msg):
 
 
 def sign_in(page, email, open_form=True):
-    page.goto(BASE + "#/")
+    goto(page, BASE)
     page.wait_for_selector("#login-email, .nav")
     if page.locator("#login-email").count():
         page.fill("#login-email", email)
@@ -222,7 +233,7 @@ with sync_playwright() as p:
     check(page.locator("section.week").count() == 3, "Load next week adds the following week")
     page.locator("section.week").nth(2).locator("a.tile-body").first.click()
     page.wait_for_selector("table.board")
-    page.goto(BASE + "#/admin")
+    goto(page, BASE + "admin")
     page.wait_for_selector(".tile-round")
     check(page.locator("section.week").count() == 3, "going into a board and back keeps the loaded weeks")
     page.set_viewport_size({"width": 1280, "height": 420})
@@ -539,7 +550,7 @@ with sync_playwright() as p:
     page.click("a.tab:has-text('Back to Allocate')")
 
     print("Admin: past allocations stay available")
-    page.goto(BASE + "#/admin")
+    goto(page, BASE + "admin")
     page.wait_for_selector(".tile-round")
     check(page.locator(".past-rounds").count() == 0, "Past allocations is no longer on the Allocate page")
     page.click("nav .menu > summary")
@@ -556,7 +567,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".report-table")
     check(page.locator(".report-table tbody tr").count() == 4 and any(n in page.locator(".report-table").inner_text().upper() for n in ["SERRAO", "EVERTON", "BAKON", "CHELLAPA", "DRYBURGH", "JAYASHRI", "HENRY", "KRISH"]), "opening it shows the final allocation report with the umpires' names")
     # Finished more than 4 days ago: a record only, no Assign board.
-    page.goto(BASE + "#/admin/past")
+    goto(page, BASE + "admin/past")
     page.wait_for_selector(".past-row")
     # Which rounds are still open depends on today's date: open for 4 days after their last day.
     open_rows = page.evaluate("""() => { const o = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca;
@@ -579,22 +590,22 @@ with sync_playwright() as p:
         const r = past.sort((a, b) => (b.end || '').localeCompare(a.end || ''))[0];      // the one finished yesterday
         const d = new Date(); d.setDate(d.getDate() - 5); r.end = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; r.dates = [r.end]; r.start = r.end;
         localStorage.setItem(k, JSON.stringify(db)); return r.id; }""")
-    page.goto(BASE + "#/admin/past")
+    goto(page, BASE + "admin/past")
     page.reload()
     page.wait_for_selector(".past-row")
     jr = page.locator(".past-row", has_text="Junior").first
     check("Can change until" not in jr.inner_text() and "/report" in (jr.get_attribute("href") or ""), "finished more than 4 days ago: no longer marked as changeable, opens the report")
-    page.goto(BASE + f"#/admin/round/{old}")
+    goto(page, BASE + f"admin/round/{old}")
     page.wait_for_selector(".report-table")
     check("/report" in page.url and page.locator("a.tab:has-text('Assign')").count() == 0 and "can no longer be changed" in page.inner_text("main"),
           "going to its board lands on the report: no Assign tab, and it says why")
     check(page.locator("a.tab:has-text('Availability')").count() == 0 and page.locator("button:has-text('Copy umpire emails')").count() == 0
           and page.locator("button:has-text('Open email draft')").count() == 0 and page.locator("button:has-text('Download PDF')").count() == 1,
           "a finished round shows only its report and Download PDF: no Availability, no emails")
-    page.goto(BASE + f"#/admin/round/{old}/availability")
+    goto(page, BASE + f"admin/round/{old}/availability")
     page.wait_for_selector(".report-table")
     check("/report" in page.url, "and its Availability page goes to the report too")
-    page.goto(BASE + "#/admin")
+    goto(page, BASE + "admin")
     page.wait_for_selector(".tile-round")
 
     # A round with no grades selected yet still shows everyone's availability for its days.
@@ -602,7 +613,7 @@ with sync_playwright() as p:
         const r = Object.values(o.rounds).find(r => r.end >= t && Object.values(o.games[r.id] || {}).length && Object.values(o.games[r.id]).every(g => !(g.slots > 0)));
         return r && r.id; }""")
     if jr0:
-        page.goto(BASE + f"#/admin/round/{jr0}/availability")
+        goto(page, BASE + f"admin/round/{jr0}/availability")
         page.wait_for_selector("td.av")
         check(page.locator("td.av.ok, td.av.no").count() > 0, "a round with no grades selected still shows availability for its days")
         ranks = page.locator("table.board tbody tr").evaluate_all("""l => l.map(tr => { const c = [...tr.querySelectorAll('td.av')];
@@ -613,7 +624,7 @@ with sync_playwright() as p:
         check(page.locator("tr.nonmember:has-text('Priya Nair') .chip:has-text('Non-member')").count() == 1, "an applicant who gave availability is listed as a Non-member")
     else:
         check(False, "sample data has a round with no grades selected")
-    page.goto(BASE + "#/admin")
+    goto(page, BASE + "admin")
     page.wait_for_selector(".tile-round")
 
     print("Admin: season availability dashboard")
@@ -720,7 +731,7 @@ with sync_playwright() as p:
     check(page.locator(".pending-card").count() == 0, "once approved they can give their availability")
     sign_out(page)
     sign_in(page, "admin@demo.test")
-    page.goto(BASE + "#/admin/members")
+    goto(page, BASE + "admin/members")
     page.wait_for_selector("table.members")
     page.wait_for_timeout(300)
     check("Member" in row_of(page, "newbie@demo.test").inner_text() and "Inactive member" in row_of(page, "newbie@demo.test").inner_text(),
@@ -783,7 +794,7 @@ with sync_playwright() as p:
           "ticked rows can be approved or rejected together (nothing to make active by hand)")
     page.click(".bulk-bar button:has-text('Clear')")
     page.select_option(".member-tools select", "all")
-    page.goto(BASE + "#/admin/members")
+    goto(page, BASE + "admin/members")
     page.wait_for_selector("table.members")
     check(page.locator("h1").first.inner_text() == "Members", "the old /admin/umpires link still opens it")
 
@@ -862,7 +873,7 @@ with sync_playwright() as p:
     check(imported["sam"]["days"][f"senior:{first}"] == "yes", "so does the new non-member")
 
     print("Allocate: a non-member is offered in a group of their own")
-    page.goto(BASE + "#/admin")
+    goto(page, BASE + "admin")
     page.wait_for_selector(".comp-tile")
     tile("Senior").locator("a.tile-body").click()
     page.wait_for_selector("table.board")
@@ -1025,7 +1036,7 @@ with sync_playwright() as p:
     check(not back["inSlot"] and "no longer available" in back["note"], "they are NOT put back: the pull-out stands until the officer decides")
 
     print("The officer fills the place: the warning goes")
-    page.goto(BASE + f"#/admin/round/{info['roundId']}")
+    goto(page, BASE + f"admin/round/{info['roundId']}")
     page.wait_for_selector(f".change:has-text('{info['name']} is no longer available')")
     row = page.locator(f"tr:has(.change:has-text('{info['name']} is no longer available'))").first
     empty = row.locator("select.slot.empty").first
@@ -1046,7 +1057,7 @@ with sync_playwright() as p:
     check(page.locator(f".appt[data-date='{info['date']}']").count() == 0, "the umpire just put in does not see the game yet")
     sign_out(page)
     sign_in(page, "admin@demo.test")
-    page.goto(BASE + f"#/admin/round/{info['roundId']}")
+    goto(page, BASE + f"admin/round/{info['roundId']}")
     page.wait_for_selector(".publish button:has-text('Re-publish')")
     page.click(".publish button:has-text('Re-publish')")
     page.wait_for_selector(".publish button:disabled")
@@ -1229,7 +1240,7 @@ with sync_playwright() as p:
     page.click("a.tab:has-text('Availability')")
     page.wait_for_selector("table.board")
     check(page.locator("tr:has(td:has-text('B Chellapa')) td.av.pu").count() == 0, "the Availability tab no longer shows them as a player umpire")
-    gave_round = page.evaluate("() => { const g = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.games; return location.hash.split(/[/?]/).find(x => x in g); }")
+    gave_round = page.evaluate("() => { const g = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.games; return location.pathname.split(/[/?]/).find(x => x in g); }")
     # They choose a different game instead: it goes on the board (umpires see it once published).
     sign_out(page)
     # A second game in the same grade and the same week as the one they gave back.
@@ -1257,7 +1268,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(400)
     sign_out(page)
     sign_in(page, "admin@demo.test")
-    page.goto(BASE + f"#/admin/round/{pu_round}")
+    goto(page, BASE + f"admin/round/{pu_round}")
     page.wait_for_selector("table.board")
     check(page.locator("tr:has(.chip.pu):has-text('Cobras')").count() >= 1, f"the newly chosen game, same grade and week, is on the Assign board with them as player umpire ({other})")
     # The officer keeps the board open; meanwhile the umpire (on their own device) removes that choice.
@@ -1268,10 +1279,10 @@ with sync_playwright() as p:
     page.wait_for_timeout(800)
     check(page.locator("tr:has(.chip.pu):has-text('Cobras')").count() == 0, "coming back to the open board, the umpire's change is applied without a refresh")
     check(page.locator(".publish button:has-text('Re-publish')").count() == 1, "and it waits for the officer to Re-publish")
-    page.goto(BASE + f"#/admin/round/{gave_round}/availability")
+    goto(page, BASE + f"admin/round/{gave_round}/availability")
     page.wait_for_selector("td.av")
     # Data left over from before this was fixed: a game still marked as a player umpire game, nobody chose it.
-    rid = page.evaluate("() => { const g = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.games; return location.hash.split(/[/?]/).find(x => x in g); }")
+    rid = page.evaluate("() => { const g = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.games; return location.pathname.split(/[/?]/).find(x => x in g); }")
     page.evaluate("""(rid) => { const k = 'pdca-umpires-demo-v2'; const db = JSON.parse(localStorage.getItem(k));
         const g = Object.values(db.orgs.pdca.games[rid]).find(x => x.home.name !== 'Cobras'); g.puOnly = true; g.puGame = true; g.slots = 1; g.alloc = {};
         localStorage.setItem(k, JSON.stringify(db)); }""", rid)
@@ -1285,7 +1296,7 @@ with sync_playwright() as p:
     check(page.locator("dialog .chip.pu").count() == 0, "Select grades only marks games someone has chosen now (a stale mark is ignored)")
     page.click("dialog button:has-text('Done')")
     page.wait_for_timeout(300)
-    page.goto(BASE + "#/admin")
+    goto(page, BASE + "admin")
     page.wait_for_selector(".dropouts")
     page.click(".dropouts button:has-text('Got it')")
 
@@ -1446,7 +1457,7 @@ with sync_playwright() as p:
     print("Mobile layout")
     m = ctx.new_page()
     m.set_viewport_size({"width": 390, "height": 800})
-    m.goto(BASE + "#/")
+    goto(m, BASE)
     m.wait_for_selector(".comp-section")
     m.locator(".comp-section:not(.player-card) .comp-head").first.click()
     m.wait_for_selector(".tile")
@@ -1472,7 +1483,7 @@ with sync_playwright() as p:
     fp = fresh.new_page()
     fp.on("dialog", lambda d: d.accept())
     fp.route("https://grassrootsapiproxy.cricket.com.au/**", lambda r: r.abort())
-    fp.goto(BASE + "#/")
+    goto(fp, BASE)
     fp.wait_for_selector("#login-email")
     fp.fill("#login-email", "umpire1@demo.test")
     fp.click("button:has-text('Sign in')")
@@ -1506,13 +1517,13 @@ with sync_playwright() as p:
     fresh.close()
 
     print("Associations: settings, officers, join link")
-    page.goto(BASE + "#/admin")
+    goto(page, BASE + "admin")
     page.wait_for_selector(".tile-round")
     check(page.locator("nav .menu > summary").inner_text().startswith("Parramatta District Cricket Association"), "the header menu is named after the association")
     page.click("nav .menu > summary")
     page.click(".menu-items .nav-link:has-text('Settings')")
     page.wait_for_selector(".join-link")
-    check(page.locator(".join-link").inner_text().endswith("#/join/pdca"), "Settings shows the link umpires join with")
+    check(page.locator(".join-link").inner_text().endswith("/join/pdca"), "Settings shows the link umpires join with")
     check("trial" not in page.inner_text("body").lower() and "subscription" not in page.inner_text("body").lower(), "nothing about trials or subscriptions")
     page.fill(".inline-form input[type=email]", "Second.Officer@demo.test")
     page.click("button:has-text('Add officer')")
@@ -1536,9 +1547,9 @@ with sync_playwright() as p:
     sign_in(page, "founder@demo.test")
     page.wait_for_selector(".comp-tile, .notice")
     check("Hills Cricket Association" in page.inner_text("body") or page.locator(".comp-tile").count() > 0, "its officer lands in it")
-    page.goto(BASE + "#/admin")
+    goto(page, BASE + "admin")
     page.wait_for_selector(".comp-tile, .notice")
-    page.goto(BASE + "#/admin/past")
+    goto(page, BASE + "admin/past")
     page.wait_for_selector("h1:has-text('Past allocations')")
     check(page.locator(".past-row").count() == 0 and "Nothing here yet" in page.inner_text("main"), "it starts with no history of its own")
     page.click("nav .menu > summary")
@@ -1555,7 +1566,7 @@ with sync_playwright() as p:
     sign_in(page, "hillsump@demo.test", open_form=False)
     page.wait_for_selector(".org-list")
     check(page.locator(".org-row").count() == 2 and page.locator(".org-row:has-text('Hills') a:has-text('Join')").count() == 1, "a new sign-up sees every association on Third Umpire, PDCA and Hills")
-    page.goto(BASE + "#/join/" + hills)
+    goto(page, BASE + "join/" + hills)
     page.wait_for_selector(".join-form")
     check("Join Hills Cricket Association" in page.inner_text(".join-form h1"), "an association's own link opens its join form")
     page.locator(".join-form input").nth(0).fill("Hills")
@@ -1566,21 +1577,21 @@ with sync_playwright() as p:
     check("Hills Cricket Association" in page.inner_text(".pending-card"), "they wait for that association's approval")
     sign_out(page)
     sign_in(page, "founder@demo.test")
-    page.goto(BASE + "#/admin/members")
+    goto(page, BASE + "admin/members")
     page.wait_for_selector("table.members")
     check(page.locator("tr.needs:has-text('Hills Umpire')").count() == 1 and page.locator("tr.needs").count() == 1, "the Hills officer sees the new umpire waiting for approval")
     sign_out(page)
     sign_in(page, "admin@demo.test")
     page.wait_for_selector(".tile-round")
     check(page.locator(".comp-tile").count() > 0 and page.locator("td:has-text('umpire1@demo.test')").count() == 0, "the PDCA officer lands back in PDCA, not the association last used on this computer")
-    page.goto(BASE + "#/admin/members")
+    goto(page, BASE + "admin/members")
     page.wait_for_selector("table.members")
     check(page.locator("a.member-link:has-text('Hills Umpire')").count() == 0 and row_of(page, "umpire1@demo.test").count() == 1, "PDCA sees its own umpires and not the Hills umpire")
-    page.goto(BASE + "#/join/" + hills)
+    goto(page, BASE + "join/" + hills)
     page.wait_for_selector(".join-form")
     check("Join Hills Cricket Association" in page.inner_text(".join-form h1") and page.locator(".join-form input[data-field=phone]").count() == 1,
           "a PDCA officer who opens the Hills link is just a new umpire there: the Hills join form")
-    page.goto(BASE + "#/associations")
+    goto(page, BASE + "associations")
     page.wait_for_selector(".org-list")
     check(page.locator(".org-row[data-org=pdca]").count() == 1 and page.locator(".org-row:has-text('Hills') a:has-text('Join')").count() == 1,
           "the list shows PDCA as theirs and Hills as one they can still join")
@@ -1626,14 +1637,14 @@ with sync_playwright() as p:
     check("Cricket NSW" in page.inner_text(".member-profile"), "they fill in their accreditation provider themselves; it shows on their profile")
     sign_out(page)
     sign_in(page, "admin@demo.test")
-    page.goto(BASE + "#/admin/members")
+    goto(page, BASE + "admin/members")
     page.wait_for_selector("table.members")
     row_of(page, "umpire2@demo.test").locator("a.member-link").click()
     page.wait_for_selector(".member-profile")
     check("Cricket NSW" in page.inner_text(".member-profile"), "and the officer sees it on the member's profile")
 
     print("Member profile")
-    page.goto(BASE + "#/admin/members")
+    goto(page, BASE + "admin/members")
     page.wait_for_selector("table.members")
     row_of(page, "umpire2@demo.test").locator("a.member-link").click()
     page.wait_for_selector(".member-profile")
@@ -1666,15 +1677,15 @@ with sync_playwright() as p:
     u2 = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['umpire2@demo.test']")
     check(u2["suspended"] is True and u2["active"] is False and page.locator(".status-box .chip:has-text('Active umpire')").count() == 0,
           "suspending (on the profile only) stops them umpiring")
-    prof = page.evaluate("() => location.hash")
+    prof = page.evaluate("() => location.pathname")
     u2name = u2["name"]
-    page.goto(BASE + "#/admin")
+    goto(page, BASE + "admin")
     page.wait_for_selector("a.tile-body")
     page.locator("a.tile-body").first.click()
     page.wait_for_selector("select.slot")
     opts = page.locator("select.slot").first.evaluate("s => [...s.options].map(o => o.text)")
     check(not any(u2name in o for o in opts), f"a suspended member is not offered on the Assign board, even with availability ({u2name})")
-    page.goto(BASE + prof)
+    goto(page, BASE + prof.lstrip("/"))
     page.wait_for_selector(".status-box button:has-text('Lift suspension')")
     page.click(".status-box button:has-text('Lift suspension')")
     page.wait_for_selector(".status-box .chip:has-text('Active umpire')")
@@ -1689,23 +1700,23 @@ with sync_playwright() as p:
         o.umpires['newbie@demo.test'] = { pid: 'pnew1', email: 'newbie@demo.test', name: 'N Newbie', firstName: 'N', lastName: 'Newbie', active: false };
         o.umpires['nope@demo.test'] = { pid: 'pnew2', email: 'nope@demo.test', name: 'X Nope', firstName: 'X', lastName: 'Nope', active: false };
         localStorage.setItem(k, JSON.stringify(db)); }""")
-    page.goto(BASE + "#/admin/member/pnew1")
+    goto(page, BASE + "admin/member/pnew1")
     page.wait_for_selector(".status-box .chip:has-text('Waiting for approval')")
     page.click(".status-box button:has-text('Approve')")
     page.wait_for_selector(".status-box .chip:has-text('Member')")
     check(page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['newbie@demo.test'].active") is True, "a new registration can be approved from the profile")
-    page.goto(BASE + "#/admin/member/pnew2")
+    goto(page, BASE + "admin/member/pnew2")
     page.wait_for_selector(".status-box button:has-text('Reject')")
     page.click(".status-box button:has-text('Reject')")
     page.wait_for_selector(".status-box .chip:has-text('Rejected')")
-    page.goto(BASE + "#/admin/members")
+    goto(page, BASE + "admin/members")
     page.wait_for_selector("table.members")
     check(page.locator("a.member-link:has-text('X Nope')").count() == 0, "or rejected: kept as Rejected, off the main list")
     page.select_option(".member-tools select", "rejected")
     check(page.locator("a.member-link:has-text('X Nope')").count() == 1, "and shown under Rejected")
     page.select_option(".member-tools select", "all")
 
-    page.goto(BASE + "#/admin/availability")
+    goto(page, BASE + "admin/availability")
     page.wait_for_selector("a.member-link")
     page.locator("a.member-link").first.click()
     page.wait_for_selector(".member-profile")
@@ -1715,7 +1726,7 @@ with sync_playwright() as p:
     print("Settings: groups and grades")
     sign_out(page)
     sign_in(page, "admin@demo.test")
-    page.goto(BASE + "#/admin/settings")
+    goto(page, BASE + "admin/settings")
     page.wait_for_selector(".groups-card")
     gc = page.locator(".groups-card")
     check(gc.locator("button[type=submit]").is_disabled(), "Save is greyed out until something changes")
@@ -1737,7 +1748,7 @@ with sync_playwright() as p:
     org = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org")
     check([g["name"] for g in org["groups"]] == ["Seniors"] + start_groups[1:] + ["Women"] and (not women.count() or org["gradeGroups"].get("Senior Women") == org["groups"][3]["key"]),
           "groups can be renamed and added, and a grade moved to another group")
-    page.goto(BASE + "#/admin")
+    goto(page, BASE + "admin")
     page.wait_for_selector(".comp-tile")
     page.wait_for_timeout(1500)
     page.wait_for_selector(".comp-tile")
@@ -1746,14 +1757,14 @@ with sync_playwright() as p:
     sign_out(page)
     before = len(errors)
     sign_in(page, "umpire4@demo.test")
-    page.goto(BASE + "#/my")
+    goto(page, BASE + "my")
     page.wait_for_selector(".comp-section, .card")
     page.wait_for_timeout(1500)
     check(len(errors) == before and page.locator("text=Something went wrong").count() == 0, "My availability opens with the association's own groups (one of them new)")
     sign_out(page)
     sign_in(page, "admin@demo.test")
 
-    page.goto(BASE + "#/admin/settings")
+    goto(page, BASE + "admin/settings")
     page.wait_for_selector(".groups-card")
     gc = page.locator(".groups-card")
     gc.locator("button:has-text('Use the suggestions')").click()
@@ -1762,7 +1773,7 @@ with sync_playwright() as p:
     check(len(sug) > 1 and len(picked) == len(sug) and "Senior" in sug, f"Use the suggestions names groups from the competitions and spreads the grades over them ({sug})")
     gc.locator("button:has-text('Save')").click()
     page.wait_for_selector(".groups-card button[type=submit]:has-text('Saved')")
-    page.goto(BASE + "#/admin")
+    goto(page, BASE + "admin")
     page.wait_for_selector(".comp-tile")
     page.wait_for_timeout(1500)
     names = page.locator(".comp-tile h2").all_inner_texts()
@@ -1785,7 +1796,7 @@ with sync_playwright() as p:
     sign_out(page)
     sign_in(page, "umpire4@demo.test")
     page.evaluate("() => localStorage.setItem('pdca-org', 'pdca')")          # they last used PDCA
-    page.goto(BASE + "#/my")
+    goto(page, BASE + "my")
     page.reload()
     page.wait_for_selector(".avail-head")
     mine = page.locator(".avail-head").first
@@ -1801,7 +1812,7 @@ with sync_playwright() as p:
     check(cur.locator(".comp-section:has(h2:has-text('Junior')) .tile:visible").count() > 0, "the new group opens with its own Save")
     other.locator(".comp-section:has(h2:has-text('Junior')) .comp-head").click()
     page.wait_for_selector(".avail-card:not(.other-org) .avail-head h2:has-text('Second Association')")
-    check(page.url.endswith("#/my"), "tapping a line there switches association and stays on My availability")
+    check(page.url.endswith("/my"), "tapping a line there switches association and stays on My availability")
     cur = page.locator(".avail-card:not(.other-org)")
     check(cur.locator(".comp-section:has(h2:has-text('Junior')) .tile:visible").count() > 0 and cur.locator(".tile:visible").count() == cur.locator(".comp-section:has(h2:has-text('Junior')) .tile:visible").count(),
           "with that group (and only that group) open")
@@ -1819,7 +1830,7 @@ with sync_playwright() as p:
     print("A group whose grades all need no umpires")
     sign_out(page)
     sign_in(page, "admin@demo.test")
-    page.goto(BASE + "#/admin/settings")
+    goto(page, BASE + "admin/settings")
     page.wait_for_selector(".groups-card")
     gc = page.locator(".groups-card")
     t20 = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.groups.find(g => g.name === 'T20').key")
@@ -1828,13 +1839,13 @@ with sync_playwright() as p:
             r.locator("select").nth(1).select_option("0")
     gc.locator("button:has-text('Save')").click()
     page.wait_for_selector(".groups-card button[type=submit]:has-text('Saved')")
-    page.goto(BASE + "#/admin")
+    goto(page, BASE + "admin")
     page.wait_for_selector(".tile-round")
     page.wait_for_timeout(1500)
     check("T20" not in page.locator(".comp-tile h2").all_inner_texts(), "with every T20 grade set to None, T20 has no tile")
     sign_out(page)
     sign_in(page, "umpire4@demo.test")
-    page.goto(BASE + "#/my")
+    goto(page, BASE + "my")
     page.wait_for_selector(".comp-section")
     check(page.locator(".comp-section:has(h2:has-text('T20'))").count() == 0,
           "and members are not asked for T20 availability")
@@ -1849,7 +1860,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".who, #login-email")
     if page.locator(".who").count(): sign_out(page)
     sign_in(page, "admin@demo.test", open_form=False)
-    page.goto(BASE + "#/admin/settings")
+    goto(page, BASE + "admin/settings")
     page.wait_for_selector("h2:has-text('Association')")
     check(page.locator("form:has(h2:has-text('Player umpires'))").count() == 0, "with the feature off, Settings has no Player umpires section")
     check(page.locator("label:has-text('PlayHQ organisation ID')").count() == 0, "and officers cannot enter a PlayHQ organisation ID")
@@ -1857,7 +1868,7 @@ with sync_playwright() as p:
     check(page.locator(".menu-items .menu-switch:has-text('Second Association')").count() == 1, "an officer of two associations can switch from the menu")
     page.locator(".menu-items .menu-switch:has-text('Second Association')").click()
     page.wait_for_timeout(800)
-    check(page.url.endswith("#/admin/settings") and page.locator("label:has-text('Name') input").first.input_value() == "Second Association", "switching keeps the page (Settings), now showing Second Association's")
+    check(page.url.endswith("/admin/settings") and page.locator("label:has-text('Name') input").first.input_value() == "Second Association", "switching keeps the page (Settings), now showing Second Association's")
     page.click("nav .menu > summary")
     check(page.locator(".menu-items .menu-head").first.inner_text() == "Second Association"
           and page.locator(".menu-items .menu-switch:has-text('Parramatta')").count() == 1, "now in Second Association, with a way back")
@@ -1865,14 +1876,14 @@ with sync_playwright() as p:
     page.wait_for_timeout(800)
     sign_out(page)
     sign_in(page, "umpire4@demo.test", open_form=False)
-    page.goto(BASE + "#/my")
+    goto(page, BASE + "my")
     page.wait_for_selector(".comp-section")
     check(page.locator(".player-card:visible").count() == 0, "members do not see player umpiring when the feature is off")
 
     print("Joining: what an association asks for, details from the profile, membership not required, taking a request back")
     sign_out(page)
     sign_in(page, "founder@demo.test", open_form=False)
-    page.goto(BASE + "#/admin/settings")
+    goto(page, BASE + "admin/settings")
     page.wait_for_selector(".joining-card")
     jc = page.locator(".joining-card")
     check(jc.locator("select").count() == 5 and "Name and email are always asked for" in jc.inner_text(), "Settings has a New umpires card with each detail the association can ask for")
@@ -1884,7 +1895,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".joining-card button[type=submit]:has-text('Saved')")
     sign_out(page)
     sign_in(page, "umpire2@demo.test", open_form=False)
-    page.goto(BASE + "#/my")
+    goto(page, BASE + "my")
     page.wait_for_selector(".comp-section, .org-list")
     if page.locator(".org-list").count():                          # in more than one association and none remembered here: they choose
         page.locator(".org-row[data-org=pdca] button:has-text('Open')").click()
@@ -1906,7 +1917,7 @@ with sync_playwright() as p:
     check(page.locator(".pending-card").count() == 0 and "No dates to answer yet" in page.inner_text("main"), "with membership not required they are in at once, with no wait for approval")
     sign_out(page)
     sign_in(page, "founder@demo.test", open_form=False)
-    page.goto(BASE + "#/admin/members")
+    goto(page, BASE + "admin/members")
     page.wait_for_selector(".join-requests")
     req = page.locator(".join-requests .request:has-text('umpire2@demo.test')")
     check("1 May 1990" in req.inner_text() and "0400 777 888" in req.inner_text() and "Address" not in req.inner_text(), "the officer sees the details Hills asked for, and nothing it did not")
@@ -1915,7 +1926,7 @@ with sync_playwright() as p:
     # Not listed: an association can stop taking new requests
     sign_out(page)
     sign_in(page, "admin@demo.test", open_form=False)
-    page.goto(BASE + "#/admin/settings")
+    goto(page, BASE + "admin/settings")
     page.wait_for_selector(".joining-card, .org-list")
     if page.locator(".org-list").count():                          # an officer of two associations, with none remembered on this browser: they choose
         page.locator(".org-row[data-org=pdca] button:has-text('Open')").click()
@@ -1927,12 +1938,12 @@ with sync_playwright() as p:
     sign_in(page, "cancelme@demo.test", open_form=False)
     page.wait_for_selector(".org-list")
     check(page.locator(".org-row:has-text('Parramatta')").count() == 0 and page.locator(".org-row:has-text('Hills')").count() == 1, "an association that is not listed is not offered to new umpires")
-    page.goto(BASE + "#/join/pdca")
+    goto(page, BASE + "join/pdca")
     page.wait_for_selector(".notice")
     check("not taking new umpires" in page.inner_text("main") and page.locator(".join-form").count() == 0, "and its link says it is not taking new umpires")
     sign_out(page)
     sign_in(page, "admin@demo.test", open_form=False)
-    page.goto(BASE + "#/admin/settings")
+    goto(page, BASE + "admin/settings")
     page.wait_for_selector(".joining-card")
     page.locator(".joining-card label:has-text('Show this association in the list') input").check()
     page.locator(".joining-card button[type=submit]").click()
@@ -1941,7 +1952,7 @@ with sync_playwright() as p:
     # Taking back a request that is still waiting
     sign_out(page)
     sign_in(page, "cancelme@demo.test", open_form=False)
-    page.goto(BASE + "#/join/pdca")
+    goto(page, BASE + "join/pdca")
     page.wait_for_selector(".join-form")
     page.locator(".join-form input").nth(0).fill("Cancel")
     page.locator(".join-form input").nth(1).fill("Me")
@@ -1956,9 +1967,30 @@ with sync_playwright() as p:
     check(page.locator(".org-row:has-text('Parramatta') a:has-text('Join')").count() == 1 and page.locator(".pending-card").count() == 0, "cancelling puts the association back in the list to join")
     sign_out(page)
     sign_in(page, "admin@demo.test", open_form=False)
-    page.goto(BASE + "#/admin/members")
+    goto(page, BASE + "admin/members")
     page.wait_for_selector("table.members")
     check(page.locator(".join-requests .request:has-text('cancelme@demo.test')").count() == 0, "the officer no longer sees the request")
+
+    print("\nClean URLs")
+    # the officer is signed in (demo): real page loads, not in-app moves
+    page.goto(BASE + "admin/settings")
+    page.wait_for_selector(".groups-card")
+    check(page.url.endswith("/admin/settings") and "#" not in page.url, "a page address has no #, and opening it directly (a reload) shows that page")
+    page.goto(BASE + "#/admin/members")
+    page.wait_for_selector("table.members")
+    check(page.url.endswith("/admin/members") and "#" not in page.url, "an old link with # still opens, and is tidied to the clean address")
+    page.evaluate("() => document.querySelector('a[href=\"/admin/settings\"]').click()")   # a link in the menu
+    page.wait_for_selector(".groups-card")
+    check(page.url.endswith("/admin/settings"), "tapping a menu link changes the address without a #")
+    page.go_back()
+    page.wait_for_selector("table.members")
+    check(page.url.endswith("/admin/members"), "the Back button returns to the previous page")
+    page.go_forward()
+    page.wait_for_selector(".groups-card")
+    check(page.url.endswith("/admin/settings"), "and Forward goes on again")
+    page.goto(BASE + "no/such/page")
+    page.wait_for_selector(".notice.warn")
+    check("Page not found" in page.inner_text("main"), "an unknown address says the page was not found")
 
     browser.close()
 

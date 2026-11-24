@@ -11,6 +11,14 @@ from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PORT = 8766
 BASE = f"http://localhost:{PORT}/"
+
+
+def goto(pg, url):
+    """Open a page of the app. Once it is loaded, move inside it the way a link does (no reload); the first time, load it."""
+    if pg.url.startswith(BASE):
+        pg.evaluate("p => { history.pushState(null, '', p); window.dispatchEvent(new Event('route')); }", url[len(BASE) - 1:])
+    else:
+        pg.goto(url)
 CHROME = os.environ.get("CHROME", "/usr/bin/google-chrome")
 OUT = sys.argv[1] if len(sys.argv) > 1 else "/tmp/mobile"
 os.makedirs(OUT, exist_ok=True)
@@ -22,6 +30,9 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
 
     # The tests run the app in demo mode, whatever Supabase project js/config.js points at.
     def do_GET(self):
+        route = self.path.split('?')[0]
+        if '.' not in os.path.basename(route) and not route.startswith(('/js/', '/css/')):
+            self.path = '/index.html'          # clean URLs: the host sends every page path to index.html
         if self.path.split("?")[0] == "/js/config.js":
             import re as _re
             src = open(os.path.join(ROOT, "js", "config.js"), encoding="utf-8").read()
@@ -86,7 +97,7 @@ def main():
                 problems[name] = found
 
         def sign_in(email):
-            page.goto(BASE + "#/")
+            goto(page, BASE)
             page.wait_for_selector("#login-email, .who")
             if page.locator(".who").count():
                 page.click(".who-name"); page.click(".who-menu button:has-text('Sign out')")
@@ -95,7 +106,7 @@ def main():
             page.click("button:has-text('Sign in')")
             page.wait_for_selector(".who")
 
-        page.goto(BASE + "#/")
+        goto(page, BASE)
         page.wait_for_selector("#login-email")
         shot("01-sign-in")
         page.fill("#login-email", "applicant@demo.test"); page.click("button:has-text('Sign in')")
@@ -112,29 +123,29 @@ def main():
         shot("02-allocate", ".tile-round")
         page.click(".who-name"); shot("03-account-menu", ".who-menu[open] .menu-items"); page.click(".who-name")
         page.click("nav .menu > summary"); shot("04-org-menu", "nav .menu[open] .menu-items"); page.click("nav .menu > summary")
-        rid = page.evaluate("() => location.hash")  # placeholder
+        rid = page.evaluate("() => location.pathname")  # placeholder
         page.locator("a.tile-body").first.click()
         page.wait_for_selector("table.board")
-        rid = page.evaluate("() => location.hash.split('/').pop()")
+        rid = page.evaluate("() => location.pathname.split('/').pop()")
         shot("05-assign-board", "table.board")
         page.click("button:has-text('Select grades')"); shot("06-select-grades", "dialog[open], .modal"); page.keyboard.press("Escape")
-        page.goto(BASE + f"#/admin/round/{rid}/availability"); shot("07-round-availability")
-        page.goto(BASE + f"#/admin/round/{rid}/report"); shot("08-report")
-        page.goto(BASE + "#/admin/availability"); shot("09-season-availability")
-        page.goto(BASE + "#/admin/members"); page.wait_for_selector("table.members")
+        goto(page, BASE + f"admin/round/{rid}/availability"); shot("07-round-availability")
+        goto(page, BASE + f"admin/round/{rid}/report"); shot("08-report")
+        goto(page, BASE + "admin/availability"); shot("09-season-availability")
+        goto(page, BASE + "admin/members"); page.wait_for_selector("table.members")
         shot("09b-join-requests", ".join-requests")
         page.locator("table.members tbody input[type=checkbox]").nth(0).check(); page.locator("table.members tbody input[type=checkbox]").nth(1).check()
         shot("10-members", ".bulk-bar")
         page.click("details.import-card:has(> summary:has-text('Bring in')) > summary"); shot("10b-members-import", ".import-step")
         page.locator("a.member-link").first.click(); shot("11-member-profile", ".member-profile")
-        page.goto(BASE + "#/admin/past"); shot("12-past-allocations")
-        page.goto(BASE + "#/admin/settings"); shot("13-settings", ".groups-card"); page.locator(".joining-card").scroll_into_view_if_needed(); shot("13b-new-umpires-settings", ".joining-card")
-        page.goto(BASE + "#/associations"); shot("14-associations")
+        goto(page, BASE + "admin/past"); shot("12-past-allocations")
+        goto(page, BASE + "admin/settings"); shot("13-settings", ".groups-card"); page.locator(".joining-card").scroll_into_view_if_needed(); shot("13b-new-umpires-settings", ".joining-card")
+        goto(page, BASE + "associations"); shot("14-associations")
         sign_in("umpire4@demo.test")
-        page.goto(BASE + "#/my"); shot("15-my-availability-summary", ".comp-section")
+        goto(page, BASE + "my"); shot("15-my-availability-summary", ".comp-section")
         page.locator(".comp-section:not(.player-card) .comp-head").first.click(); shot("16-my-availability-form", ".comp-section .tile")
-        page.goto(BASE + "#/profile"); shot("17-my-profile", ".member-profile")
-        page.goto(BASE + "#/profile/edit"); shot("18-edit-details", "form")
+        goto(page, BASE + "profile"); shot("17-my-profile", ".member-profile")
+        goto(page, BASE + "profile/edit"); shot("18-edit-details", "form")
         b.close()
     srv.shutdown()
     for name, found in problems.items():

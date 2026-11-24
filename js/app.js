@@ -1,7 +1,7 @@
 import { applyOrg } from './org-setup.js';
 import { viewMember, viewMyProfile } from './views-member.js';
 import { CONFIG, DEMO_ORG } from './config.js';
-import { h, setChildren, spinner, toast } from './ui.js';
+import { h, setChildren, spinner, toast, navigate, routePath } from './ui.js';
 import { createDemoStore } from './store-demo.js';
 import { seedDemo } from './demo-seed.js';
 import { viewLogin, viewProfile, viewMy } from './views-umpire.js';
@@ -12,12 +12,14 @@ import { viewAdminHome, viewPastAllocations, viewBoard, viewAvailabilityOverview
 
 const S = { store: null, user: null, org: null, isAdmin: false, umpire: null };
 const ORG_KEY = 'pdca-org';            // the association this browser last used
+// Links shared before pages had real paths (/#/join/bcdca) still work.
+if (/^#\/./.test(location.hash)) history.replaceState(null, '', location.hash.slice(1));
 const NEXT_KEY = 'pdca-join-next';      // an association's join link opened before signing in: where to go once they have
 const main = document.getElementById('app');
 const header = document.getElementById('top');
 let renderId = 0;
 
-const go = path => { if (location.hash === '#' + path) render(); else location.hash = '#' + path; };
+const go = path => navigate(path);
 
 async function loadUser(user) {
   S.user = user; S.isAdmin = false; S.umpire = null; S.org = null; S.myOrgs = []; S.pending = 0;
@@ -51,7 +53,7 @@ async function chooseOrg(id, opts = {}) {
   localStorage.setItem(ORG_KEY, id);
   S.openGroup = opts.open || '';                        // a group to open on My availability
   if (S.user) await loadUser(S.user);
-  const path = location.hash.slice(1) || '/';
+  const path = routePath();
   if (path === '/associations' || path.startsWith('/join/')) return go('/');
   if (path.startsWith('/admin') && !S.isAdmin) return go('/');      // not an officer there: their umpire page
   if (path.startsWith('/admin/round/')) return go('/admin');        // a round belongs to the association it came from
@@ -96,14 +98,14 @@ function drawHeader() {
         const b = ev.currentTarget; b.disabled = true; b.textContent = 'Loading sample data…';
         try { const r = await seedDemo(S.store); toast(`Loaded sample umpires and made-up fixtures (${r.games} games)`, 'ok'); } finally { if (S.user) await loadUser(S.user); render(); }
       } }, 'Load sample data'), ' · ',
-      h('button', { class: 'link', type: 'button', onclick: () => { if (confirm('Erase all demo data in this browser?')) { localStorage.removeItem(ORG_KEY); S.store.demoReset(); location.hash = '#/'; } } }, 'Reset')),
+      h('button', { class: 'link', type: 'button', onclick: () => { if (confirm('Erase all demo data in this browser?')) { localStorage.removeItem(ORG_KEY); S.store.demoReset(); navigate('/'); } } }, 'Reset')),
     h('div', { class: 'bar' },
-      h('a', { class: 'brand', href: '#/' }, '🏏 ', CONFIG.appName),
-      S.isAdmin && h('nav', { class: 'nav' }, link('#/admin', 'Allocate'), link('#/admin/availability', 'Availability'),
+      h('a', { class: 'brand', href: '/' }, '🏏 ', CONFIG.appName),
+      S.isAdmin && h('nav', { class: 'nav' }, link('/admin', 'Allocate'), link('/admin/availability', 'Availability'),
         // Members, Settings and the association picker sit together, out of the way of the weekly work.
         h('details', { class: 'menu' }, h('summary', { class: 'nav-link' }, (S.org && S.org.name) || 'My Organisation', S.pending > 0 && h('span', { class: 'badge', 'aria-label': `${S.pending} waiting to join` }, S.pending)),
           h('div', { class: 'menu-items' }, S.org && h('div', { class: 'menu-head' }, h('strong', {}, S.org.name)),
-            link('#/admin/members', 'Members'), link('#/admin/past', 'Past allocations'), link('#/admin/settings', 'Settings'), ...switchItems()))),
+            link('/admin/members', 'Members'), link('/admin/past', 'Past allocations'), link('/admin/settings', 'Settings'), ...switchItems()))),
       // The account menu, top right as on most sites: their name, then profile, availability and Sign out.
       S.user && (() => {
         const name = (S.umpire && S.umpire.name) || S.user.email;
@@ -113,10 +115,10 @@ function drawHeader() {
             h('summary', { class: 'who-name', 'aria-label': 'Account menu' }, h('span', { class: 'avatar' }, initials), h('span', { class: 'who-label' }, name)),
             h('div', { class: 'menu-items' },
               h('div', { class: 'menu-head' }, h('strong', {}, name), name !== S.user.email && h('span', { class: 'muted small' }, S.user.email)),
-              link('#/profile', 'My profile'), link('#/my', 'My availability'), link('#/associations', 'Associations'),
+              link('/profile', 'My profile'), link('/my', 'My availability'), link('/associations', 'Associations'),
               ...(S.isAdmin ? [] : switchItems()),
               h('hr'),
-              h('button', { class: 'nav-link menu-signout', type: 'button', onclick: async () => { await S.store.signOut(); await loadUser(null); location.hash = '#/'; render(); } }, 'Sign out'))));
+              h('button', { class: 'nav-link menu-signout', type: 'button', onclick: async () => { await S.store.signOut(); await loadUser(null); navigate('/'); } }, 'Sign out'))));
       })()),
     S.org && S.org.plan === 'suspended' && h('div', { class: 'demo-banner' }, 'This association has been set to read-only, so changes cannot be saved.'));
 }
@@ -125,7 +127,7 @@ async function render(quiet) {
   if (!S.store) return;
   const id = ++renderId;
   drawHeader();
-  const path = location.hash.slice(1) || '/';
+  const path = routePath();
   const join = /^\/join\/([^/]+)$/.exec(path);          // the link an association sends its umpires
   const joinId = join && decodeURIComponent(join[1]);
   if (joinId && !S.user) { localStorage.setItem(NEXT_KEY, joinId); go('/'); return; }          // sign in first, then come back to it
@@ -151,7 +153,7 @@ async function render(quiet) {
           : await fn(...m.slice(1).map(decodeURIComponent));
         break;
       }
-      if (!matched) view = h('p', { class: 'notice warn' }, 'Page not found. ', h('a', { href: '#/' }, 'Go home'));
+      if (!matched) view = h('p', { class: 'notice warn' }, 'Page not found. ', h('a', { href: '/' }, 'Go home'));
     }
   } catch (e) {
     console.error(e);
@@ -200,10 +202,17 @@ async function boot() {
     setChildren(main, h('div', { class: 'notice err' }, h('strong', {}, 'Could not start. '), e.message || String(e)));
     return;
   }
-  window.addEventListener('hashchange', render);
+  window.addEventListener('route', () => render());
+  window.addEventListener('popstate', () => render());
+  // Links inside the app change the page without reloading it.
+  document.addEventListener('click', e => {
+    const a = e.target.closest && e.target.closest('a[href^="/"]');
+    if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (a.target && a.target !== '_self') || a.hasAttribute('download') || a.getAttribute('href').startsWith('//')) return;
+    e.preventDefault(); navigate(a.getAttribute('href'));
+  });
   // Coming back to the officer's pages (another tab, the phone unlocked): redraw, so choices and
   // pull-outs made meanwhile are applied to the board without a manual refresh.
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && location.hash.startsWith('#/admin')) render(true); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && routePath().startsWith('/admin')) render(true); });
   try { await S.store.completeLink(async () => prompt('To finish signing in, please type the email address the link was sent to:')); }
   catch (e) { if (e && e.signInLink) S.linkProblem = e.message; else toast('Sign-in problem: ' + (e.message || e), 'err'); }
   S.store.onAuth(async user => {

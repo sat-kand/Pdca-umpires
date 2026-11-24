@@ -5,7 +5,7 @@
 // already on their profile is filled in), and the request waits for its officers to approve it. An association
 // can instead say membership is not needed to umpire: then they can give availability as soon as they ask.
 
-import { h, toast, busy } from './ui.js';
+import { h, toast, busy, routePath } from './ui.js';
 import { membershipOf, joinSettings, joinFieldsFor, missingJoinDetails, nameParts, fullName, JOIN_STATUS_LABEL, JOIN_STATUS_CHIP } from './logic.js';
 
 const byName = (a, b) => (a.name || '').localeCompare(b.name || '');
@@ -28,12 +28,12 @@ function cancelButton(ctx, org) {
     await ctx.store.cancelJoin(org.id, ctx.S.user.email);
     toast('Request cancelled', 'ok');
     await ctx.refreshUser();
-    ctx.go(location.hash.slice(1) || '/');
+    ctx.go(routePath());
   });
   return b;
 }
 
-const joinBtn = org => h('a', { class: 'btn small primary', href: `#/join/${encodeURIComponent(org.id)}`, 'aria-label': `Join ${org.name}` }, 'Join');
+const joinBtn = org => h('a', { class: 'btn small primary', href: `/join/${encodeURIComponent(org.id)}`, 'aria-label': `Join ${org.name}` }, 'Join');
 
 // ---------- the list of associations ----------
 // Everyone sees it first after signing up. Someone already in some associations sees those, then the rest to join.
@@ -70,7 +70,7 @@ export async function viewAssociations(ctx) {
 // ---------- the join form ----------
 export async function viewJoin(ctx, orgId) {
   const { store, S } = ctx;
-  const back = h('a', { href: '#/associations' }, 'See all associations');
+  const back = h('a', { href: '/associations' }, 'See all associations');
   const org = await store.getOrg(orgId);
   if (!org || org.plan === 'suspended') return h('p', { class: 'notice warn' }, 'We could not find that association. ', back);
   const set = joinSettings(org);
@@ -108,7 +108,7 @@ export async function viewJoin(ctx, orgId) {
   inputs.map(({ f, el }) => h('label', {}, f.label + (f.level === 'optional' ? ' (optional)' : ''), el)),
   fields.some(f => f.list) && h('datalist', { id: 'acc-providers' }, ['Cricket NSW', 'Cricket Australia', 'NSW Cricket Umpires & Scorers Association'].map(v => h('option', { value: v }))),
   fields.some(f => ['dob', 'address', 'phone'].includes(f.key)) && h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to the association’s appointments officers.'),
-  h('p', {}, btn, ' ', h('a', { class: 'btn', href: '#/associations' }, 'Back')));
+  h('p', {}, btn, ' ', h('a', { class: 'btn', href: '/associations' }, 'Back')));
   return form;
 }
 

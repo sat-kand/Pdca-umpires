@@ -102,7 +102,7 @@ test('completeLink: the code is used once; a second start-up or an already signe
   c.auth.exchangeCodeForSession = async () => { exchanged++; return { error: fail ? { message: 'used' } : null }; };
   const s = await createSupabaseStore({ url: 'u', anonKey: 'k' }, { createClient: () => c });
   const url = { search: '?code=abc', pathname: '/' };
-  globalThis.location = url; globalThis.history = { replaceState: (_a, _b, to) => { url.search = ''; url.hash = to; } };
+  globalThis.location = url; globalThis.history = { replaceState: (_a, _b, to) => { url.search = ''; url.hash = ''; url.pathname = to; } };
   try {
     assert.equal(await s.completeLink(), true);
     assert.equal(await s.completeLink(), false);              // the address no longer carries the code
@@ -118,11 +118,11 @@ test('completeLink: an already-used emailed link comes back with error_code in t
   const c = fake();
   const s = await createSupabaseStore({ url: 'u', anonKey: 'k' }, { createClient: () => c });
   const url = { search: '', hash: '#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired', pathname: '/' };
-  globalThis.location = url; globalThis.history = { replaceState: (_a, _b, to) => { url.search = ''; url.hash = to.slice(to.indexOf('#')); } };
+  globalThis.location = url; globalThis.history = { replaceState: (_a, _b, to) => { url.search = ''; url.hash = ''; url.pathname = to; } };
   try {
     assert.equal(await s.completeLink(), true);                  // signed in already (fake getSession): no error
-    assert.equal(url.hash, '#/');                                // and the address is cleaned up
-    url.search = '?error=access_denied&error_code=otp_expired'; url.hash = '#/';
+    assert.equal(url.hash, ''); assert.equal(url.pathname, '/');  // and the address is cleaned up
+    url.search = '?error=access_denied&error_code=otp_expired'; url.hash = '';
     c.auth.getSession = async () => ({ data: { session: null } });
     await assert.rejects(s.completeLink(), e => e.signInLink && /cannot be used/.test(e.message));   // not signed in: say so, offer a new link
     assert.equal(url.search, '');

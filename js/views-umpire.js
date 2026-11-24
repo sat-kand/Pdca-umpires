@@ -66,7 +66,7 @@ export async function viewProfile(ctx) {
   h('div', { class: 'two-up' }, h('label', {}, 'Umpire accreditation number', accreditation), h('label', {}, 'Accreditation provider', provider)),
   h('datalist', { id: 'acc-providers' }, ['Cricket NSW', 'Cricket Australia', 'NSW Cricket Umpires & Scorers Association'].map(v => h('option', { value: v }))),
   h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to your appointments officers.')],
-  h('p', {}, btn, ' ', existing && h('a', { class: 'btn', href: '#/profile' }, 'Cancel')));
+  h('p', {}, btn, ' ', existing && h('a', { class: 'btn', href: '/profile' }, 'Cancel')));
 }
 
 // The umpire's one and only page: upcoming appointments (if any) and the
@@ -79,7 +79,7 @@ export async function viewMy(ctx) {
     const page = h('div', { class: 'narrow-page' }, availTitle(), h('section', { class: 'card avail-card' },
       h('div', { class: 'avail-head' }, h('h2', {}, (store.org && store.org.name) || '')),
       h('p', { class: 'muted' }, 'To give your own availability here, add your umpire details first.'),
-      h('a', { class: 'btn primary', href: '#/profile' }, 'Add my details')));
+      h('a', { class: 'btn primary', href: '/profile' }, 'Add my details')));
     placeOtherOrgs(ctx, page, page.lastChild, S.user.email);
     return page;
   }

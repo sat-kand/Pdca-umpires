@@ -43,7 +43,7 @@ export function orgIdFrom(name, rand = Math.random) {
   return `${slug}-${Math.floor(rand() * 36 ** 4).toString(36).padStart(4, '0')}`;
 }
 
-export const joinLink = id => `${location.origin}${location.pathname}#/join/${id}`;
+export const joinLink = id => `${location.origin}/join/${id}`;
 
 
 // Officers only: name, PlayHQ organisation, who the officers are, and the link umpires join with.

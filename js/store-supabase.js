@@ -93,7 +93,7 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
     },
     async sendLink(email) {
       try { localStorage.setItem('pdca-last-email', email); } catch { /* private mode: the form just starts empty */ }
-      fail(await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: true } }));
+      fail(await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + '/', shouldCreateUser: true } }));
       return { sent: true };
     },
     // Call once at start-up. Returns true if the page was opened from an emailed link (?code=...).
@@ -102,7 +102,7 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
       const bad = new URLSearchParams(location.search).get('error_code') ? new URLSearchParams(location.search)
         : /(^|[#&?])error_code=/.test(location.hash || '') ? new URLSearchParams(location.hash.replace(/^#\/?\??/, '')) : null;
       if (bad) {
-        history.replaceState(null, '', location.pathname + '#/');
+        history.replaceState(null, '', '/');
         const { data } = await sb.auth.getSession();
         if (data && data.session) return true;                  // already signed in: the old link does not matter
         throw Object.assign(new Error(LINK_MESSAGE), { signInLink: true });
@@ -110,7 +110,7 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
       const code = new URLSearchParams(location.search).get('code');
       if (!code) return false;
       // The code is single-use: take it out of the address first, so a second start-up (or a reload) cannot try it again.
-      history.replaceState(null, '', location.pathname + '#/');
+      history.replaceState(null, '', '/');
       const { error } = await sb.auth.exchangeCodeForSession(code);
       if (error) {
         const { data } = await sb.auth.getSession();            // already signed in by an earlier attempt with this same link: not a problem
@@ -121,7 +121,7 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
       }
       return true;
     },
-    async signInGoogle() { fail(await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } })); },
+    async signInGoogle() { fail(await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + '/' } })); },
     async signOut() {
       // If the server cannot be reached the library keeps the session; always end it in this browser.
       let r; try { r = await sb.auth.signOut(); } catch (e) { r = { error: e }; }

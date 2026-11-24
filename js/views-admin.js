@@ -1,6 +1,6 @@
 // Screens for the appointments officer.
 
-import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal } from './ui.js';
+import { h, toast, setChildren, busy, copyText, mapsLink, todayLocal, navigate } from './ui.js';
 import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
   slotOptions, recount, summarise, formatSummary, publishState, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
@@ -13,7 +13,7 @@ import { applyPlayerUmpires, claimsFrom, playerUmpireAllowed } from './player-um
 const puEnabled = store => playerUmpireAllowed(store.org) && !!(store.org.playerUmpire && store.org.playerUmpire.enabled);
 import { membershipTypes, feeFor, money } from './views-org.js';
 import { membershipLink } from './views-member.js';
-const profileLink = u => h('a', { class: 'member-link', href: `#/admin/member/${encodeURIComponent(u.pid)}`, title: 'Open profile' }, u.name);
+const profileLink = u => h('a', { class: 'member-link', href: `/admin/member/${encodeURIComponent(u.pid)}`, title: 'Open profile' }, u.name);
 import { planImport, applyImport } from './import-availability.js';
 import { planMembers, applyMembers } from './import-members.js';
 import { syncFixtures, refreshRound, currentRound, visibleRounds, needsSync, addDays, weekOf, upcomingRounds } from './rounds.js';
@@ -35,8 +35,8 @@ function tabs(rid, active, locked = false) {
   // A finished, locked round is a record: just its report.
   const t = locked ? [['/report', 'Report']] : [['', 'Assign'], ['/availability', 'Availability'], ['/report', 'Report & email']];
   return h('nav', { class: 'tabs noprint' }, t.map(([p, label]) =>
-    h('a', { class: 'tab' + (active === p ? ' active' : ''), href: `#/admin/round/${rid}${p}` }, label)),
-  h('a', { class: 'tab right', href: '#/admin' }, '← Back to Allocate'));
+    h('a', { class: 'tab' + (active === p ? ' active' : ''), href: `/admin/round/${rid}${p}` }, label)),
+  h('a', { class: 'tab right', href: '/admin' }, '← Back to Allocate'));
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +139,7 @@ export async function viewAdminHome(ctx) {
     const here = (r.dates || []).filter(d => d >= week && d <= end);
     const later = (r.dates || []).filter(d => d > end);
     return h('div', { class: 'card comp-tile' },
-      h('a', { class: 'tile-body', href: `#/admin/round/${r.id}` },
+      h('a', { class: 'tile-body', href: `/admin/round/${r.id}` },
         h('h2', {}, c.label),
         Array.isArray(r.starts) && r.starts.length
           // One line per start day, so games on Saturday and on Sunday are not read as one two-day game.
@@ -165,7 +165,7 @@ export async function viewAdminHome(ctx) {
   // Second days of two-day games that started in an earlier week, shown under the week they fall in.
   const continuing = week => upcomingRounds(state.rounds, today).filter(r => groupNeedsUmpires(r.comp))
     .filter(r => weekOf(r.start, startDay) < week && (r.dates || []).some(d => d >= week && d <= addDays(week, 6)))
-    .map(r => h('li', {}, h('a', { href: `#/admin/round/${r.id}` }, `${compLabel(r.comp)}: two-day games from ${fmtDay(r.start)}`),
+    .map(r => h('li', {}, h('a', { href: `/admin/round/${r.id}` }, `${compLabel(r.comp)}: two-day games from ${fmtDay(r.start)}`),
       ` continue ${(r.dates || []).filter(d => d >= week && d <= addDays(week, 6)).map(fmtDay).join(' & ')} (allocated previous week)`));
 
   function draw() {
@@ -177,16 +177,16 @@ export async function viewAdminHome(ctx) {
       state.pu && (state.pu.added.length + state.pu.removed.length + state.pu.blocked.length) > 0 && h('div', { class: 'notice pu-note' },
         h('strong', {}, 'Player umpires'),
         h('ul', { class: 'plain' },
-          state.pu.added.map(x => h('li', {}, `${x.name} chose `, h('a', { href: `#/admin/round/${x.roundId}` }, `${x.label} (${fmtDay(x.date)})`), ' \u2014 added to the board')),
-          state.pu.removed.map(x => h('li', {}, `${x.name} no longer wants `, h('a', { href: `#/admin/round/${x.roundId}` }, `${x.label} (${fmtDay(x.date)})`), ' \u2014 taken off')),
-          state.pu.blocked.map(x => h('li', { class: 'warn-text' }, `${x.name} chose `, h('a', { href: `#/admin/round/${x.roundId}` }, `${x.label} (${fmtDay(x.date)})`), ', but both places are taken')))),
+          state.pu.added.map(x => h('li', {}, `${x.name} chose `, h('a', { href: `/admin/round/${x.roundId}` }, `${x.label} (${fmtDay(x.date)})`), ' \u2014 added to the board')),
+          state.pu.removed.map(x => h('li', {}, `${x.name} no longer wants `, h('a', { href: `/admin/round/${x.roundId}` }, `${x.label} (${fmtDay(x.date)})`), ' \u2014 taken off')),
+          state.pu.blocked.map(x => h('li', { class: 'warn-text' }, `${x.name} chose `, h('a', { href: `/admin/round/${x.roundId}` }, `${x.label} (${fmtDay(x.date)})`), ', but both places are taken')))),
       ctx.S.pending > 0 && h('div', { class: 'notice warn join-banner' },
         h('strong', {}, `${ctx.S.pending} ${ctx.S.pending === 1 ? 'umpire is' : 'umpires are'} waiting to join`), ' ',
-        h('a', { href: '#/admin/members' }, 'Review join requests')),
+        h('a', { href: '/admin/members' }, 'Review join requests')),
       state.dropouts.length > 0 && h('div', { class: 'notice warn dropouts' },
         h('strong', {}, 'Umpires have pulled out of published games'),
         h('ul', { class: 'plain' }, state.dropouts.map(d => h('li', {}, `${d.name}: `,
-          d.shown.map((g, i) => [i ? ', ' : '', h('a', { href: `#/admin/round/${g.roundId}` }, `${g.label} (${fmtDay(g.date)})`)])))),
+          d.shown.map((g, i) => [i ? ', ' : '', h('a', { href: `/admin/round/${g.roundId}` }, `${g.label} (${fmtDay(g.date)})`)])))),
         h('p', { class: 'muted' }, 'Those slots are now empty and the games are flagged on the board.'),
         h('button', { class: 'btn small', type: 'button', onclick: async ev => { ev.currentTarget.disabled = true; await dismissWithdrawals(store, state.dropouts); state.dropouts = []; draw(); } }, 'Got it')),
       shown.sets.map(set => h('section', { class: 'week' },
@@ -224,7 +224,7 @@ export async function viewPastAllocations(ctx) {
       !past.length && h('p', { class: 'muted' }, 'Nothing here yet. A round moves here once its last day has passed, if it was published or had umpires allocated.'),
       h('ul', { class: 'plain' }, past.map(r => { const st = r.stats || { needed: 0, filled: 0 };
         const open = !isLocked(r, today);       // still within the days after the game when changes are allowed
-        return h('li', {}, h('a', { class: 'past-row', href: open ? `#/admin/round/${r.id}` : `#/admin/round/${r.id}/report` },
+        return h('li', {}, h('a', { class: 'past-row', href: open ? `/admin/round/${r.id}` : `/admin/round/${r.id}/report` },
           h('strong', {}, fmtRange(r.dates || [r.start, r.end])), h('span', {}, r.comp ? compLabel(r.comp) : (r.title || '')), h('span', { class: 'muted' }, r.formats || ''),
           h('span', { class: 'chip' }, `${st.filled}/${st.needed} slots filled`), h('span', { class: 'chip ' + (r.published ? 'ok' : 'warn') }, r.published ? 'Published' : 'Not published'),
           open && h('span', { class: 'chip pu' }, `Can change until ${fmtDay(editableUntil(r))}`))); }))));
@@ -240,7 +240,7 @@ export async function viewBoard(ctx, rid) {
   try { await applyPlayerUmpires(store, { today: todayLocal(), enabled: puEnabled(store) }); } catch (e) { console.error('player umpires', e); }   // games members chose themselves
   const round = await store.getRound(rid);
   if (!round) return h('p', { class: 'notice warn' }, 'Round not found.');
-  if (isLocked(round)) { location.replace(`#/admin/round/${rid}/report`); return h('div'); }   // a finished round is a record now
+  if (isLocked(round)) { navigate(`/admin/round/${rid}/report`, { replace: true }); return h('div'); }   // a finished round is a record now
   const [games, umpires, availList, rounds, settings] = await Promise.all([
     store.listGames(rid), store.listUmpires(), store.listAvailability((round.season && round.season.id) || 'manual'), store.listRounds(), store.getSettings(),
   ]);
@@ -502,7 +502,7 @@ export async function viewAvailabilityOverview(ctx, rid) {
   const { store } = ctx;
   const round = await store.getRound(rid);
   if (!round) return h('p', { class: 'notice warn' }, 'Round not found.');
-  if (isLocked(round)) { location.replace(`#/admin/round/${rid}/report`); return h('div'); }
+  if (isLocked(round)) { navigate(`/admin/round/${rid}/report`, { replace: true }); return h('div'); }
   const [umpires, availList, allGames] = await Promise.all([store.listUmpires(), store.listAvailability((round.season && round.season.id) || 'manual'), store.listGames(rid)]);
   const by = Object.fromEntries(availList.map(a => [a.email, a]));
   // Members, then people who are not members (yet) but gave availability; never suspended or rejected.
@@ -688,7 +688,7 @@ export async function viewReport(ctx, rid) {
   const pids = new Set(st.byUmpire ? Object.keys(st.byUmpire) : []);
   const emails = umpires.filter(u => pids.has(u.pid)).map(u => u.email);
   const subject = `Umpire allocations: ${round.title}`;
-  const link = location.origin + location.pathname;
+  const link = location.origin + '/';
   const body = `Hi all,\n\nUmpire allocations for ${round.title} are attached/below.\n\nYou can also see your own appointments at ${link}\n\nThanks`;
 
   const heading = roundHeading(round);
@@ -813,7 +813,7 @@ export async function viewUmpires(ctx) {
   const text = v => (v ? v : h('span', { class: 'muted' }, '—'));
   const types = membershipTypes(store.org);
   const membershipTypeCell = u => {
-    if (!types.length) return h('a', { class: 'muted', href: '#/admin/settings' }, 'Set up types');
+    if (!types.length) return h('a', { class: 'muted', href: '/admin/settings' }, 'Set up types');
     const sel = h('select', { class: 'in-sm', 'aria-label': 'membership', onchange: e => save(u, { membership: e.target.value }) },
       h('option', { value: '' }, '—'), types.map(t => h('option', { value: t.name, selected: u.membership === t.name }, t.name)));
     const fee = feeFor(store.org, u.membership);
