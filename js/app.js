@@ -136,7 +136,11 @@ async function render(quiet) {
   if (joinId && !S.user) { localStorage.setItem(NEXT_KEY, joinId); go('/'); return; }          // sign in first, then come back to it
   const next = S.user && localStorage.getItem(NEXT_KEY);
   if (next && !join) { localStorage.removeItem(NEXT_KEY); go('/join/' + encodeURIComponent(next)); return; }
-  if (joinId && (S.myOrgs || []).some(o => o.id === joinId)) { await chooseOrg(joinId); return; }   // already in it (or waiting): just open it
+  if (joinId && (S.myOrgs || []).some(o => o.id === joinId)) {   // already in it (or waiting): just open it
+    const sts = S.store.listStandings ? await S.store.listStandings(S.user.email).catch(() => []) : [];
+    const own = sts.find(x => x.orgId === joinId);
+    if (!own || own.u) { await chooseOrg(joinId); return; }       // an admin with no membership of their own still joins like anyone else
+  }
   if (S.user && S.org && S.isAdmin && path === '/') { go('/admin'); return; }
   shownPath = null;
   // The page on screen stays until the next one is ready (dimmed if that takes a moment); only an empty screen gets the ring.

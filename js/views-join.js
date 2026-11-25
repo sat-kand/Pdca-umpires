@@ -36,7 +36,7 @@ export function cancelButton(ctx, org) {
   return b;
 }
 
-const joinBtn = org => h('a', { class: 'btn small primary', href: `/join/${encodeURIComponent(org.id)}`, 'aria-label': `Join ${org.name}` }, 'Join');
+export const joinBtn = org => h('a', { class: 'btn small primary', href: `/join/${encodeURIComponent(org.id)}`, 'aria-label': `Join ${org.name}` }, 'Join');
 
 // ---------- the list of associations ----------
 // Everyone sees it first after signing up. Someone already in some associations sees those, then the rest to join.
@@ -45,15 +45,16 @@ export async function viewAssociations(ctx) {
   const [orgs, standings] = await Promise.all([store.listJoinableOrgs(), store.listStandings(S.user.email)]);
   const known = new Map([...(S.myOrgs || []), ...orgs].map(o => [o.id, o]));
   const mine = standings.map(st => ({ st, org: known.get(st.orgId) })).filter(x => x.org).sort((a, b) => byName(a.org, b.org));
-  const have = new Set(standings.map(x => x.orgId));
-  const toJoin = orgs.filter(o => !have.has(o.id) && joinSettings(o).open).sort(byName);
+  const have = new Set(standings.filter(x => x.u).map(x => x.orgId));       // an admin with no membership of their own has not joined yet
+  const toJoin = orgs.filter(o => !have.has(o.id) && !standings.some(x => x.orgId === o.id) && joinSettings(o).open).sort(byName);
 
   const joinRow = o => h('li', { class: 'org-row' }, h('strong', { class: 'assoc-name' }, o.name), joinBtn(o));
   const mineRow = ({ st, org }) => {
     const s = statusOf(st);
     return h('li', { class: 'org-row', 'data-org': org.id },
       h('div', { class: 'org-main' }, h('strong', { class: 'assoc-name' }, org.name), standingChip(st, org)),
-      s === 'applied' && joinSettings(org).membershipRequired && h('div', { class: 'org-actions' }, cancelButton(ctx, org)));
+      s === 'applied' && joinSettings(org).membershipRequired && h('div', { class: 'org-actions' }, cancelButton(ctx, org)),
+      s === 'officer' && joinSettings(org).open && h('div', { class: 'org-actions' }, joinBtn(org)));      // an admin joins like anyone else, to give availability
   };
 
   return h('div', { class: 'narrow-page' },
@@ -110,11 +111,11 @@ export async function viewJoin(ctx, orgId) {
 
 // ---------- on My availability: the other associations ----------
 // The ones waiting for approval, and the ones not joined yet. Nothing at all when there is nothing to show.
-export async function otherAssociationsCard(ctx) {
+export async function otherAssociationsCard(ctx, skipId) {
   const { store, S } = ctx;
   const [orgs, standings] = await Promise.all([store.listJoinableOrgs(), store.listStandings(S.user.email)]);
-  const have = new Set(standings.map(x => x.orgId));
-  const toJoin = orgs.filter(o => !have.has(o.id) && joinSettings(o).open).sort(byName);
+  const have = new Set(standings.filter(x => x.u).map(x => x.orgId));       // admins who have not joined still get a Join button
+  const toJoin = orgs.filter(o => !have.has(o.id) && o.id !== skipId && joinSettings(o).open).sort(byName);
   if (!toJoin.length) return null;
   return h('section', { class: 'card other-associations' }, h('h2', {}, 'Other associations'),
     h('ul', { class: 'plain org-list' },
@@ -127,8 +128,9 @@ export function pendingCard(ctx, u) {
   const org = store.org;
   return h('section', { class: 'card pending-card' },
     h('div', { class: 'avail-head' }, h('h2', {}, org.name)),
-    h('p', {}, h('span', { class: 'chip warn' }, 'Waiting for approval')),
+    h('p', {}, ctx.S.isAdmin && h('span', { class: 'chip ' + JOIN_STATUS_CHIP.officer }, JOIN_STATUS_LABEL.officer), ' ', h('span', { class: 'chip warn' }, 'Waiting for approval')),
     h('p', {}, 'Your request to join was sent', u && u.createdAt ? ` on ${fmtWhen(u.createdAt)}` : '', '. The association has to approve it before you can give your availability. We will show your availability here as soon as they do.'),
+    ctx.S.isAdmin && h('p', { class: 'muted small' }, 'You are an admin here, so you can approve yourself on the Members page.'),
     h('p', {}, cancelButton(ctx, org)));
 }
 

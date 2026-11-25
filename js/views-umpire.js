@@ -5,7 +5,7 @@ import { h, toast, busy, todayLocal, mapsLink, setChildren } from './ui.js';
 import { recordWithdrawal } from './withdrawals.js';
 import { PLAYER_UMPIRE_COMPS, playerUmpireAllowed } from './player-umpire.js';
 import { groupOpen, fmtDay, fmtRange, gradeShort, compareGrades, allocFor, publishedAllocFor, newPid, emailKey, upcomingDates, byMonth, availKey, compKeyOf, compLabel, nameParts, fullName, COMPS, groupNeedsUmpires, needsUmpires, membershipOf, joinSettings } from './logic.js';
-import { otherAssociationsCard, pendingCard, standingChip, cancelButton } from './views-join.js';
+import { otherAssociationsCard, pendingCard, standingChip, cancelButton, joinBtn } from './views-join.js';
 
 export function viewLogin(ctx) {
   const { store, S } = ctx;
@@ -87,10 +87,10 @@ export async function viewMy(ctx) {
   const u = S.umpire;
   if (!u) {
     const page = h('div', { class: 'narrow-page' }, availTitle(), h('section', { class: 'card avail-card' },
-      h('div', { class: 'avail-head' }, h('h2', {}, (store.org && store.org.name) || '')),
-      h('p', { class: 'muted' }, 'To give your own availability here, add your umpire details first.'),
-      h('a', { class: 'btn primary', href: '/profile' }, 'Add my details')));
-    await placeOtherOrgs(ctx, page, page.lastChild, S.user.email);
+      h('div', { class: 'avail-head head-status' }, h('h2', {}, (store.org && store.org.name) || ''), standingChip({ officer: true, u: null }, store.org)),
+      h('p', { class: 'muted' }, 'To give your own availability here, join the association first, the same as any umpire.'),
+      joinSettings(store.org).open ? joinBtn(store.org) : h('a', { class: 'btn primary', href: '/profile' }, 'Add my details')));
+    await placeOtherOrgs(ctx, page, page.lastChild, S.user.email, store.org && store.org.id);
     return page;
   }
   const [season, rounds] = await Promise.all([store.getSeason(), store.listRounds()]);
@@ -545,11 +545,11 @@ function summaryRow(label, sent, yes, no, fresh) {
 // The member's other associations, each a compact card like this one, in the same order as the menu.
 // Tapping a group line switches to that association (staying on this page) with that group open.
 // Waits for every card, so the page appears once, complete and in its final order, instead of cards arriving and pushing each other down.
-async function placeOtherOrgs(ctx, root, current, email) {
+async function placeOtherOrgs(ctx, root, current, email, skipId) {
   const order = ((ctx.S && ctx.S.myOrgs) || []).map(o => o.id);
   const here = ctx.store.org && ctx.store.org.id;
   const warn = e => { console.warn('other associations', e); return null; };
-  const [cards, joinCard] = await Promise.all([otherOrgCards(ctx, email, todayLocal()).catch(e => warn(e) || []), otherAssociationsCard(ctx).catch(warn)]);
+  const [cards, joinCard] = await Promise.all([otherOrgCards(ctx, email, todayLocal()).catch(e => warn(e) || []), otherAssociationsCard(ctx, skipId).catch(warn)]);
   for (const { orgId, el } of cards) {
     if (order.indexOf(orgId) > -1 && order.indexOf(orgId) < order.indexOf(here)) current.before(el); else root.append(el);
   }
