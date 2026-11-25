@@ -1069,7 +1069,6 @@ export async function viewUmpires(ctx) {
           h('button', { type: 'button', class: 'btn small danger', onclick: () => change([u], 'reject') }, 'Reject'))))));
     setChildren(wrap,
       h('h1', {}, 'Members'),
-      h('p', { class: 'muted' }, 'Active umpires are members who said Available to at least one date this season. Everyone else (no answer, or Not available to everything) is an Inactive member, kept for your communications. It follows their availability by itself.'),
       requests.length > 0 && requestsCard(),
       h('p', { class: 'member-mail' }, emailBtn('Email active members', active), ' ', emailBtn('Email inactive members', inactive)),
       h('section', { class: 'card' },
