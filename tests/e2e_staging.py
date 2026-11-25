@@ -139,11 +139,11 @@ def run_umpire(browser):
         check(page.locator(".comp-section").count() > 0 or "No availabilities are open" in txt or "No dates to answer" in txt or page.locator(".pending-card").count() > 0,
               f"My availability shows groups, or says none are open ({txt[:200]!r})")
         check(page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1"), "no sideways scrolling on a phone")
-        go(page, "associations")
-        page.wait_for_selector(".org-list", timeout=30000)
-        row = page.locator(f".org-row:has-text('{ORG_NAME}')")
-        check(row.count() == 1 and "Member" in row.inner_text(), "Associations lists Parramatta with the status Member")
-        check("officer" not in page.inner_text("body").lower(), "Associations never says officer")
+        go(page, "profile")
+        page.wait_for_selector(".member-profile .org-list", timeout=30000)
+        row = page.locator(f".member-profile .org-row:has-text('{ORG_NAME}')")
+        check(row.count() == 1 and "Member" in row.inner_text(), "My profile lists Parramatta with the status Member")
+        check("officer" not in page.inner_text("body").lower(), "My profile never says officer")
     except Exception:
         errors.append("ERROR (umpire): " + traceback.format_exc())
         snap(page, "umpire-error")

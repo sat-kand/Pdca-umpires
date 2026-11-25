@@ -1599,12 +1599,16 @@ with sync_playwright() as p:
     page.wait_for_selector(".join-form")
     check("Join Hills Cricket Association" in page.inner_text(".join-form h1") and page.locator(".join-form input[data-field=phone]").count() == 1,
           "a PDCA officer who opens the Hills link is just a new umpire there: the Hills join form")
-    goto(page, BASE + "associations")
-    page.wait_for_selector(".org-list")
-    check(page.locator(".org-row[data-org=pdca]").count() == 1 and page.locator(".org-row:has-text('Hills') a:has-text('Join')").count() == 1,
-          "the list shows PDCA as theirs and Hills as one they can still join")
+    goto(page, BASE + "profile")
+    page.wait_for_selector(".member-profile .org-list")
+    check(page.locator(".member-profile .org-row[data-org=pdca]").count() == 1 and page.locator(".member-profile .org-row:has-text('Hills')").count() == 0,
+          "the profile lists PDCA as theirs, and not Hills")
     check(page.locator(".org-row[data-org=pdca] button").count() == 0 and page.locator(".org-row[data-org=pdca] .chip:has-text('Admin')").count() == 1,
-          "the association they are in now has no Open button, and shows its Admin tag")
+          "the association they are in has no Open button, and shows its Admin tag")
+    goto(page, BASE + "my")
+    page.wait_for_selector(".other-associations")
+    check(page.locator(".other-associations .org-row:has-text('Hills') a:has-text('Join')").count() == 1 and page.locator("a[href='/associations'], .who-menu a:has-text('Associations')").count() == 0,
+          "My availability offers Hills to join, and the menu has no Associations page")
     goto(page, BASE + "admin")
     page.wait_for_selector(".tile-round")
     page.click("nav .menu > summary")
@@ -1616,7 +1620,7 @@ with sync_playwright() as p:
     sign_out(page)
     sign_in(page, "umpire2@demo.test", open_form=False)
     page.click(".who-name")
-    check([t.strip() for t in page.locator(".who-menu .nav-link").all_inner_texts()] == ["My profile", "Associations", "Sign out"], "the account menu for an umpire: My profile, Associations, then Sign out (they land on My availability, so no link to it)")
+    check([t.strip() for t in page.locator(".who-menu .nav-link").all_inner_texts()] == ["My profile", "Sign out"], "the account menu for an umpire: My profile, then Sign out (they land on My availability, and their associations are on their profile)")
     page.set_viewport_size({"width": 390, "height": 800})
     box = page.locator(".who-menu .menu-items").bounding_box()
     check(box["x"] >= 0 and box["x"] + box["width"] <= 390, f"on a phone the menu stays on screen ({box})")
@@ -1930,12 +1934,11 @@ with sync_playwright() as p:
     check(page.locator(".pending-card").count() == 0 and "No dates to answer yet" in page.inner_text("main"), "with membership not required they are in at once, with no wait for approval")
     check(page.locator(".notice.warn").count() == 0 and page.locator(".avail-card .chip:has-text('Waiting for approval')").count() == 1 and "give your availability now" in page.inner_text(".avail-card"),
           "no separate notice: the card's own tag says Waiting for approval and that availability can be given now")
-    goto(page, BASE + "associations")
-    page.wait_for_selector(".org-list")
-    hills_row = page.locator(".org-row:has-text('Hills')")
+    goto(page, BASE + "profile")
+    page.wait_for_selector(".member-profile .org-list")
+    hills_row = page.locator(".member-profile .org-row:has-text('Hills')")
     check("Waiting for approval" in hills_row.inner_text() and "Joined" not in hills_row.inner_text() and "give your availability now" in hills_row.inner_text(),
-          "the Associations page uses the table's wording (Waiting for approval) and says availability can be given now")
-    check("Choose the association you umpire for" not in page.inner_text("main"), "no long introduction above the list")
+          "the profile's association list uses the table's wording (Waiting for approval) and says availability can be given now")
     sign_out(page)
     sign_in(page, "founder@demo.test", open_form=False)
     goto(page, BASE + "admin/members")
@@ -2090,7 +2093,7 @@ with sync_playwright() as p:
     sign_in(page, "umpire1@demo.test", open_form=False)
     page.wait_for_selector(".comp-section")
     check(closed_name in page.locator(".comp-section h2.comp-title").all_inner_texts(), "opening it again offers it to umpires")
-    for path in ["", "profile", "associations"]:
+    for path in ["", "profile"]:
         goto(page, BASE + path)
         page.wait_for_timeout(500)
         txt = page.inner_text("body")
@@ -2114,9 +2117,9 @@ with sync_playwright() as p:
     goto(page, BASE + "my")
     page.wait_for_selector(".avail-card")
     check(page.locator(".avail-card a:has-text('Join')").count() == 1, "an admin who has not joined sees a Join button on My availability")
-    goto(page, BASE + "associations")
-    page.wait_for_selector(".org-row")
-    check(page.locator(".org-row[data-org='pdca'] a:has-text('Join')").count() == 1, "and on the Associations page, beside Admin")
+    goto(page, BASE + "profile")
+    page.wait_for_selector(".member-profile .org-row")
+    check(page.locator(".org-row[data-org='pdca'] .chip:has-text('Admin')").count() == 1, "and their profile lists it with the Admin tag")
     goto(page, BASE + "join/pdca")
     page.wait_for_selector(".join-form")
     page.fill(".join-form input[autocomplete='given-name']", "New")

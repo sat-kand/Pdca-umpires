@@ -38,33 +38,37 @@ export function cancelButton(ctx, org) {
 
 export const joinBtn = org => h('a', { class: 'btn small primary', href: `/join/${encodeURIComponent(org.id)}`, 'aria-label': `Join ${org.name}` }, 'Join');
 
-// ---------- the list of associations ----------
-// Everyone sees it first after signing up. Someone already in some associations sees those, then the rest to join.
-export async function viewAssociations(ctx) {
+// ---------- the associations someone is in ----------
+// One row each: the name, where they stand (Admin, Member, Waiting for approval...) and Cancel for a request still waiting.
+// Shown on their profile. Null when they are in none.
+export async function myAssociationsList(ctx) {
   const { store, S } = ctx;
   const [orgs, standings] = await Promise.all([store.listJoinableOrgs(), store.listStandings(S.user.email)]);
   const known = new Map([...(S.myOrgs || []), ...orgs].map(o => [o.id, o]));
   const mine = standings.map(st => ({ st, org: known.get(st.orgId) })).filter(x => x.org).sort((a, b) => byName(a.org, b.org));
-  const have = new Set(standings.filter(x => x.u).map(x => x.orgId));       // an admin with no membership of their own has not joined yet
-  const toJoin = orgs.filter(o => !have.has(o.id) && !standings.some(x => x.orgId === o.id) && joinSettings(o).open).sort(byName);
-
-  const joinRow = o => h('li', { class: 'org-row' }, h('strong', { class: 'assoc-name' }, o.name), joinBtn(o));
+  if (!mine.length) return null;
   const mineRow = ({ st, org }) => {
     const s = statusOf(st);
     return h('li', { class: 'org-row', 'data-org': org.id },
       h('div', { class: 'org-main' }, h('strong', { class: 'assoc-name' }, org.name), standingChip(st, org)),
-      s === 'applied' && joinSettings(org).membershipRequired && h('div', { class: 'org-actions' }, cancelButton(ctx, org)),
-      s === 'officer' && joinSettings(org).open && h('div', { class: 'org-actions' }, joinBtn(org)));      // an admin joins like anyone else, to give availability
+      s === 'applied' && joinSettings(org).membershipRequired && h('div', { class: 'org-actions' }, cancelButton(ctx, org)));
   };
+  return h('ul', { class: 'plain org-list' }, mine.map(mineRow));
+}
 
+// ---------- the list of associations to join ----------
+// For someone who is in none yet: the first page after signing up. Everyone else finds what they can join on My availability.
+export async function viewAssociations(ctx) {
+  const { store, S } = ctx;
+  const [orgs, standings] = await Promise.all([store.listJoinableOrgs(), store.listStandings(S.user.email)]);
+  const toJoin = orgs.filter(o => !standings.some(x => x.orgId === o.id) && joinSettings(o).open).sort(byName);
+  const joinRow = o => h('li', { class: 'org-row' }, h('strong', { class: 'assoc-name' }, o.name), joinBtn(o));
   return h('div', { class: 'narrow-page' },
-    h('h1', {}, mine.length ? 'Associations' : 'Join an association'),
-    mine.length > 0 && h('section', { class: 'card' }, h('h2', {}, 'Your associations'), h('ul', { class: 'plain org-list' }, mine.map(mineRow))),
+    h('h1', {}, 'Join an association'),
     h('section', { class: 'card' },
-      mine.length > 0 && h('h2', {}, 'Join another association'),        // with nothing joined yet, the page heading already says it
       toJoin.length
         ? h('ul', { class: 'plain org-list' }, toJoin.map(joinRow))
-        : h('p', { class: 'muted' }, mine.length ? 'There are no other associations to join yet.' : 'No association has joined Third Umpire yet. If yours should be here, ask your association to get in touch.')));
+        : h('p', { class: 'muted' }, 'No association has joined Third Umpire yet. If yours should be here, ask your association to get in touch.')));
 }
 
 // ---------- the join form ----------

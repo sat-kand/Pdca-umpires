@@ -139,7 +139,7 @@ def main():
         page.locator("a.member-link").first.click(); shot("11-member-profile", ".member-profile")
         goto(page, BASE + "admin/past"); shot("12-past-allocations")
         goto(page, BASE + "admin/settings"); shot("13-settings", ".groups-card"); page.locator(".joining-card").scroll_into_view_if_needed(); shot("13b-new-umpires-settings", ".joining-card")
-        goto(page, BASE + "associations"); shot("14-associations")
+        goto(page, BASE + "profile"); shot("14-profile-associations")
         sign_in("umpire4@demo.test")
         goto(page, BASE + "my"); shot("15-my-availability-summary", ".comp-section")
         page.locator(".comp-section:not(.player-card) .comp-head").first.click(); shot("16-my-availability-form", ".comp-section .tile")

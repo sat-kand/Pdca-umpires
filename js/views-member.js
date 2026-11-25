@@ -7,6 +7,7 @@
 import { h, toast, setChildren, busy, todayLocal } from './ui.js';
 import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey, firstGroup, byGame, gameCount, memberStatus, STATUS_LABEL, STATUS_CHIP, membershipOf, MEMBERSHIP_LABEL, MEMBERSHIP_CHIP, MEMBER_CHANGE, isActiveUmpire } from './logic.js';
 import { feeFor, money, membershipTypes } from './views-org.js';
+import { myAssociationsList } from './views-join.js';
 
 // What other associations may see of this membership. Written whenever an officer saves or opens a member.
 export function membershipLink(org, u) {
@@ -280,6 +281,7 @@ export async function viewMyProfile(ctx) {
     } catch (e) { console.error('membership', org.id, e); return null; }
   }));
 
+  const assocList = await myAssociationsList(ctx).catch(e => { console.warn('associations', e); return null; });
   return h('div', { class: 'member-profile' },
     h('div', { class: 'row-between' },
       h('h1', {}, me.name || `${n.firstName} ${n.lastName}`),
@@ -290,6 +292,7 @@ export async function viewMyProfile(ctx) {
       row('Accreditation no.', me.accreditation), row('Accreditation provider', me.accreditationProvider),
       h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to your associations.')),
     h('h2', { class: 'section-head' }, 'My associations'),
+    assocList && h('section', { class: 'card' }, assocList),
     sections.filter(Boolean),
     !sections.some(Boolean) && h('p', { class: 'muted' }, 'No memberships yet.'));
 }
@@ -303,6 +306,7 @@ export async function viewPersonProfile(ctx) {
   const FIELDS = [['phone', 'Mobile', 'tel'], ['dob', 'Date of birth', 'date'], ['address', 'Address', 'text'],
     ['accreditation', 'Umpire accreditation number', 'text'], ['accreditationProvider', 'Accreditation provider', 'text']];
   const root = h('div', { class: 'member-profile' });
+  const assocList = await myAssociationsList(ctx).catch(e => { console.warn('associations', e); return null; });
   let editing = false;
   const draw = () => {
     const p = mine.current, n = nameParts(p);
@@ -317,8 +321,8 @@ export async function viewPersonProfile(ctx) {
           row('Accreditation no.', p.accreditation), row('Accreditation provider', p.accreditationProvider),
           h('p', { class: 'muted small' }, 'Your date of birth, address and mobile are only visible to the associations you join.')),
         h('section', { class: 'card' }, h('h2', {}, 'My associations'),
-          h('p', { class: 'muted' }, 'You are not in an association yet.'),
-          h('a', { class: 'btn primary', href: '/associations' }, 'Join an association')));
+          assocList || [h('p', { class: 'muted' }, 'You are not in an association yet.'),
+            h('a', { class: 'btn primary', href: '/associations' }, 'Join an association')]));
       return;
     }
     const first = h('input', { required: true, value: n.firstName, autocomplete: 'given-name' });
