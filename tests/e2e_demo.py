@@ -803,6 +803,37 @@ with sync_playwright() as p:
     page.click(".add-member button[type=submit]")
     page.wait_for_selector(".toast:has-text('already a member')")
     check(True, "adding someone already a member says so and changes nothing")
+    # An association's own Excel file (PDCA's membership form layout, made-up people): columns matched, answers translated, choices kept.
+    xlsx = os.path.join(ROOT, "tests", "fixtures-members.xlsx")
+    bring = page.locator("details.import-card:has(> summary:has-text('Bring in'))")
+    if bring.get_attribute("open") is None:
+        bring.locator("> summary").click()
+    page.set_input_files(".import-step input[type=file]", xlsx)
+    page.wait_for_selector(".import-map .map-row")
+    field_of = lambda heading: page.locator(f".import-map > .map-list > .map-row:has(strong:text-is('{heading}')) select").input_value()
+    check([field_of(x) for x in ["Email address", "First Name", "Contact number", "D.O.B(If under 18)", "Eligibility to umpire?", "Membership/Card number If passed NSWCUSA"]]
+          == ["email", "firstName", "phone", "dob", "accreditationProvider", "accreditation"], "an Excel file's columns are matched from PDCA's own headings")
+    prov = page.locator(".value-map[data-field=accreditationProvider]")
+    check(prov.count() == 1 and prov.locator(".map-row").count() == 3, "the accreditation answers are listed once each, to translate")
+    page.locator(".import-map > .map-list > .map-row:has(strong:text-is('Address')) select").select_option("")
+    page.click(".import-step button:has-text('Check it')")
+    prev = page.inner_text(".import-step .import-out")
+    check("3 new" in prev, f"the check reads all three rows ({prev[:60]!r})")
+    page.click(".import-step button:has-text('Import')")
+    page.wait_for_selector(".toast:has-text('3 member(s) added')")
+    db = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires")
+    x, y, z = db["xavier.sample@example.com"], db["yara.sample@example.com"], db["zed.sample@example.com"]
+    check(x["firstName"] == "Xavier" and x["lastName"] == "Sample" and x["dob"] == "1980-03-09" and x["accreditation"] == "20/1234-O"
+          and x["accreditationProvider"] == "NSW Cricket Umpires & Scorers Association" and x["membership"] == "Existing Member" and not x.get("address"),
+          "the Excel rows come in: name trimmed, date of birth from the Excel date, accreditation translated, the ignored Address column left out")
+    check(y["phone"] == "0411222333" and y["accreditationProvider"] == "PDCUA" and z["accreditationProvider"] == "Cricket Australia", "a mobile stored as a number gets its 0 back")
+    saved = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.memberImport")
+    check(saved and saved["columns"].get("address") == "" and saved["columns"].get("contact number") == "phone", "the column choices are kept for the association")
+    if bring.get_attribute("open") is None:
+        bring.locator("> summary").click()
+    page.set_input_files(".import-step input[type=file]", xlsx)
+    page.wait_for_selector(".import-map .map-row")
+    check(field_of("Address") == "", "next time, the column they ignored is still ignored")
     page.select_option(".member-tools select", "inactive")
     check(row_of(page, "quiet@example.com").count() == 1 and row_of(page, "umpire1@demo.test").count() == 0, "the Show filter lists Inactive members")
     check(page.locator("table.members input[type=checkbox]").count() == 0 and page.locator(".bulk-bar").count() == 0

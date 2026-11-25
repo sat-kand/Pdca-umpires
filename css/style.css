@@ -477,3 +477,16 @@ main.busy > * { opacity: .55; transition: opacity .2s ease .25s; pointer-events:
 main.enter > * { animation: page-in .18s ease-out; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { main.enter > *, .loading, .loading .ring { animation: none; opacity: 1; } main.busy > * { transition: none; } }
+
+/* Matching an imported sheet's columns: heading and sample on the left, the field on the right; stacked on a phone. */
+.import-map h4 { margin: .8rem 0 .3rem; }
+.map-list { margin: 0; }
+.map-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(9rem, 14rem); align-items: center; gap: .5rem; padding: .35rem 0; border-bottom: 1px solid var(--line); }
+.map-from { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.map-sample { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.map-row select, .map-row input { width: 100%; }
+.value-map { margin-top: .6rem; }
+@media (max-width: 560px) {
+  .map-row { grid-template-columns: 1fr; gap: .25rem; }
+  .map-arrow { display: none; }
+}

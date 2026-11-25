@@ -67,3 +67,22 @@ test('Active umpire or Inactive member follows availability, for members only', 
     memberStatus({ active: true }, null), memberStatus({ deactivated: true }, { days: { 'x:1': 'yes' } }),   // older records
   ], ['inactive', 'inactive', 'active', 'active', 'applied', 'suspended', 'rejected', 'nonmember', 'inactive', 'active']);
 });
+
+test("an association's own form layout (PDCA's membership form) is matched by its headings", async () => {
+  const { matchColumns, providerGuess, phoneFrom } = await import('../js/import-members.js');
+  const head = ['Email address', 'First Name', 'Last Name', 'Membership Type:', 'D.O.B(If under 18)', 'Address', 'Contact number', 'Eligibility to umpire?', 'Membership/Card number If passed NSWCUSA'];
+  assert.deepEqual(matchColumns(head), { email: 0, firstName: 1, lastName: 2, membership: 3, dob: 4, address: 5, phone: 6, accreditationProvider: 7, accreditation: 8 });
+  assert.deepEqual(matchColumns(head, { address: '', 'contact number': 'address' }), { email: 0, firstName: 1, lastName: 2, membership: 3, dob: 4, address: 6, accreditationProvider: 7, accreditation: 8 }, 'saved choices win, and an ignored column stays ignored');
+  assert.equal(providerGuess('I have passed the NSWCUSA Course'), 'NSW Cricket Umpires & Scorers Association');
+  assert.equal(providerGuess('I have passed the PDCUA Course'), 'PDCUA');
+  assert.equal(providerGuess('I have obtained Cricket Australia Accreditation'), 'Cricket Australia');
+  assert.equal(phoneFrom('423387957'), '0423387957');
+  assert.equal(dateFrom('29289'), '1980-03-09', 'an Excel date number');
+});
+
+test('chosen columns and translated answers are used; a first name holding the whole name is trimmed', () => {
+  const rows = [['Mail', 'Who', 'Family', 'Kind'], ['a@x.com', 'Ann Lee', 'Lee', 'Existing Member'], ['b@x.com', 'Bo', 'Ng', 'New Member']];
+  const plan = planMembers({ rows, cols: { email: 0, firstName: 1, lastName: 2, membership: 3 }, values: { membership: { 'existing member': 'Ordinary', 'new member': '' } } });
+  assert.equal(plan.error, '');
+  assert.deepEqual(plan.people.map(p => [p.firstName, p.lastName, p.membership]), [['Ann', 'Lee', 'Ordinary'], ['Bo', 'Ng', '']]);
+});

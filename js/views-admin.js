@@ -15,7 +15,9 @@ import { membershipTypes, feeFor, money } from './views-org.js';
 import { membershipLink } from './views-member.js';
 const profileLink = u => h('a', { class: 'member-link', href: `/admin/member/${encodeURIComponent(u.pid)}`, title: 'Open profile' }, u.name);
 import { planImport, applyImport } from './import-availability.js';
-import { planMembers, applyMembers } from './import-members.js';
+import { planMembers, applyMembers, MEMBER_FIELDS, VALUE_FIELDS, matchColumns, providerGuess, headKey } from './import-members.js';
+import { readXlsx } from './xlsx-read.js';
+import { parseTable } from './import-availability.js';
 import { syncFixtures, refreshRound, currentRound, visibleRounds, needsSync, addDays, weekOf, upcomingRounds } from './rounds.js';
 
 // A finished round can still be changed for this many days after its last game (an umpire replaced on
@@ -833,15 +835,70 @@ export async function viewUmpires(ctx) {
 
   // Bringing in the lists an association already keeps: its membership file, then one availability
   // file per group. Both can be repeated; nothing a member typed themselves is overwritten.
+  // The membership list an association already keeps, in its own shape: an Excel or CSV file, or rows pasted
+  // from a sheet. Each column is matched to a field (guessed from its heading, then whatever the admin chose
+  // last time), and short lists of answers (membership type, accreditation) can be translated. The choices are
+  // kept for the association, so next season's file comes in the same way.
   function membershipImport() {
-    const box = h('textarea', { rows: 6, placeholder: 'Paste the list here — heading row first, one member per row.\n\nFirst name\tLast name\tEmail\tMobile\tMembership type\tMember since\nJane\tSmith\tj.smith@example.com\t0400 000 000\tOrdinary member\t15/04/2019' });
-    const file = h('input', { type: 'file', accept: '.csv,.tsv,.txt,text/csv,text/plain' });
+    const saved = (store.org && store.org.memberImport) || { columns: {}, values: {} };
+    const box = h('textarea', { rows: 5, placeholder: 'Or paste the rows here — heading row first, one member per row.' });
+    const file = h('input', { type: 'file', accept: '.xlsx,.csv,.tsv,.txt,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const mapOut = h('div', { class: 'import-map' });
     const out = h('div', { class: 'import-out' });
-    const checkBtn = h('button', { class: 'btn', type: 'button' }, 'Check it');
+    const checkBtn = h('button', { class: 'btn', type: 'button', disabled: true }, 'Check it');
     const importBtn = h('button', { class: 'btn primary', type: 'button', disabled: true }, 'Import');
-    let plan = null;
+    let rows = null, head = [], choice = {}, values = {}, plan = null, headless = false;
+
+    const cols = () => { const c = {}; head.forEach((hd, i) => { const f = choice[i]; if (f && !(f in c)) c[f] = i; }); return c; };
+    const distinct = i => [...new Set(rows.slice(1).map(r => String(r[i] || '').trim()).filter(Boolean))];
+    const drawMap = () => {
+      const c = cols();
+      const fieldSel = i => h('select', { class: 'in-sm', 'aria-label': `Field for ${head[i] || 'column ' + (i + 1)}`, onchange: e => { choice[i] = e.target.value; plan = null; importBtn.disabled = true; drawMap(); } },
+        h('option', { value: '' }, 'Ignore'), MEMBER_FIELDS.map(([k, label]) => h('option', { value: k, selected: choice[i] === k }, label)));
+      const sample = i => rows.slice(1).map(r => String(r[i] || '').trim()).filter(Boolean).slice(0, 2).join(' · ');
+      const valueCards = VALUE_FIELDS.filter(f => f in c).map(f => {
+        const vals = distinct(c[f]);
+        if (!vals.length || vals.length > 20) return null;
+        values[f] = values[f] || {};
+        const label = MEMBER_FIELDS.find(x => x[0] === f)[1];
+        const ctl = v => {
+          const k = headKey(v);
+          if (!(k in values[f])) values[f][k] = (saved.values && saved.values[f] && k in saved.values[f]) ? saved.values[f][k]
+            : f === 'membership' ? ((types.find(t => headKey(t.name) === k) || {}).name || v) : providerGuess(v);
+          if (f === 'membership' && types.length) return h('select', { class: 'in-sm', 'aria-label': `${label} for ${v}`, onchange: e => { values[f][k] = e.target.value; } },
+            h('option', { value: '' }, 'Leave blank'), types.map(t => h('option', { value: t.name, selected: values[f][k] === t.name }, t.name)),
+            !types.some(t => headKey(t.name) === k) && h('option', { value: v, selected: values[f][k] === v }, `Keep as written: ${v}`));
+          return h('input', { class: 'in-sm', value: values[f][k], 'aria-label': `${label} for ${v}`, placeholder: 'Leave blank', oninput: e => { values[f][k] = e.target.value.trim(); } });
+        };
+        return h('div', { class: 'value-map', 'data-field': f },
+          h('h4', {}, `${label}: what each answer means`),
+          f === 'membership' && !types.length && h('p', { class: 'muted small' }, 'Add your membership types in Settings to choose from them here.'),
+          h('ul', { class: 'plain map-list' }, vals.map(v => h('li', { class: 'map-row' }, h('span', { class: 'map-from' }, v), h('span', { class: 'map-arrow', 'aria-hidden': 'true' }, '→'), ctl(v)))));
+      });
+      setChildren(mapOut,
+        h('h4', {}, 'Match your columns'),
+        h('p', { class: 'muted small' }, 'Each column of your sheet and what it holds. We guessed from the headings; change any that are wrong. Your choices are kept for next time.'),
+        h('ul', { class: 'plain map-list' }, head.map((hd, i) => h('li', { class: 'map-row', 'data-col': i },
+          h('span', { class: 'map-from' }, h('strong', {}, hd || `Column ${i + 1}`), h('span', { class: 'muted small map-sample' }, sample(i))),
+          h('span', { class: 'map-arrow', 'aria-hidden': 'true' }, '→'), fieldSel(i)))),
+        !('email' in c) && h('p', { class: 'notice warn' }, 'Choose which column has the email address.'),
+        valueCards.filter(Boolean));
+    };
+    const load = r => {
+      rows = r; plan = null; setChildren(out); importBtn.disabled = true;
+      if (!rows || rows.length < 2) { setChildren(mapOut, h('p', { class: 'notice warn' }, 'The sheet needs a heading row and at least one member.')); checkBtn.disabled = true; return; }
+      head = rows[0].map(x => String(x || '').trim());
+      headless = head.some(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));       // no heading row: the old fixed order
+      checkBtn.disabled = false;
+      if (headless) { setChildren(mapOut, h('p', { class: 'muted small' }, 'No heading row, so each line is read as First name, Last name, email, mobile, accreditation no.')); return; }
+      const guess = matchColumns(head, saved.columns || {});
+      choice = {}; values = {};
+      for (const [f, i] of Object.entries(guess)) choice[i] = f;
+      checkBtn.disabled = false;
+      drawMap();
+    };
     const check = () => {
-      plan = planMembers({ text: box.value, members, types });
+      plan = planMembers({ rows, cols: headless ? undefined : cols(), values, members, types });
       importBtn.disabled = !!plan.error;
       if (plan.error) { setChildren(out, h('p', { class: 'notice warn' }, plan.error)); return; }
       setChildren(out,
@@ -850,12 +907,19 @@ export async function viewUmpires(ctx) {
         plan.unknownTypes.length > 0 && h('p', { class: 'notice warn' }, `Not one of your membership types in Settings: ${plan.unknownTypes.join(', ')}. They are imported as written; add the type in Settings to set its fee.`),
         plan.bad.length > 0 && h('p', { class: 'notice warn' }, `${plan.bad.length} row(s) skipped: they need an email address and a name. First: ${plan.bad[0]}`),
         h('ul', { class: 'plain import-preview' }, plan.people.slice(0, 10).map(p => h('li', { class: 'row-between' },
-          h('span', {}, h('strong', {}, p.name || p.email), ' ', h('span', { class: 'muted small' }, p.email)),
+          h('span', {}, h('strong', {}, p.name || p.email), ' ', h('span', { class: 'muted small' }, [p.email, p.phone, p.membership, p.accreditationProvider].filter(Boolean).join(' · '))),
           h('span', { class: 'chip ' + (p.existing ? '' : 'ok') }, p.existing ? 'Update' : 'New')))),
         plan.people.length > 10 && h('p', { class: 'muted small' }, `… and ${plan.people.length - 10} more`));
     };
-    file.onchange = async () => { const f = file.files && file.files[0]; if (f) { box.value = await f.text(); check(); } };
-    box.oninput = () => { importBtn.disabled = true; };
+    file.onchange = guard(async () => {
+      const f = file.files && file.files[0];
+      if (!f) return;
+      box.value = '';
+      if (/\.xlsx$/i.test(f.name)) {
+        try { load(await readXlsx(await f.arrayBuffer())); } catch (e) { console.error(e); setChildren(mapOut, h('p', { class: 'notice warn' }, `Could not read ${f.name}: ${e.message}. Save it as CSV, or copy the rows and paste them.`)); }
+      } else load(parseTable(await f.text()));
+    });
+    box.oninput = () => { file.value = ''; load(parseTable(box.value)); };
     checkBtn.onclick = check;
     importBtn.onclick = busy(importBtn, guard(async () => {
       check();
@@ -865,13 +929,21 @@ export async function viewUmpires(ctx) {
         const u = { ...(p.existing || {}), email: p.email, membership: p.membership || (p.existing && p.existing.membership) || '', active: true, memberSince: p.memberSince || (p.existing && p.existing.memberSince) || todayLocal() };
         store.saveMembershipLink(p.email, membershipLink(store.org, u)).catch(e => console.error('membership link', e));
       }
+      // Keep the column and answer choices for this association's next file.
+      const columns = { ...(saved.columns || {}) };
+      if (!headless) head.forEach((hd, i) => { if (hd) columns[headKey(hd)] = choice[i] || ''; });
+      const vals = { ...(saved.values || {}) };
+      for (const f of Object.keys(values)) vals[f] = { ...(vals[f] || {}), ...values[f] };
+      const memberImport = { columns, values: vals };
+      await store.saveOrg({ memberImport }).catch(e => console.error('import settings', e));
+      if (store.org) try { store.org.memberImport = memberImport; } catch (e) { /* a copy in some stores */ }
       toast(`${res.added} member(s) added, ${res.updated} updated`, 'ok');
-      box.value = ''; plan = null; setChildren(out);
+      box.value = ''; file.value = ''; rows = null; plan = null; setChildren(out); setChildren(mapOut); checkBtn.disabled = true;
       await reload();
     }));
     return h('div', { class: 'import-step' },
-      h('p', { class: 'muted' }, 'Your list of members, with a heading row. Columns are found by name: First name, Last name (or Name), Email, Mobile, Membership type and Member since. Copy it out of Excel or Google Sheets and paste it, or choose a CSV file. Everyone in it becomes a member; whether they are an Active umpire follows the availability they give or you bring in next.'),
-      box, h('p', {}, file),
+      h('p', { class: 'muted' }, 'Your list of members as you keep it: an Excel or CSV file, or rows copied from a sheet, with a heading row. Everyone in it becomes a member; whether they are an Active umpire follows the availability they give.'),
+      h('p', {}, h('label', {}, 'Choose a file ', file)), box, mapOut,
       h('p', {}, checkBtn, ' ', importBtn), out);
   }
 

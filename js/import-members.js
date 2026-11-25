@@ -26,15 +26,57 @@ const FIELDS = [
   ['firstName', /^(first|given)( name)?$|first name|given name/],
   ['lastName', /^(last|sur|family)( ?name)?$|last name|surname|family name/],
   ['name', /^(full )?name$|member name|umpire name/],
-  ['phone', /mobile|phone|contact no/],
-  ['dob', /birth|dob/],
+  ['phone', /mobile|phone|contact (no|num)/],
+  ['dob', /birth|dob|d\.?o\.?b/],
   ['address', /address|suburb/],
-  ['accreditationProvider', /provider|accredited (by|with)/],
-  ['accreditation', /accreditation|accred|umpire (no|number)|level/],
+  ['accreditationProvider', /provider|accredited (by|with)|eligib|qualifi/],
+  ['accreditation', /accreditation|accred|umpire (no|number)|card (no|number)|level/],
   ['membership', /membership( type)?|member type|type of membership|category/],
   ['memberSince', /since|joined|join date|start date|member from/],
   ['status', /status|active|umpir(e|ing)|role/],
 ];
+
+// The fields a column can go to, as the admin sees them when matching columns.
+export const MEMBER_FIELDS = [
+  ['email', 'Email'], ['firstName', 'First name'], ['lastName', 'Last name'], ['name', 'Full name'], ['phone', 'Mobile'],
+  ['dob', 'Date of birth'], ['address', 'Address'], ['accreditation', 'Accreditation no.'], ['accreditationProvider', 'Accreditation provider'],
+  ['membership', 'Membership type'], ['memberSince', 'Member since'],
+];
+// Fields whose values can be translated one by one (a short list of answers, like a form's options).
+export const VALUE_FIELDS = ['membership', 'accreditationProvider'];
+export const headKey = hd => norm(hd);
+
+// The columns of a sheet: a saved choice for a heading wins, then the guess from its name. Returns field -> column.
+export function matchColumns(head, saved = {}) {
+  const cols = {};
+  head.forEach((hd, i) => {
+    const k = headKey(hd);
+    if (k in saved) { if (saved[k] && !(saved[k] in cols)) cols[saved[k]] = i; }
+  });
+  head.forEach((hd, i) => {
+    if (headKey(hd) in saved || Object.values(cols).includes(i)) return;
+    const n = norm(hd);
+    for (const [field, re] of FIELDS) if (!(field in cols) && re.test(n)) { cols[field] = i; break; }
+  });
+  return cols;
+}
+
+// A sensible first translation for a provider answer from a form ('I have passed the NSWCUSA Course').
+export function providerGuess(v) {
+  const n = norm(v);
+  if (/nswcusa|nsw cricket umpires/.test(n)) return 'NSW Cricket Umpires & Scorers Association';
+  if (/cricket australia|\bca\b/.test(n)) return 'Cricket Australia';
+  if (/cricket nsw/.test(n)) return 'Cricket NSW';
+  const m = /passed the (.+?) course/.exec(n);
+  if (m) return m[1].toUpperCase();
+  return (v || '').trim();
+}
+
+// Australian mobiles that lost their leading 0 in a spreadsheet: 423387957 -> 0423387957.
+export function phoneFrom(v) {
+  const t = String(v || '').trim();
+  return /^4\d{8}$/.test(t) ? '0' + t : /^614\d{8}$/.test(t) ? '0' + t.slice(2) : t;
+}
 
 export function columnsOf(head) {
   const cols = {};
@@ -64,35 +106,43 @@ export function dateFrom(cell) {
   if (m) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; }
   m = /^(\d{4})$/.exec(v);
   if (m) return `${m[1]}-01-01`;
+  m = /^(\d{5})(\.\d+)?$/.exec(v);                                // an Excel date number that came through as a number
+  if (m) return new Date(Date.UTC(1899, 11, 30) + Number(m[1]) * 86400000).toISOString().slice(0, 10);
   const t = Date.parse(v);
   if (!Number.isNaN(t)) { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
   return '';
 }
 
 // Work out what a membership file would do, without changing anything.
-export function planMembers({ text, members = [], types = [] }) {
-  const rows = parseTable(text);
+// rows (from a file) or text (pasted); cols overrides the column guess; values translates answers per field.
+export function planMembers({ text, rows: given, cols: chosen, values = {}, members = [], types = [] }) {
+  const rows = given || parseTable(text);
   if (!rows.length) return { error: 'Paste the list, or choose a file.', people: [] };
-  let cols = columnsOf(rows[0]);
+  let cols = chosen || columnsOf(rows[0]);
   let body = rows.slice(1);
   if (!('email' in cols)) {
     // No heading row: the old one-line-per-member format.
     if (rows[0].some(c => EMAIL.test((c || '').trim()))) { cols = null; body = rows; }
-    else return { error: 'No Email column found. The first row should be the headings, with one called Email.', people: [] };
+    else return { error: chosen ? 'Choose which column has the email address.' : 'No Email column found. The first row should be the headings, with one called Email.', people: [] };
   }
   const byEmail = new Map(members.map(u => [u.email, u]));
   const typeNames = new Map(types.map(t => [norm(t.name), t.name]));
   const seen = new Set();
   const people = [], bad = [];
   for (const row of body) {
-    const get = f => (cols && f in cols ? (row[cols[f]] || '').trim() : '');
+    const get = f => {
+      const raw = cols && f in cols ? String(row[cols[f]] || '').trim() : '';
+      const map = values[f];
+      return map && raw && norm(raw) in map ? map[norm(raw)] : raw;
+    };
     let p;
     if (cols) {
       const email = emailKey(get('email'));
       let first = get('firstName'), last = get('lastName');
       if (!first && get('name')) { const parts = get('name').split(/\s+/); first = parts[0]; last = parts.slice(1).join(' '); }
+      if (first && last && norm(first).endsWith(' ' + norm(last))) first = first.slice(0, first.length - last.length).trim();   // 'Jane Smith' | 'Smith'
       const type = get('membership');
-      p = { email, firstName: first, lastName: last, phone: get('phone'), dob: dateFrom(get('dob')), address: get('address'),
+      p = { email, firstName: first, lastName: last, phone: phoneFrom(get('phone')), dob: dateFrom(get('dob')), address: get('address'),
         accreditation: get('accreditation'), accreditationProvider: get('accreditationProvider'),
         membership: type ? (typeNames.get(norm(type)) || type) : '', unknownType: !!type && types.length > 0 && !typeNames.has(norm(type)),
         memberSince: dateFrom(get('memberSince')) };
