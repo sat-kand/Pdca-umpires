@@ -89,7 +89,7 @@ export async function viewMy(ctx) {
     const page = h('div', { class: 'narrow-page' }, availTitle(), h('section', { class: 'card avail-card' },
       h('div', { class: 'avail-head head-status' }, h('h2', {}, (store.org && store.org.name) || ''), standingChip({ officer: true, u: null }, store.org)),
       h('p', { class: 'muted' }, 'To give your own availability here, join the association first, the same as any umpire.'),
-      joinSettings(store.org).open ? joinBtn(store.org) : h('a', { class: 'btn primary', href: '/profile' }, 'Add my details')));
+      joinBtn(store.org)));
     await placeOtherOrgs(ctx, page, page.lastChild, S.user.email, store.org && store.org.id);
     return page;
   }

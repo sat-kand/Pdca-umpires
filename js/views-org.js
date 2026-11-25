@@ -282,8 +282,8 @@ export async function viewOrgSettings(ctx) {
     const live = !!store.playhq;                                 // only the live store reads PlayHQ; demo mode has made-up fixtures
     const notify = h('input', { type: 'email', value: org.notifyEmail || '', placeholder: S.user.email });
     const save = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
-    const add = h('input', { type: 'email', placeholder: 'officer@example.com', 'aria-label': 'Email of the new officer' });
-    const addBtn = h('button', { class: 'btn', type: 'submit' }, 'Add officer');
+    const add = h('input', { type: 'email', placeholder: 'admin@example.com', 'aria-label': 'Email of the new admin' });
+    const addBtn = h('button', { class: 'btn', type: 'submit' }, 'Add admin');
 
     return [
       h('h1', {}, 'Settings'),
@@ -308,20 +308,20 @@ export async function viewOrgSettings(ctx) {
       playerUmpireCard(),
 
       h('div', { class: 'card' }, h('h2', {}, 'Link for umpires'),
-        h('p', { class: 'muted' }, 'Send this link to your umpires. They sign in, give the details you ask for under New umpires, and wait for you to approve them on the Members page. They can also find you in the list of associations when they sign up.'),
+        h('p', { class: 'muted' }, 'Send this link to your umpires.'),
         h('p', {}, h('code', { class: 'join-link' }, link)),
         h('button', { class: 'btn', type: 'button', onclick: async () => { { const ok = await copyText(link); toast(ok ? 'Link copied' : 'Could not copy', ok ? 'ok' : 'err'); }; } }, 'Copy link')),
 
-      h('div', { class: 'card' }, h('h2', {}, 'Appointments officers'),
+      h('div', { class: 'card' }, h('h2', {}, 'Admins'),
         h('ul', { class: 'plain officers' }, admins.map(e => h('li', { class: 'row-between' }, h('span', {}, e),
           e === S.user.email ? h('span', { class: 'muted' }, 'you')
-            : h('button', { class: 'link', type: 'button', onclick: async () => { if (!confirm(`Remove ${e} as an officer?`)) return; await store.removeAdmin(e); await draw(); } }, 'Remove')))),
+            : h('button', { class: 'link', type: 'button', onclick: async () => { if (!confirm(`Remove ${e} as an admin?`)) return; await store.removeAdmin(e); await draw(); } }, 'Remove')))),
         h('form', { class: 'inline-form', onsubmit: busy(addBtn, async e => {
           e.preventDefault();
           const email = emailKey(add.value);
           if (!email) return;
           await store.addAdmin(email);
-          toast(`${email} is now an officer. Send them the link above to sign in.`, 'ok');
+          toast(`${email} is now an admin. Send them the link above to sign in.`, 'ok');
           await draw();
         }) }, add, addBtn)),
     ];

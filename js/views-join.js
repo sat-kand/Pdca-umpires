@@ -54,7 +54,7 @@ export async function viewAssociations(ctx) {
     return h('li', { class: 'org-row', 'data-org': org.id },
       h('div', { class: 'org-main' }, h('strong', { class: 'assoc-name' }, org.name), standingChip(st, org)),
       s === 'applied' && joinSettings(org).membershipRequired && h('div', { class: 'org-actions' }, cancelButton(ctx, org)),
-      s === 'officer' && joinSettings(org).open && h('div', { class: 'org-actions' }, joinBtn(org)));      // an admin joins like anyone else, to give availability
+      s === 'officer' && h('div', { class: 'org-actions' }, joinBtn(org)));      // an admin joins like anyone else, to give availability
   };
 
   return h('div', { class: 'narrow-page' },
@@ -74,7 +74,8 @@ export async function viewJoin(ctx, orgId) {
   const org = await store.getOrg(orgId);
   if (!org || org.plan === 'suspended') return h('p', { class: 'notice warn' }, 'We could not find that association. ', back);
   const set = joinSettings(org);
-  if (!set.open) return h('p', { class: 'notice warn' }, `${org.name} is not taking new umpires through Third Umpire right now. `, back);
+  const adminHere = (await store.listStandings(S.user.email)).some(x => x.orgId === orgId && x.officer);   // admins join even when new umpires are closed
+  if (!set.open && !adminHere) return h('p', { class: 'notice warn' }, `${org.name} is not taking new umpires through Third Umpire right now. `, back);
 
   const profile = (await store.getProfile(S.user.email)) || {};
   const nm = nameParts(profile);
@@ -115,7 +116,8 @@ export async function otherAssociationsCard(ctx, skipId) {
   const { store, S } = ctx;
   const [orgs, standings] = await Promise.all([store.listJoinableOrgs(), store.listStandings(S.user.email)]);
   const have = new Set(standings.filter(x => x.u).map(x => x.orgId));       // admins who have not joined still get a Join button
-  const toJoin = orgs.filter(o => !have.has(o.id) && o.id !== skipId && joinSettings(o).open).sort(byName);
+  const admin = new Set(standings.filter(x => x.officer).map(x => x.orgId));
+  const toJoin = orgs.filter(o => !have.has(o.id) && o.id !== skipId && (joinSettings(o).open || admin.has(o.id))).sort(byName);
   if (!toJoin.length) return null;
   return h('section', { class: 'card other-associations' }, h('h2', {}, 'Other associations'),
     h('ul', { class: 'plain org-list' },

@@ -1534,7 +1534,7 @@ with sync_playwright() as p:
     check(page.locator(".join-link").inner_text().endswith("/join/pdca"), "Settings shows the link umpires join with")
     check("trial" not in page.inner_text("body").lower() and "subscription" not in page.inner_text("body").lower(), "nothing about trials or subscriptions")
     page.fill(".inline-form input[type=email]", "Second.Officer@demo.test")
-    page.click("button:has-text('Add officer')")
+    page.click("button:has-text('Add admin')")
     page.wait_for_selector(".officers li:has-text('second.officer@demo.test')")
     check(page.locator(".officers li").count() == 2 and page.locator(".officers li:has-text('admin@demo.test')").locator("text=you").count() == 1, "an officer can add another officer; you cannot remove yourself")
 
@@ -2107,8 +2107,9 @@ with sync_playwright() as p:
     sign_in(page, "admin@demo.test", open_form=False)
     goto(page, BASE + "admin/settings")
     page.fill(".officers + form input[type=email]", "newadmin@demo.test")
-    page.click(".officers + form button:has-text('Add officer')")
+    page.click(".officers + form button:has-text('Add admin')")
     page.wait_for_timeout(500)
+    page.evaluate("() => { const k = 'pdca-umpires-demo-v2'; const d = JSON.parse(localStorage.getItem(k)); d.orgs.pdca.org.joining = { ...(d.orgs.pdca.org.joining || {}), open: false }; localStorage.setItem(k, JSON.stringify(d)); }")   # closed to new umpires: admins can still join
     sign_out(page)
     sign_in(page, "newadmin@demo.test", open_form=False)
     goto(page, BASE + "my")
