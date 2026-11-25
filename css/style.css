@@ -481,12 +481,19 @@ main.enter > * { animation: page-in .18s ease-out; }
 /* Matching an imported sheet's columns: heading and sample on the left, the field on the right; stacked on a phone. */
 .import-map h4 { margin: .8rem 0 .3rem; }
 .map-list { margin: 0; }
-.map-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(9rem, 14rem); align-items: center; gap: .5rem; padding: .35rem 0; border-bottom: 1px solid var(--line); }
+.map-row, .map-head { display: grid; grid-template-columns: minmax(0, 1fr) 1.2rem minmax(12rem, 22rem); align-items: center; gap: .5rem; padding: .35rem 0; border-bottom: 1px solid var(--line); }
 .map-from { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 .map-sample { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .map-row select, .map-row input { width: 100%; }
-.value-map { margin-top: .6rem; }
+.value-map { margin-top: 1rem; padding: .8rem; border: 1px solid var(--line); border-radius: 10px; }
+.value-map h4 { margin-top: 0; }
+.value-map .chip { margin: .1rem 0; }
+.map-head { padding: .2rem 0; border-bottom: 1px solid var(--line); font-weight: 600; }
+.map-to { display: flex; flex-direction: column; gap: .2rem; align-items: flex-start; }
+.map-summary { margin: .6rem 0 0; }
+.chip.new { background: var(--amber-l); color: var(--amber); font-weight: 600; }
 @media (max-width: 560px) {
   .map-row { grid-template-columns: 1fr; gap: .25rem; }
-  .map-arrow { display: none; }
+  .map-arrow, .map-head { display: none; }
+  .value-map .map-from::before { content: 'In your sheet: '; color: var(--muted, #6b7a70); font-size: .85em; }
 }

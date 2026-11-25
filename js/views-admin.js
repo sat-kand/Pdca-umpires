@@ -856,28 +856,57 @@ export async function viewUmpires(ctx) {
       const fieldSel = i => h('select', { class: 'in-sm', 'aria-label': `Field for ${head[i] || 'column ' + (i + 1)}`, onchange: e => { choice[i] = e.target.value; plan = null; importBtn.disabled = true; drawMap(); } },
         h('option', { value: '' }, 'Ignore'), MEMBER_FIELDS.map(([k, label]) => h('option', { value: k, selected: choice[i] === k }, label)));
       const sample = i => rows.slice(1).map(r => String(r[i] || '').trim()).filter(Boolean).slice(0, 2).join(' · ');
+      // Short lists of answers, each turned into a value Third Umpire keeps. Every row says whether that value is
+      // one the association already has, or a new one the import adds.
+      const STD_PROVIDERS = ['Cricket Australia', 'Cricket NSW', 'NSW Cricket Umpires & Scorers Association'];
+      const known = f => f === 'membership' ? types.map(t => t.name)
+        : [...new Set([...STD_PROVIDERS, ...members.map(u => (u.accreditationProvider || '').trim()).filter(Boolean)])];
+      const isKnown = (f, val) => known(f).some(x => headKey(x) === headKey(val));
+      const TEXT = {
+        membership: { title: 'Membership types', to: 'Membership type in Third Umpire', have: 'Your membership types in Settings',
+          none: 'You have no membership types in Settings yet, so each one below is added as a new type.',
+          old: 'Existing type', fresh: 'New type', summary: n => `${n} new membership type${n === 1 ? '' : 's'} will be added to Settings on import, with no fee yet: `, after: 'You can set their fees in Settings.' },
+        accreditationProvider: { title: 'Accreditation providers', to: 'Provider in Third Umpire', have: 'Providers already in use',
+          old: 'Already in use', fresh: 'New provider', summary: n => `${n} new provider name${n === 1 ? '' : 's'} will be saved on these members: `, after: '' },
+      };
       const valueCards = VALUE_FIELDS.filter(f => f in c).map(f => {
         const vals = distinct(c[f]);
         if (!vals.length || vals.length > 20) return null;
         values[f] = values[f] || {};
-        const label = MEMBER_FIELDS.find(x => x[0] === f)[1];
-        const ctl = v => {
+        const T = TEXT[f], listId = `known-${f}`;
+        const summary = h('p', { class: 'map-summary' });
+        const chipFor = val => !val ? h('span', { class: 'chip muted-chip' }, 'Left blank')
+          : isKnown(f, val) ? h('span', { class: 'chip ok' }, T.old) : h('span', { class: 'chip new' }, T.fresh);
+        const drawSummary = () => {
+          const fresh = [...new Set(Object.values(values[f]).filter(x => x && !isKnown(f, x)))];
+          setChildren(summary, fresh.length ? [h('strong', {}, T.summary(fresh.length)), fresh.join(', '), '. ', T.after] : h('span', { class: 'muted' }, 'Nothing new will be added.'));
+        };
+        const row = v => {
           const k = headKey(v);
           if (!(k in values[f])) values[f][k] = (saved.values && saved.values[f] && k in saved.values[f]) ? saved.values[f][k]
             : f === 'membership' ? ((types.find(t => headKey(t.name) === k) || {}).name || v) : providerGuess(v);
-          if (f === 'membership' && types.length) return h('select', { class: 'in-sm', 'aria-label': `${label} for ${v}`, onchange: e => { values[f][k] = e.target.value; } },
-            h('option', { value: '' }, 'Leave blank'), types.map(t => h('option', { value: t.name, selected: values[f][k] === t.name }, t.name)),
-            !types.some(t => headKey(t.name) === k) && h('option', { value: v, selected: values[f][k] === v }, `Keep as written: ${v}`));
-          return h('input', { class: 'in-sm', value: values[f][k], 'aria-label': `${label} for ${v}`, placeholder: 'Leave blank', oninput: e => { values[f][k] = e.target.value.trim(); } });
+          const chip = h('span', { class: 'map-chip' }, chipFor(values[f][k]));
+          const input = h('input', { class: 'in-sm', value: values[f][k], list: listId, 'aria-label': `${T.to} for ${v}`, placeholder: 'Leave blank',
+            oninput: e => { const val = e.target.value.trim(); const hit = known(f).find(x => headKey(x) === headKey(val)); values[f][k] = hit || val; setChildren(chip, chipFor(values[f][k])); drawSummary(); } });
+          return h('li', { class: 'map-row' }, h('span', { class: 'map-from' }, v), h('span', { class: 'map-arrow', 'aria-hidden': 'true' }, '→'),
+            h('span', { class: 'map-to' }, input, chip));
         };
+        const rowsEl = vals.map(row);
+        drawSummary();
+        const have = known(f);
         return h('div', { class: 'value-map', 'data-field': f },
-          h('h4', {}, `${label}: what each answer means`),
-          f === 'membership' && !types.length && h('p', { class: 'muted small' }, 'Add your membership types in Settings to choose from them here.'),
-          h('ul', { class: 'plain map-list' }, vals.map(v => h('li', { class: 'map-row' }, h('span', { class: 'map-from' }, v), h('span', { class: 'map-arrow', 'aria-hidden': 'true' }, '→'), ctl(v)))));
+          h('h4', {}, T.title),
+          have.length ? h('p', { class: 'muted small' }, `${T.have}: `, have.map(x => h('span', { class: 'chip ok' }, x)))
+            : h('p', { class: 'muted small' }, T.none),
+          h('datalist', { id: listId }, have.map(x => h('option', { value: x }))),
+          h('div', { class: 'map-head muted small' }, h('span', {}, 'Answer in your sheet'), h('span'), h('span', {}, T.to)),
+          h('ul', { class: 'plain map-list' }, rowsEl),
+          summary);
       });
       setChildren(mapOut,
         h('h4', {}, 'Match your columns'),
         h('p', { class: 'muted small' }, 'Each column of your sheet and what it holds. We guessed from the headings; change any that are wrong. Your choices are kept for next time.'),
+        h('div', { class: 'map-head muted small' }, h('span', {}, 'Column in your sheet'), h('span'), h('span', {}, 'Field in Third Umpire')),
         h('ul', { class: 'plain map-list' }, head.map((hd, i) => h('li', { class: 'map-row', 'data-col': i },
           h('span', { class: 'map-from' }, h('strong', {}, hd || `Column ${i + 1}`), h('span', { class: 'muted small map-sample' }, sample(i))),
           h('span', { class: 'map-arrow', 'aria-hidden': 'true' }, '→'), fieldSel(i)))),
@@ -904,7 +933,7 @@ export async function viewUmpires(ctx) {
       setChildren(out,
         h('p', {}, h('strong', {}, `${plan.added.length} new, ${plan.updated.length} already on the list`)),
         plan.updated.length > 0 && h('p', { class: 'muted small' }, 'For people already on the list only membership type and member since are updated. Their own details stay as they keep them.'),
-        plan.unknownTypes.length > 0 && h('p', { class: 'notice warn' }, `Not one of your membership types in Settings: ${plan.unknownTypes.join(', ')}. They are imported as written; add the type in Settings to set its fee.`),
+        plan.unknownTypes.length > 0 && h('p', { class: 'notice' }, `New membership types, added to Settings when you import: ${plan.unknownTypes.join(', ')}. Set their fees there.`),
         plan.bad.length > 0 && h('p', { class: 'notice warn' }, `${plan.bad.length} row(s) skipped: they need an email address and a name. First: ${plan.bad[0]}`),
         h('ul', { class: 'plain import-preview' }, plan.people.slice(0, 10).map(p => h('li', { class: 'row-between' },
           h('span', {}, h('strong', {}, p.name || p.email), ' ', h('span', { class: 'muted small' }, [p.email, p.phone, p.membership, p.accreditationProvider].filter(Boolean).join(' · '))),
@@ -935,6 +964,11 @@ export async function viewUmpires(ctx) {
       const vals = { ...(saved.values || {}) };
       for (const f of Object.keys(values)) vals[f] = { ...(vals[f] || {}), ...values[f] };
       const memberImport = { columns, values: vals };
+      const newTypes = [...new Set(plan.people.map(p => p.membership).filter(t => t && !types.some(x => headKey(x.name) === headKey(t))))];
+      if (newTypes.length) {
+        const org = store.org || {};
+        await store.saveOrg({ membership: { ...(org.membership || {}), types: [...membershipTypes(org), ...newTypes.map(name => ({ name, fee: 0 }))] } });
+      }
       await store.saveOrg({ memberImport }).catch(e => console.error('import settings', e));
       if (store.org) try { store.org.memberImport = memberImport; } catch (e) { /* a copy in some stores */ }
       toast(`${res.added} member(s) added, ${res.updated} updated`, 'ok');

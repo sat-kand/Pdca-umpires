@@ -754,6 +754,7 @@ with sync_playwright() as p:
     page.fill(".member-search", "social")
     check(page.locator("table.members tbody tr").count() == 1, "search finds members by name")
     page.fill(".member-search", "")
+    types_before = page.evaluate("() => JSON.stringify(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.membership || null)")
     bring = page.locator("details.import-card:has(> summary:has-text('Bring in'))")
     if bring.get_attribute("open") is None:
         bring.locator("> summary").click()
@@ -815,6 +816,15 @@ with sync_playwright() as p:
           == ["email", "firstName", "phone", "dob", "accreditationProvider", "accreditation"], "an Excel file's columns are matched from PDCA's own headings")
     prov = page.locator(".value-map[data-field=accreditationProvider]")
     check(prov.count() == 1 and prov.locator(".map-row").count() == 3, "the accreditation answers are listed once each, to translate")
+    mt = page.locator(".value-map[data-field=membership]")
+    check(mt.locator(".map-row .chip.new:has-text('New type')").count() == 2 and "2 new membership types will be added to Settings" in mt.inner_text(),
+          "answers that are not one of the association's types are marked New type, with a summary of what will be added")
+    known = page.evaluate("() => (JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.membership || {}).types || []")
+    if known:
+        first = known[0]["name"]
+        mt.locator(".map-row:has(.map-from:text-is('Existing Member')) input").fill(first)
+        check(mt.locator(".map-row:has(.map-from:text-is('Existing Member')) .chip.ok:has-text('Existing type')").count() == 1, "choosing one of their own types marks it Existing type")
+        mt.locator(".map-row:has(.map-from:text-is('Existing Member')) input").fill("Existing Member")
     page.locator(".import-map > .map-list > .map-row:has(strong:text-is('Address')) select").select_option("")
     page.click(".import-step button:has-text('Check it')")
     prev = page.inner_text(".import-step .import-out")
@@ -827,6 +837,8 @@ with sync_playwright() as p:
           and x["accreditationProvider"] == "NSW Cricket Umpires & Scorers Association" and x["membership"] == "Existing Member" and not x.get("address"),
           "the Excel rows come in: name trimmed, date of birth from the Excel date, accreditation translated, the ignored Address column left out")
     check(y["phone"] == "0411222333" and y["accreditationProvider"] == "PDCUA" and z["accreditationProvider"] == "Cricket Australia", "a mobile stored as a number gets its 0 back")
+    types_now = [t["name"] for t in page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.membership.types")]
+    check("Existing Member" in types_now and "New Member" in types_now, "the new membership types are added to Settings")
     saved = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.memberImport")
     check(saved and saved["columns"].get("address") == "" and saved["columns"].get("contact number") == "phone", "the column choices are kept for the association")
     if bring.get_attribute("open") is None:
@@ -834,6 +846,8 @@ with sync_playwright() as p:
     page.set_input_files(".import-step input[type=file]", xlsx)
     page.wait_for_selector(".import-map .map-row")
     check(field_of("Address") == "", "next time, the column they ignored is still ignored")
+    page.evaluate("t => { const k = 'pdca-umpires-demo-v2'; const d = JSON.parse(localStorage.getItem(k)); d.orgs.pdca.org.membership = JSON.parse(t); localStorage.setItem(k, JSON.stringify(d)); }", types_before)   # the Settings checks below start from the seeded types
+    page.reload()
     page.select_option(".member-tools select", "inactive")
     check(row_of(page, "quiet@example.com").count() == 1 and row_of(page, "umpire1@demo.test").count() == 0, "the Show filter lists Inactive members")
     check(page.locator("table.members input[type=checkbox]").count() == 0 and page.locator(".bulk-bar").count() == 0
