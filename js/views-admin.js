@@ -976,8 +976,7 @@ export async function viewUmpires(ctx) {
       await reload();
     }));
     return h('div', { class: 'import-step' },
-      h('p', { class: 'muted' }, 'Your list of members as you keep it: an Excel or CSV file, or rows copied from a sheet, with a heading row. Everyone in it becomes a member; whether they are an Active umpire follows the availability they give.'),
-      h('p', {}, h('label', {}, 'Choose a file ', file)), box, mapOut,
+      h('p', {}, h('label', {}, 'Choose a file (.xlsx or .csv) ', file)), box, mapOut,
       h('p', {}, checkBtn, ' ', importBtn), out);
   }
 
@@ -1084,11 +1083,11 @@ export async function viewUmpires(ctx) {
             h('td', {}, umpiringCell(u)),
             h('td', {}, membershipCell(u)),
             h('td', {}, ['member', 'suspended'].includes(membershipOf(u)) ? membershipTypeCell(u) : '')); }))))
-          : h('p', { class: 'muted' }, members.length ? 'No one matches.' : 'No members yet. Bring in your membership list below, or send people the link from Settings so they can apply.')),
+          : h('p', { class: 'muted' }, members.length ? 'No one matches.' : 'No members yet. Bulk upload your membership list below, or send people the link from Settings so they can apply.')),
       addMemberCard(),
       h('details', { class: 'card import-card', open: ui.importOpen || !members.length, ontoggle: e => { ui.importOpen = e.currentTarget.open; } },
-        h('summary', {}, 'Bring in your membership list'),
-        h('p', { class: 'muted' }, 'Availability files are brought in on the Availabilities page, one for each group.'),
+        h('summary', {}, 'Bulk upload your membership list'),
+        h('p', { class: 'muted' }, 'Add many members at once. Each person in the file becomes a member and can sign in with their email; anyone already on your list is updated, not added twice.'),
         membershipImport()));
   };
   draw();

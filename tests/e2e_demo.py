@@ -755,7 +755,7 @@ with sync_playwright() as p:
     check(page.locator("table.members tbody tr").count() == 1, "search finds members by name")
     page.fill(".member-search", "")
     types_before = page.evaluate("() => JSON.stringify(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.membership || null)")
-    bring = page.locator("details.import-card:has(> summary:has-text('Bring in'))")
+    bring = page.locator("details.import-card:has(> summary:has-text('Bulk upload'))")
     if bring.get_attribute("open") is None:
         bring.locator("> summary").click()
     page.fill(".import-step textarea >> nth=0", "Pat, Example, pat@example.com, 0400 000 000, L3-7782\nbad line")
@@ -767,7 +767,7 @@ with sync_playwright() as p:
           "bulk add reads First name, Last name, email, mobile and accreditation number")
     # A membership file with headings: an existing member (their own details kept) and two new members.
     before_u1 = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['umpire1@demo.test']")
-    bring = page.locator("details.import-card:has(> summary:has-text('Bring in'))")
+    bring = page.locator("details.import-card:has(> summary:has-text('Bulk upload'))")
     if bring.get_attribute("open") is None:
         bring.locator("> summary").click()
     check(page.locator(".import-step select").count() == 0, "the membership file has no active or inactive choice: that follows availability")
@@ -787,7 +787,7 @@ with sync_playwright() as p:
     check(db["keen@example.com"]["memberSince"] == "2019-04-15" and db["quiet@example.com"].get("approved"), "new people come in as members, with their member-since date")
     check("Inactive member" in row_of(page, "quiet@example.com").inner_text() and "Active umpire" in row_of(page, "umpire1@demo.test").inner_text(),
           "a new member with no availability is an Inactive member; one with Available dates is an Active umpire")
-    check(page.locator(".import-step").count() == 1 and "Availabilities page" in page.inner_text(".import-card"), "Members brings in only the membership list; availability files are on the Availabilities page")
+    check(page.locator(".import-step").count() == 1 and "Add many members at once" in page.inner_text(".import-card") and "Availabilities page" not in page.inner_text(".import-card"), "Members bulk uploads only the membership list, with no mention of availability files")
     page.click("details.add-member-card > summary")
     page.fill(".add-member label:has-text('First name') input", "Hand")
     page.fill(".add-member label:has-text('Last name') input", "Added")
@@ -806,7 +806,7 @@ with sync_playwright() as p:
     check(True, "adding someone already a member says so and changes nothing")
     # An association's own Excel file (PDCA's membership form layout, made-up people): columns matched, answers translated, choices kept.
     xlsx = os.path.join(ROOT, "tests", "fixtures-members.xlsx")
-    bring = page.locator("details.import-card:has(> summary:has-text('Bring in'))")
+    bring = page.locator("details.import-card:has(> summary:has-text('Bulk upload'))")
     if bring.get_attribute("open") is None:
         bring.locator("> summary").click()
     page.set_input_files(".import-step input[type=file]", xlsx)
