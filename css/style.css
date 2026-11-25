@@ -497,3 +497,13 @@ main.enter > * { animation: page-in .18s ease-out; }
   .map-arrow, .map-head { display: none; }
   .value-map .map-from::before { content: 'In your sheet: '; color: var(--muted, #6b7a70); font-size: .85em; }
 }
+
+/* Sign in: Google first (plain, with its logo), then a line, then the email box and its own button. */
+.signin-card .google-btn { display: flex; align-items: center; justify-content: center; gap: .6rem; background: #fff; color: var(--ink); border-color: #c9d1cc; }
+.signin-card .google-btn:hover { background: #f6f8f7; color: var(--ink); }
+.g-logo { width: 1.15rem; height: 1.15rem; flex: none; }
+.or-line { display: flex; align-items: center; gap: .7rem; margin: 1.1rem 0 .4rem; color: var(--muted); font-size: .85rem; }
+.or-line::before, .or-line::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
+.email-signin label { margin-bottom: .6rem; }
+.code-input { font-size: 1.6rem; letter-spacing: .35em; text-align: center; font-variant-numeric: tabular-nums; padding: .5rem; }
+.code-step form { margin: .4rem 0; } .code-links { margin-top: .8rem; } .code-links .link:disabled { color: var(--muted); cursor: default; text-decoration: none; }

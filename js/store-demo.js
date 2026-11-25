@@ -43,6 +43,10 @@ export function createDemoStore() {
     onAuth(cb) { listeners.push(cb); setTimeout(() => cb(db.session ? { email: db.session } : null), 0); return () => {}; },
     async sendLink(email) { db.session = email.trim().toLowerCase(); save(); emit(); return { sent: false, signedIn: true }; },
     async completeLink() { return false; },
+    // The code screen, for the tests only (localStorage 'demo-codes' on): the code is always 123456.
+    get demoCodes() { try { return !!localStorage.getItem('demo-codes'); } catch { return false; } },
+    async sendCode(email) { if (/^slow@/.test(email)) throw new Error('For security purposes, you can only request this after 42 seconds.'); },
+    async verifyCode(email, token) { if (token !== '123456') throw new Error('Token has expired or is invalid'); db.session = email.trim().toLowerCase(); save(); emit(); },
     async signOut() { db.session = null; save(); emit(); },
 
     // ----- associations -----

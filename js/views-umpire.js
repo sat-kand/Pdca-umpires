@@ -9,29 +9,96 @@ import { otherAssociationsCard, pendingCard, standingChip, cancelButton, joinBtn
 
 export function viewLogin(ctx) {
   const { store, S } = ctx;
+  const live = store.mode !== 'demo' || store.demoCodes;            // demo mode signs straight in, unless testing the code screen
+  let pending = null;                                                 // { email, at }: a code was sent; kept over a reload
+  try { pending = JSON.parse(sessionStorage.getItem('tu-code') || 'null'); } catch { /* no storage */ }
+  if (pending && Date.now() - pending.at > 60 * 60 * 1000) pending = null;
   let last = '';
   try { last = (S && S.linkProblem && localStorage.getItem('pdca-last-email')) || ''; } catch { /* no storage */ }
-  const email = h('input', { type: 'email', required: true, placeholder: 'you@example.com', autocomplete: 'email', id: 'login-email', value: last });
+  const email = h('input', { type: 'email', required: true, placeholder: 'you@example.com', autocomplete: 'email', id: 'login-email', value: (pending && pending.email) || last });
   const msg = h('div');
-  // A sign-in link that did not work: say why, and the way out is the form below (the address is filled in when we know it).
+  // An old emailed link that did not work: say why; the way out is the form below.
   const problem = S && S.linkProblem ? h('p', { class: 'notice warn', role: 'alert' }, S.linkProblem) : h('span');
-  const btn = h('button', { class: 'btn' + (store.signInGoogle ? '' : ' primary'), type: 'submit' }, store.mode === 'demo' ? 'Sign in (demo)' : (last ? 'Email me a new link' : 'Email me a sign-in link'));
-  const google = store.signInGoogle && h('button', { class: 'btn primary wide', type: 'button' }, 'Continue with Google');
+  const btn = h('button', { class: 'btn primary wide', type: 'submit' }, live ? 'Email me a code' : 'Sign in (demo)');
+  const gLogo = () => { const t = document.createElement('template'); t.innerHTML = '<svg class="g-logo" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.3.8-4.7l-7.9-6.1C.9 16.5 0 20.1 0 24s.9 7.5 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>'; return t.content.firstChild; };
+  const google = store.signInGoogle && h('button', { class: 'btn wide google-btn', type: 'button' }, gLogo(), h('span', {}, 'Continue with Google'));
   if (google) google.onclick = busy(google, async () => { await store.signInGoogle(); });
-  const form = h('form', { class: 'card narrow', onsubmit: busy(btn, async e => {
+
+  const remember = v => { try { v ? sessionStorage.setItem('tu-code', JSON.stringify(v)) : sessionStorage.removeItem('tu-code'); } catch { /* fine */ } };
+  const friendly = e => {
+    const m = (e && e.message) || String(e);
+    if (/expired|invalid|otp/i.test(m)) return 'That code did not work. Use the code from the newest email, or send a new one.';
+    const wait = /after (\d+) seconds?/i.exec(m);
+    if (wait) return `Please wait ${wait[1]} seconds before asking for another code.`;
+    if (/rate limit/i.test(m)) return 'Too many codes asked for. Please wait a few minutes and try again.';
+    return m;
+  };
+
+  // Step 1: the email address.
+  const step1 = h('form', { class: 'email-signin', onsubmit: busy(btn, async e => {
     e.preventDefault();
-    const r = await store.sendLink(emailKey(email.value));
-    if (r.sent) { if (S) S.linkProblem = ''; problem.remove(); }
-    if (r.sent) msg.replaceChildren(h('p', { class: 'notice ok' }, `We've emailed a sign-in link to ${email.value}. Open it on this device to continue.`));
-  }) },
-  h('h1', {}, 'Sign in'),
-  problem,
-  h('p', { class: 'muted' }, store.mode === 'demo'
-    ? 'Demo mode: no email is sent. Type any address to continue. Use admin@demo.test for the appointments officer view, or umpire1@demo.test … umpire10@demo.test for sample umpires.'
-    : 'Enter your email address and we will send you a link to sign in.'),
-  h('label', {}, 'Email address', email), btn, msg,
-  google && h('p', { class: 'muted center' }, 'or'), google);
-  if (!(CONFIG.passwordLogin && store.signInPassword)) return form;
+    const addr = emailKey(email.value);
+    if (!live) { await store.sendLink(addr); return; }
+    try { await store.sendCode(addr); } catch (err) { setChildren(msg, h('p', { class: 'notice warn', role: 'alert' }, friendly(err))); return; }
+    if (S) S.linkProblem = '';
+    problem.remove();
+    pending = { email: addr, at: Date.now() }; remember(pending);
+    showCode();
+  }) }, h('label', {}, 'Email address', email), btn);
+
+  // Step 2: the code from the email, typed in this same tab.
+  const step2 = h('div', { class: 'code-step' });
+  // While typing the code, Google is out of the way: the only button is the one that uses the code.
+  const googleBlock = h('div', { class: 'google-block' }, google ? [google, h('div', { class: 'or-line' }, h('span', {}, 'or sign in with your email'))] : null);
+  const showCode = () => {
+    setChildren(msg);
+    const code = h('input', { id: 'login-code', inputmode: 'numeric', autocomplete: 'one-time-code', pattern: '[0-9]*', maxlength: 10, required: true,
+      placeholder: '123456', 'aria-label': 'Code from the email', class: 'code-input' });
+    const verifyBtn = h('button', { class: 'btn primary wide', type: 'submit' }, 'Sign in');
+    const err = h('div');
+    const resend = h('button', { class: 'link', type: 'button' }, 'Send a new code');
+    let tick = null;
+    const cooldown = secs => {
+      clearInterval(tick); resend.disabled = true;
+      const end = Date.now() + secs * 1000;
+      const draw = () => { const left = Math.ceil((end - Date.now()) / 1000); if (left <= 0) { clearInterval(tick); resend.disabled = false; resend.textContent = 'Send a new code'; } else resend.textContent = `Send a new code (${left}s)`; };
+      draw(); tick = setInterval(draw, 1000);
+    };
+    cooldown(Math.max(0, 60 - Math.round((Date.now() - pending.at) / 1000)));
+    const verify = busy(verifyBtn, async e => {
+      if (e) e.preventDefault();
+      const token = code.value.replace(/\D/g, '');
+      if (token.length < 6) { setChildren(err, h('p', { class: 'notice warn', role: 'alert' }, 'Type the 6-digit code from the email.')); return; }
+      setChildren(err);
+      try { await store.verifyCode(pending.email, token); remember(null); clearInterval(tick); }
+      catch (e2) { setChildren(err, h('p', { class: 'notice warn', role: 'alert' }, friendly(e2))); code.select(); }
+    });
+    code.oninput = () => { const d = code.value.replace(/\D/g, ''); if (d !== code.value) code.value = d; if (d.length === 6) verify(); };
+    resend.onclick = busy(resend, async () => {
+      try { await store.sendCode(pending.email); pending.at = Date.now(); remember(pending); cooldown(60); setChildren(err, h('p', { class: 'notice ok' }, 'A new code is on its way. Use the newest one.')); }
+      catch (e2) { setChildren(err, h('p', { class: 'notice warn', role: 'alert' }, friendly(e2))); }
+    });
+    const change = h('button', { class: 'link', type: 'button', onclick: () => { clearInterval(tick); pending = null; remember(null); step2.replaceWith(step1); googleBlock.hidden = false; setTimeout(() => email.focus(), 0); } }, 'Use a different email');
+    setChildren(step2,
+      h('p', {}, 'We emailed a 6-digit code to ', h('strong', {}, pending.email), '. Type it here to sign in.'),
+      h('form', { onsubmit: verify }, h('label', {}, 'Code', code), verifyBtn),
+      err,
+      h('p', { class: 'code-links small' }, resend, h('span', { class: 'muted' }, ' · '), change),
+      h('p', { class: 'muted small' }, 'Not there? Check your spam folder. The code works for an hour.'));
+    if (step1.parentNode) step1.replaceWith(step2);
+    googleBlock.hidden = true;
+    setTimeout(() => code.focus(), 0);
+  };
+
+  const card = h('div', { class: 'card narrow signin-card' },
+    h('h1', {}, 'Sign in'),
+    problem,
+    !live && h('p', { class: 'muted' }, 'Demo mode: no email is sent. Type any address to continue. Use admin@demo.test for the appointments officer view, or umpire1@demo.test … umpire10@demo.test for sample umpires.'),
+    google ? googleBlock : live && h('p', { class: 'muted' }, 'Enter your email address and we will email you a code to sign in.'),
+    step1, msg);
+  if (pending && live) showCode();
+  const formOut = card;
+  if (!(CONFIG.passwordLogin && store.signInPassword)) return formOut;
   // Staging only: the test accounts used by the automated tests.
   const pwEmail = h('input', { type: 'email', id: 'pw-email', autocomplete: 'username', placeholder: 'test-...@thirdumpire.test', required: true });
   const pwPass = h('input', { type: 'password', id: 'pw-password', autocomplete: 'current-password', required: true });
@@ -40,7 +107,7 @@ export function viewLogin(ctx) {
     h('h2', {}, 'Test accounts (staging only)'),
     h('p', { class: 'muted small' }, 'For the automated tests. Real sign-in is by email link or Google, above.'),
     h('label', {}, 'Email', pwEmail), h('label', {}, 'Password', pwPass), pwBtn);
-  return h('div', {}, form, pwForm);
+  return h('div', {}, formOut, pwForm);
 }
 
 export async function viewProfile(ctx) {

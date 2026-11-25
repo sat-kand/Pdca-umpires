@@ -110,7 +110,13 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
       fail(await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + '/', shouldCreateUser: true } }));
       return { sent: true };
     },
-    // Call once at start-up. Returns true if the page was opened from an emailed link (?code=...).
+    // Sign-in by a code typed in this tab: the email carries a code ({{ .Token }} in the Supabase email template).
+    async sendCode(email) {
+      try { localStorage.setItem('pdca-last-email', email); } catch { /* fine */ }
+      fail(await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } }));
+    },
+    async verifyCode(email, token) { fail(await sb.auth.verifyOtp({ email, token, type: 'email' })); },
+    // Call once at start-up. Links from before the switch to codes still work. Returns true if opened from one (?code=...).
     async completeLink() {
       // Supabase sends an already-used or expired emailed link back here with the error in the address (in the query or after the #).
       const bad = new URLSearchParams(location.search).get('error_code') ? new URLSearchParams(location.search)
