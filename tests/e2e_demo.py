@@ -2109,7 +2109,6 @@ with sync_playwright() as p:
     page.fill(".officers + form input[type=email]", "newadmin@demo.test")
     page.click(".officers + form button:has-text('Add admin')")
     page.wait_for_timeout(500)
-    page.evaluate("() => { const k = 'pdca-umpires-demo-v2'; const d = JSON.parse(localStorage.getItem(k)); d.orgs.pdca.org.joining = { ...(d.orgs.pdca.org.joining || {}), open: false }; localStorage.setItem(k, JSON.stringify(d)); }")   # closed to new umpires: admins can still join
     sign_out(page)
     sign_in(page, "newadmin@demo.test", open_form=False)
     goto(page, BASE + "my")
@@ -2129,6 +2128,19 @@ with sync_playwright() as p:
     page.wait_for_selector(".avail-card, .pending-card")
     check(page.locator(".avail-card a:has-text('Join')").count() == 0 and page.locator("a[href='/join/pdca']").count() == 0, "after joining, the Join button is gone")
     check("Admin" in page.inner_text("main") and ("Waiting for approval" in page.inner_text("main") or "Member" in page.inner_text("main")), "they show as an admin and as a member or waiting, per the association's settings")
+
+    print("Closed to new umpires: admins cannot join either")
+    sign_out(page)
+    sign_in(page, "admin@demo.test", open_form=False)
+    page.evaluate("() => { const k = 'pdca-umpires-demo-v2'; const d = JSON.parse(localStorage.getItem(k)); d.orgs.pdca.org.joining = { ...(d.orgs.pdca.org.joining || {}), open: false }; delete d.orgs.pdca.umpires['admin@demo.test']; localStorage.setItem(k, JSON.stringify(d)); }")
+    page.reload()
+    page.wait_for_selector(".who")
+    goto(page, BASE + "my")
+    page.wait_for_selector(".avail-card")
+    check(page.locator("a[href='/join/pdca']").count() == 0, "with joining switched off, an admin who has not joined has no Join button on My availability")
+    goto(page, BASE + "join/pdca")
+    page.wait_for_timeout(600)
+    check("not taking new umpires" in page.inner_text("main"), "and the join link says so")
 
     browser.close()
 

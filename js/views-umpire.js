@@ -88,8 +88,9 @@ export async function viewMy(ctx) {
   if (!u) {
     const page = h('div', { class: 'narrow-page' }, availTitle(), h('section', { class: 'card avail-card' },
       h('div', { class: 'avail-head head-status' }, h('h2', {}, (store.org && store.org.name) || ''), standingChip({ officer: true, u: null }, store.org)),
-      h('p', { class: 'muted' }, 'To give your own availability here, join the association first, the same as any umpire.'),
-      joinBtn(store.org)));
+      joinSettings(store.org).open
+        ? [h('p', { class: 'muted' }, 'To give your own availability here, join the association first, the same as any umpire.'), joinBtn(store.org)]
+        : h('p', { class: 'muted' }, 'Umpires are not joining this association through Third Umpire right now, so there is no availability to give.')));
     await placeOtherOrgs(ctx, page, page.lastChild, S.user.email, store.org && store.org.id);
     return page;
   }
