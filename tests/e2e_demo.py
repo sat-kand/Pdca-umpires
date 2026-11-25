@@ -769,7 +769,7 @@ with sync_playwright() as p:
     bring = page.locator("details.import-card:has(> summary:has-text('Bring in'))")
     if bring.get_attribute("open") is None:
         bring.locator("> summary").click()
-    check(page.locator(".import-step:has(h3:has-text('1. Membership file')) select").count() == 0, "the membership file has no active or inactive choice: that follows availability")
+    check(page.locator(".import-step select").count() == 0, "the membership file has no active or inactive choice: that follows availability")
     page.fill(".import-step textarea >> nth=0", "First name\tLast name\tEmail\tMembership type\tMember since\n"
               "Changed\tName\tumpire1@demo.test\tLife member\t2015\n"
               "Quiet\tMember\tquiet@example.com\t\t\n"
@@ -786,7 +786,23 @@ with sync_playwright() as p:
     check(db["keen@example.com"]["memberSince"] == "2019-04-15" and db["quiet@example.com"].get("approved"), "new people come in as members, with their member-since date")
     check("Inactive member" in row_of(page, "quiet@example.com").inner_text() and "Active umpire" in row_of(page, "umpire1@demo.test").inner_text(),
           "a new member with no availability is an Inactive member; one with Available dates is an Active umpire")
-    check(page.locator(".import-step:has(h3:has-text('2. Availability files')) select").count() == 1, "availability files are brought in per group, right here")
+    check(page.locator(".import-step").count() == 1 and "Availabilities page" in page.inner_text(".import-card"), "Members brings in only the membership list; availability files are on the Availabilities page")
+    page.click("details.add-member-card > summary")
+    page.fill(".add-member label:has-text('First name') input", "Hand")
+    page.fill(".add-member label:has-text('Last name') input", "Added")
+    page.fill(".add-member input[type=email]", "Hand.Added@Example.com")
+    page.fill(".add-member input[type=tel]", "0411 222 333")
+    page.click(".add-member button[type=submit]")
+    page.wait_for_selector("a.member-link:has-text('Hand Added')")
+    ha = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['hand.added@example.com']")
+    check(ha and ha.get("approved") and ha["phone"] == "0411 222 333" and ha.get("memberSince"), "Add a member adds one person as a member, email lower-cased, member since today")
+    page.click("details.add-member-card > summary")
+    page.fill(".add-member label:has-text('First name') input", "Hand")
+    page.fill(".add-member label:has-text('Last name') input", "Again")
+    page.fill(".add-member input[type=email]", "hand.added@example.com")
+    page.click(".add-member button[type=submit]")
+    page.wait_for_selector(".toast:has-text('already a member')")
+    check(True, "adding someone already a member says so and changes nothing")
     page.select_option(".member-tools select", "inactive")
     check(row_of(page, "quiet@example.com").count() == 1 and row_of(page, "umpire1@demo.test").count() == 0, "the Show filter lists Inactive members")
     check(page.locator("table.members input[type=checkbox]").count() == 0 and page.locator(".bulk-bar").count() == 0

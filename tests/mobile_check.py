@@ -135,7 +135,7 @@ def main():
         goto(page, BASE + "admin/members"); page.wait_for_selector("table.members")
         shot("09b-join-requests", ".join-requests")
         shot("10-members", "table.members")
-        page.click("details.import-card:has(> summary:has-text('Bring in')) > summary"); shot("10b-members-import", ".import-step")
+        page.click("details.import-card:has(> summary:has-text('Bring in')) > summary"); shot("10b-members-import", ".import-step"); page.click("details.add-member-card > summary"); shot("10c-add-member", ".add-member-card")
         page.locator("a.member-link").first.click(); shot("11-member-profile", ".member-profile")
         goto(page, BASE + "admin/past"); shot("12-past-allocations")
         goto(page, BASE + "admin/settings"); shot("13-settings", ".groups-card"); page.locator(".joining-card").scroll_into_view_if_needed(); shot("13b-new-umpires-settings", ".joining-card")

@@ -870,29 +870,42 @@ export async function viewUmpires(ctx) {
       await reload();
     }));
     return h('div', { class: 'import-step' },
-      h('h3', {}, '1. Membership file'),
       h('p', { class: 'muted' }, 'Your list of members, with a heading row. Columns are found by name: First name, Last name (or Name), Email, Mobile, Membership type and Member since. Copy it out of Excel or Google Sheets and paste it, or choose a CSV file. Everyone in it becomes a member; whether they are an Active umpire follows the availability they give or you bring in next.'),
       box, h('p', {}, file),
       h('p', {}, checkBtn, ' ', importBtn), out);
   }
 
-  function availabilityImport() {
-    const comps = COMPS.filter(c => groupNeedsUmpires(c.key) && season && (season.calendar || []).some(e => (e.comp || firstGroup()) === c.key));
-    if (!season || !comps.length) return h('div', { class: 'import-step' }, h('h3', {}, '2. Availability files'),
-      h('p', { class: 'muted' }, 'The season dates are not loaded yet. Open Allocate once so they come in from the fixtures, then come back here.'));
-    if (!comps.some(c => c.key === ui.comp)) ui.comp = comps[0].key;
-    const pick = h('select', { 'aria-label': 'Group', onchange: e => { ui.comp = e.target.value; draw(); } },
-      comps.map(c => h('option', { value: c.key, selected: c.key === ui.comp }, c.label)));
-    let availList = [];
-    const holder = h('div');
-    const card = () => availabilityImportCard({ store, season, comp: () => ui.comp, people: () => members, by: () => availList,
-      reload: async () => { availList = await store.listAvailability(season.id || 'manual'); await reload(); }, ui: ui.avail,
-      chooser: h('label', {}, 'Group', pick) });
-    store.listAvailability(season.id || 'manual').then(list => { availList = list; setChildren(holder, card()); });
-    return h('div', { class: 'import-step' },
-      h('h3', {}, '2. Availability files'),
-      h('p', { class: 'muted' }, 'One file for each group (each competition’s own form). Pick the group, then paste or choose its file. People are matched to members by email or name.'),
-      holder);
+  // Adding one person by hand: they become a member straight away, the same as a row of the membership file.
+  function addMemberCard() {
+    const field = (label, attrs) => { const el = h('input', attrs); return [el, h('label', {}, label, el)]; };
+    const [first, firstL] = field('First name', { required: true, autocomplete: 'off' });
+    const [last, lastL] = field('Last name', { required: true, autocomplete: 'off' });
+    const [email, emailL] = field('Email', { type: 'email', required: true, autocomplete: 'off' });
+    const [phone, phoneL] = field('Mobile', { type: 'tel', placeholder: 'Optional', autocomplete: 'off' });
+    const [since, sinceL] = field('Member since', { type: 'date', value: todayLocal() });
+    const type = types.length ? h('select', {}, h('option', { value: '' }, '—'), types.map(t => h('option', { value: t.name }, t.name))) : null;
+    const btn = h('button', { class: 'btn primary', type: 'submit' }, 'Add member');
+    const form = h('form', { class: 'add-member', onsubmit: busy(btn, guard(async e => {
+      e.preventDefault();
+      const key = emailKey(email.value);
+      const had = members.find(u => u.email === key) || null;
+      if (had && membershipOf(had) === 'member') { toast(`${had.name || key} is already a member.`, 'warn'); return; }
+      const p = { email: key, firstName: first.value.trim(), lastName: last.value.trim(), name: had ? had.name : fullName(first.value.trim(), last.value.trim()),
+        phone: phone.value.trim(), dob: '', address: '', accreditation: '', accreditationProvider: '',
+        membership: type ? type.value : '', memberSince: since.value || todayLocal(), existing: had };
+      await applyMembers(store, { people: [p] }, { newPid, today: todayLocal() });
+      if (store.saveMembershipLink) store.saveMembershipLink(key, membershipLink(store.org, { ...(had || {}), email: key, membership: p.membership, active: true, memberSince: p.memberSince })).catch(err => console.error('membership link', err));
+      toast(`${p.name} added as a member`, 'ok');
+      ui.addOpen = false;
+      await reload();
+    })) },
+      h('div', { class: 'two-up' }, firstL, lastL),
+      h('div', { class: 'two-up' }, emailL, phoneL),
+      h('div', { class: 'two-up' }, type ? h('label', {}, 'Membership type', type) : h('span'), sinceL),
+      h('p', { class: 'muted small' }, 'They can sign in with this email to see their games and give their availability, and fill in the rest of their details themselves.'),
+      h('p', {}, btn));
+    return h('details', { class: 'card add-member-card', open: !!ui.addOpen, ontoggle: e => { ui.addOpen = e.currentTarget.open; } },
+      h('summary', {}, 'Add a member'), form);
   }
 
   // The list: waiting for approval first, then everyone else, by last name. Approving and rejecting is done in the
@@ -966,11 +979,11 @@ export async function viewUmpires(ctx) {
             h('td', {}, membershipCell(u)),
             h('td', {}, ['member', 'suspended'].includes(membershipOf(u)) ? membershipTypeCell(u) : '')); }))))
           : h('p', { class: 'muted' }, members.length ? 'No one matches.' : 'No members yet. Bring in your membership list below, or send people the link from Settings so they can apply.')),
+      addMemberCard(),
       h('details', { class: 'card import-card', open: ui.importOpen || !members.length, ontoggle: e => { ui.importOpen = e.currentTarget.open; } },
-        h('summary', {}, 'Bring in your existing lists'),
-        h('p', { class: 'muted' }, 'Moving to Third Umpire: bring in your membership file first, then each group’s availability. New members after that apply through the link in Settings and give their availability in the app.'),
-        membershipImport(),
-        availabilityImport()));
+        h('summary', {}, 'Bring in your membership list'),
+        h('p', { class: 'muted' }, 'Availability files are brought in on the Availabilities page, one for each group.'),
+        membershipImport()));
   };
   draw();
   return wrap;
