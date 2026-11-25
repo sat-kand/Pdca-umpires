@@ -80,7 +80,7 @@ const ROUTES = [
   [/^\/admin\/past$/, () => viewPastAllocations(ctx), true],
   [/^\/admin\/availability$/, () => viewSeasonAvailability(ctx), true],
   [/^\/admin\/(?:members|umpires)$/, () => viewUmpires(ctx), true],   // the old /umpires link still works
-  [/^\/admin\/settings$/, () => viewOrgSettings(ctx), true],
+  [/^\/admin\/settings(?:\/([a-z-]+))?$/, section => viewOrgSettings(ctx, section), true],
   [/^\/admin\/member\/([^/]+)$/, pid => viewMember(ctx, pid), true],
   [/^\/admin\/round\/([^/]+)$/, rid => viewBoard(ctx, rid), true],
   [/^\/admin\/round\/([^/]+)\/availability$/, rid => viewAvailabilityOverview(ctx, rid), true],
@@ -160,7 +160,7 @@ async function render(quiet) {
         matched = true;
         view = adminOnly && !S.isAdmin
           ? h('p', { class: 'notice warn' }, 'This page is only for the association.')
-          : await fn(...m.slice(1).map(decodeURIComponent));
+          : await fn(...m.slice(1).map(x => (x == null ? x : decodeURIComponent(x))));
         break;
       }
       if (!matched) view = h('p', { class: 'notice warn' }, 'Page not found. ', h('a', { href: '/' }, 'Go home'));

@@ -96,7 +96,7 @@ def run_officer(browser):
         page.wait_for_timeout(2000)
         check(page.locator(".notice.err").count() == 0, "Allocate loads without a fixtures error")
         # Grades: refresh from PlayHQ, then Settings lists exactly what was saved from that fetch
-        go(page, "admin/settings")
+        go(page, "admin/settings/groups")
         page.wait_for_selector(".groups-card", timeout=30000)
         btn = page.locator("button:has-text('Update from PlayHQ')")
         check(btn.count() == 1, "Settings has the Update from PlayHQ button")

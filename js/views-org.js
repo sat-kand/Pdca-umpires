@@ -47,7 +47,7 @@ export const joinLink = id => `${location.origin}/join/${id}`;
 
 
 // Officers only: name, PlayHQ organisation, who the officers are, and the link umpires join with.
-export async function viewOrgSettings(ctx) {
+export async function viewOrgSettings(ctx, section) {
   const { store, S } = ctx;
   const wrap = h('div');
   const draw = async () => setChildren(wrap, await build());
@@ -274,57 +274,95 @@ export async function viewOrgSettings(ctx) {
     saveBtn), saveBtn, 'groups');
   }
 
+  // Settings is split into sections. Desktop: the list on the left, one section on the right. Phone: the list
+  // first; tapping a section opens it, with a way back. Each list item says what is set now.
+  const SECTIONS = [
+    { key: 'association', title: 'Association', icon: '🏏' },
+    { key: 'admins', title: 'Admins', icon: '👤' },
+    { key: 'groups', title: 'Groups and grades', icon: '🗂' },
+    { key: 'membership', title: 'Membership', icon: '💳' },
+    { key: 'new-umpires', title: 'New umpires', icon: '✉️' },
+    { key: 'player-umpires', title: 'Player umpires', icon: '🙋' },
+  ];
+
   async function build() {
     const org = store.org;
     const admins = (await store.listAdmins()).sort();
     const link = joinLink(org.id);
-    const name = h('input', { required: true, value: org.name || '' });
     const live = !!store.playhq;                                 // only the live store reads PlayHQ; demo mode has made-up fixtures
-    const notify = h('input', { type: 'email', value: org.notifyEmail || '', placeholder: S.user.email });
-    const save = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
-    const add = h('input', { type: 'email', placeholder: 'admin@example.com', 'aria-label': 'Email of the new admin' });
-    const addBtn = h('button', { class: 'btn', type: 'submit' }, 'Add admin');
+    const list = SECTIONS.filter(x => x.key !== 'player-umpires' || playerUmpireAllowed(org));
+    const cur = list.find(x => x.key === section) || list[0];
+    const types = membershipTypes(org), join = joinSettings(org), pu = org.playerUmpire || {};
+    const nGroups = Array.isArray(org.groups) ? org.groups.length : 0;
+    const summary = {
+      association: org.name || '',
+      admins: `${admins.length} admin${admins.length === 1 ? '' : 's'}`,
+      groups: nGroups ? `${nGroups} group${nGroups === 1 ? '' : 's'}` : 'Grades and umpires needed',
+      membership: types.length ? `${types.length} type${types.length === 1 ? '' : 's'}` : 'No types yet',
+      'new-umpires': !join.open ? 'Closed to new umpires' : join.membershipRequired ? 'Open · you approve' : 'Open · no approval',
+      'player-umpires': pu.enabled ? 'On' : 'Off',
+    };
 
-    return [
-      h('h1', {}, 'Settings'),
-      saveButton(h('form', { class: 'card', onsubmit: busy(save, async e => {
-        e.preventDefault();
-        await store.saveOrg({ name: name.value.trim(), notifyEmail: (notify.value || '').trim().toLowerCase(), updatedAt: new Date().toISOString() });
-        saved.add('assoc');
-        await ctx.refreshUser(); ctx.redrawHeader();
-        toast('Saved', 'ok');
-        await draw();
-      }) },
-      h('h2', {}, 'Association'),
-      h('label', {}, 'Name', name),
-      h('p', { class: 'muted small' }, live ? (org.playhqOrgId ? 'Fixtures are read from PlayHQ. The PlayHQ link is set up by Third Umpire: contact us to change it.' : 'Your PlayHQ link has not been set up yet. Contact Third Umpire to connect your fixtures.') : 'Demo mode: the fixtures are made up. A live association reads its fixtures from PlayHQ.'),
-      h('label', {}, 'Send alerts to', notify),
-      h('p', { class: 'muted small' }, 'Where to email when an umpire pulls out of a published game.'),
-      save), save, 'assoc'),
-
-      await groupsCard(),
-      membershipCard(),
-      joiningCard(),
-      playerUmpireCard(),
-
-      h('div', { class: 'card' }, h('h2', {}, 'Link for umpires'),
-        h('p', { class: 'muted' }, 'Send this link to your umpires.'),
-        h('p', {}, h('code', { class: 'join-link' }, link)),
-        h('button', { class: 'btn', type: 'button', onclick: async () => { { const ok = await copyText(link); toast(ok ? 'Link copied' : 'Could not copy', ok ? 'ok' : 'err'); }; } }, 'Copy link')),
-
-      h('div', { class: 'card' }, h('h2', {}, 'Admins'),
-        h('ul', { class: 'plain officers' }, admins.map(e => h('li', { class: 'row-between' }, h('span', {}, e),
-          e === S.user.email ? h('span', { class: 'muted' }, 'you')
-            : h('button', { class: 'link', type: 'button', onclick: async () => { if (!confirm(`Remove ${e} as an admin?`)) return; await store.removeAdmin(e); await draw(); } }, 'Remove')))),
-        h('form', { class: 'inline-form', onsubmit: busy(addBtn, async e => {
+    const body = {
+      association: () => {
+        const name = h('input', { required: true, value: org.name || '' });
+        const notify = h('input', { type: 'email', value: org.notifyEmail || '', placeholder: S.user.email });
+        const save = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
+        return saveButton(h('form', { class: 'card', onsubmit: busy(save, async e => {
           e.preventDefault();
-          const email = emailKey(add.value);
-          if (!email) return;
-          await store.addAdmin(email);
-          toast(`${email} is now an admin. Send them the link above to sign in.`, 'ok');
+          await store.saveOrg({ name: name.value.trim(), notifyEmail: (notify.value || '').trim().toLowerCase(), updatedAt: new Date().toISOString() });
+          saved.add('assoc');
+          await ctx.refreshUser(); ctx.redrawHeader();
+          toast('Saved', 'ok');
           await draw();
-        }) }, add, addBtn)),
-    ];
+        }) },
+        h('h2', {}, 'Association'),
+        h('label', {}, 'Name', name),
+        h('p', { class: 'muted small' }, live ? (org.playhqOrgId ? 'Fixtures are read from PlayHQ. The PlayHQ link is set up by Third Umpire: contact us to change it.' : 'Your PlayHQ link has not been set up yet. Contact Third Umpire to connect your fixtures.') : 'Demo mode: the fixtures are made up. A live association reads its fixtures from PlayHQ.'),
+        h('label', {}, 'Send alerts to', notify),
+        h('p', { class: 'muted small' }, 'Where to email when an umpire pulls out of a published game.'),
+        save), save, 'assoc');
+      },
+      admins: () => {
+        const add = h('input', { type: 'email', placeholder: 'admin@example.com', 'aria-label': 'Email of the new admin' });
+        const addBtn = h('button', { class: 'btn', type: 'submit' }, 'Add admin');
+        return h('div', { class: 'card' }, h('h2', {}, 'Admins'),
+          h('p', { class: 'muted small' }, 'Admins can use every page of the association, including this one.'),
+          h('ul', { class: 'plain officers' }, admins.map(e => h('li', { class: 'row-between' }, h('span', {}, e),
+            e === S.user.email ? h('span', { class: 'muted' }, 'you')
+              : h('button', { class: 'link', type: 'button', onclick: async () => { if (!confirm(`Remove ${e} as an admin?`)) return; await store.removeAdmin(e); await draw(); } }, 'Remove')))),
+          h('form', { class: 'inline-form', onsubmit: busy(addBtn, async e => {
+            e.preventDefault();
+            const email = emailKey(add.value);
+            if (!email) return;
+            await store.addAdmin(email);
+            toast(`${email} is now an admin. They sign in at ${location.host} with that email.`, 'ok');
+            await draw();
+          }) }, add, addBtn));
+      },
+      groups: () => groupsCard(),
+      membership: () => membershipCard(),
+      'new-umpires': () => [
+        h('div', { class: 'card' }, h('h2', {}, 'Link for umpires'),
+          h('p', { class: 'muted' }, 'Send this link to your umpires.'),
+          h('p', {}, h('code', { class: 'join-link' }, link)),
+          h('button', { class: 'btn', type: 'button', onclick: async () => { const ok = await copyText(link); toast(ok ? 'Link copied' : 'Could not copy', ok ? 'ok' : 'err'); } }, 'Copy link')),
+        joiningCard()],
+      'player-umpires': () => playerUmpireCard(),
+    };
+
+    const nav = h('nav', { class: 'settings-nav', 'aria-label': 'Settings sections' },
+      h('ul', { class: 'plain' }, list.map(x => h('li', {},
+        h('a', { href: `/admin/settings/${x.key}`, class: 'settings-link' + (x === cur ? ' active' : ''), 'aria-current': x === cur ? 'page' : null },
+          h('span', { class: 'settings-icon', 'aria-hidden': 'true' }, x.icon),
+          h('span', { class: 'settings-text' }, h('strong', {}, x.title), h('span', { class: 'muted small' }, summary[x.key])),
+          h('span', { class: 'settings-chev', 'aria-hidden': 'true' }, '›'))))));
+    const content = h('div', { class: 'settings-content', 'data-section': cur.key },
+      h('a', { href: '/admin/settings', class: 'settings-back' }, '‹ Settings'),
+      await body[cur.key]());
+    return h('div', { class: 'settings-page' + (section ? ' has-section' : '') },
+      h('h1', {}, 'Settings'),
+      h('div', { class: 'settings-layout' }, nav, content));
   }
   await draw();
   return wrap;

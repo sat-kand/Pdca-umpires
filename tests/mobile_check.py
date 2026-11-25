@@ -138,7 +138,7 @@ def main():
         page.click("details.import-card:has(> summary:has-text('Bulk upload')) > summary"); shot("10b-members-import", ".import-step"); page.click("details.add-member-card > summary"); shot("10c-add-member", ".add-member-card"); page.set_input_files(".import-step input[type=file]", os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures-members.xlsx")); page.wait_for_selector(".import-map .map-row"); shot("10d-import-columns", ".import-step")
         page.locator("a.member-link").first.click(); shot("11-member-profile", ".member-profile")
         goto(page, BASE + "admin/past"); shot("12-past-allocations")
-        goto(page, BASE + "admin/settings"); shot("13-settings", ".groups-card"); page.locator(".joining-card").scroll_into_view_if_needed(); shot("13b-new-umpires-settings", ".joining-card")
+        goto(page, BASE + "admin/settings"); shot("13-settings"); goto(page, BASE + "admin/settings/groups"); shot("13a-settings-groups", ".groups-card"); goto(page, BASE + "admin/settings/new-umpires"); shot("13b-new-umpires-settings", ".joining-card")
         goto(page, BASE + "profile"); shot("14-profile-associations")
         sign_in("umpire4@demo.test")
         goto(page, BASE + "my"); shot("15-my-availability-summary", ".comp-section")
