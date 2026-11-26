@@ -1882,12 +1882,15 @@ with sync_playwright() as p:
     goto(page, BASE + "admin/settings/groups")
     page.wait_for_selector(".groups-card")
     gc = page.locator(".groups-card")
-    gc.locator("button:has-text('Use the suggestions')").click()
+    ticks_before = page.evaluate("() => JSON.stringify(Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.gradeUmpires || {}).filter(n => n > 0).length)")
+    gc.locator("button:has-text('Regroup by PlayHQ competition')").click()
     sug = [i.input_value() for i in gc.locator(".group-list input:not([type=checkbox])").all()]
     picked = [p.is_enabled() for p in gc.locator(".grade-pill").all()]
-    check(len(sug) > 1 and all(picked) and len(picked) == len(sug) and "Senior" in sug, f"Use the suggestions names groups from the competitions and spreads the grades over them ({sug})")
+    check(len(sug) > 1 and all(picked) and len(picked) == len(sug) and "Senior" in sug, f"Regroup by PlayHQ competition names groups from the competitions and spreads the grades over them ({sug})")
     gc.locator("button:has-text('Save')").click()
     page.wait_for_selector(".groups-card button[type=submit]:has-text('Saved')")
+    ticks_after = page.evaluate("() => JSON.stringify(Object.values(JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.gradeUmpires || {}).filter(n => n > 0).length)")
+    check(ticks_before == ticks_after, f"regrouping keeps which grades need umpires ({ticks_before} before, {ticks_after} after)")
     goto(page, BASE + "admin")
     page.wait_for_selector(".comp-tile")
     page.wait_for_timeout(1500)

@@ -202,7 +202,10 @@ export async function viewOrgSettings(ctx, section) {
     grades = grades.sort((a, b) => gi(groupOf(a)) - gi(groupOf(b)) || (seen.get(a) || '').localeCompare(seen.get(b) || '') || compareGrades(a, b));
     const box = h('div');
     // Groups named from the competitions themselves, each grade in its competition's group.
+    // Groups named after the PlayHQ competitions, each grade in its competition's group. Which grades need
+    // umpires is left exactly as it is.
     const useSuggestions = () => {
+      if (!confirm('Put every grade back in the group of its PlayHQ competition? Grades you moved go back, and groups left empty are removed. Which grades need umpires stays as it is. Nothing changes until you tap Save.')) return;
       const sug = suggestGroups([...new Set(seen.values())].filter(Boolean), org.name || '',
         ui.groups);
       if (!sug.groups.length) return;
@@ -211,7 +214,6 @@ export async function viewOrgSettings(ctx, section) {
       ui.groups = sug.groups.map(g => ({ ...g, ...(before.has(g.key) ? { ...(before.get(g.key).addedAt ? { addedAt: before.get(g.key).addedAt } : {}), ...(before.get(g.key).closed ? { closed: true } : {}) } : { addedAt: now }) }));
       ui.gradeGroups = Object.fromEntries(grades.map(gr => [gr, sug.compGroup[seen.get(gr)] || ui.groups[0].key]));
       ui.groups = ui.groups.filter(g => Object.values(ui.gradeGroups).includes(g.key));
-      ui.gradeUmpires = {};
       grades.sort((a, b) => gi(groupOf(a)) - gi(groupOf(b)) || (seen.get(a) || '').localeCompare(seen.get(b) || '') || compareGrades(a, b));
       draw2();
       box.closest('form')?.dispatchEvent(new Event('input', { bubbles: true }));
@@ -306,7 +308,7 @@ export async function viewOrgSettings(ctx, section) {
           } }, 'Update from PlayHQ'),
           h('span', { class: 'muted small' }, ' Reloads the grades and competitions as PlayHQ lists them now.')),
         h('p', { class: 'row-gap' },
-          h('button', { class: 'link', type: 'button', onclick: useSuggestions }, 'Use the suggestions')));
+          h('button', { class: 'link', type: 'button', onclick: useSuggestions }, 'Regroup by PlayHQ competition')));
     };
     draw2();
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
