@@ -416,10 +416,9 @@ button.tagbtn:hover { outline: 2px solid currentColor; outline-offset: 1px; }
 .avail-card .avail-head .btn { padding: .45rem .9rem; font-size: .9rem; }
 @media (max-width: 600px) { .avail-card .group-summary { font-size: .85rem; } .avail-card .comp-title { font-size: 1rem; } }
 
-.comp-head .chev { flex: none; align-self: center; width: 1.75rem; height: 1.75rem; border-radius: 50%; background: var(--green-l); border: 1px solid #b9dcc7; display: inline-grid; place-items: center; }
-.comp-head .chev::before { content: ''; width: .45rem; height: .45rem; border-right: 2.5px solid var(--green-d); border-bottom: 2.5px solid var(--green-d); transform: translate(-1px, 0) rotate(-45deg); transition: transform .15s; }
-.comp-head[aria-expanded="true"] .chev::before { transform: translate(0, -2px) rotate(45deg); }
-.comp-head:hover .chev { background: #d4eddf; }
+.comp-head .chev { flex: none; align-self: center; width: 1.4rem; color: var(--ink); font-size: 1.35rem; line-height: 1; text-align: center; }
+.comp-head .chev::before { content: '\25B8'; }
+.comp-head[aria-expanded="true"] .chev::before { content: '\25BE'; }
 .comp-head .comp-headline { align-items: center; }
 .comp-head { cursor: pointer; }
 .group-foot .discard { color: var(--red, #a12622); font-size: .9rem; margin-left: .3rem; }
