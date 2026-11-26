@@ -85,7 +85,13 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
     // A person's own details are theirs: only they can change an existing record. An officer adding a
     // brand-new member creates it, and never overwrites one.
     if (email === me) await ok(sb.from('people').upsert(p));
-    else await ok(sb.from('people').upsert(p, { ignoreDuplicates: true }));
+    else {
+      // An admin adding someone: through the database function (migration 0009), which can add a person the
+      // admin cannot read yet. Before that migration is run, the plain insert as before.
+      const r = await sb.rpc('officer_add_person', { aid, p });
+      if (r.error && /officer_add_person/.test(r.error.message || '') && /find|exist/i.test(r.error.message || '')) await ok(sb.from('people').upsert(p, { ignoreDuplicates: true }));
+      else fail(r);
+    }
     const m = membershipRow(aid, { ...u, email });
     await ok(sb.from('memberships').upsert(m));
   }
