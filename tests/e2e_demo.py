@@ -1592,7 +1592,7 @@ with sync_playwright() as p:
     print("Associations: settings, officers, join link")
     goto(page, BASE + "admin")
     page.wait_for_selector(".tile-round")
-    check(page.locator("nav .menu > summary").inner_text().startswith("Parramatta District Cricket Association"), "the header menu is named after the association")
+    check(page.locator("nav .menu > summary").inner_text().startswith("My Organisation") and "Parramatta" in (page.locator("nav .menu .menu-head").text_content() or ""), "the header menu is called My Organisation, with the association named inside")
     page.click("nav .menu > summary")
     page.click(".menu-items .nav-link:has-text('Settings')")
     page.click(".settings-nav a[href='/admin/settings/new-umpires']")
@@ -2011,6 +2011,14 @@ with sync_playwright() as p:
     jc.locator("select[data-field=dob]").select_option("required")
     jc.locator("select[data-field=address]").select_option("off")
     jc.locator("label:has-text('Membership is not required to umpire') input").check()
+    jc.locator("button:has-text('Add a question')").click()
+    jc.locator(".question-row input").first.fill("Shirt size")
+    jc.locator(".question-row select").first.select_option("choice")
+    jc.locator(".question-row input[aria-label^='Choices']").fill("S, M, L")
+    jc.locator(".question-row select").nth(1).select_option("required")
+    jc.locator("button:has-text('Add a question')").click()
+    jc.locator(".question-row").nth(1).locator("input").first.fill("Have you umpired before?")
+    jc.locator(".question-row").nth(1).locator("select").first.select_option("yesno")
     jc.locator("button[type=submit]").click()
     page.wait_for_selector(".joining-card button[type=submit]:has-text('Saved')")
     sign_out(page)
@@ -2029,6 +2037,11 @@ with sync_playwright() as p:
           "the form follows that association's settings: no address, date of birth required")
     check("straight away" in page.inner_text(".join-form") and page.locator(".join-form button:has-text('Join Hills')").count() == 1, "where membership is not required, it says they can give availability straight away")
     page.fill(".join-form input[data-field=dob]", "1990-05-01")
+    jf = page.inner_text(".join-form")
+    check("Shirt size" in jf and "Have you umpired before? (optional)" in jf and page.locator(".join-form select[required] option:has-text('M')").count() == 1,
+          "the association's own questions are on the join form: a required list and an optional yes or no")
+    page.locator(".join-form label:has-text('Shirt size') select").select_option("M")
+    page.locator(".join-form label:has-text('Have you umpired') select").select_option("Yes")
     page.click(".join-form button:has-text('Join Hills')")
     page.wait_for_selector(".avail-head h2:has-text('Hills')")
     check(page.locator(".pending-card").count() == 0 and "No dates to answer yet" in page.inner_text("main"), "with membership not required they are in at once, with no wait for approval")
@@ -2045,6 +2058,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".join-requests")
     req = page.locator(".join-requests .request:has-text('umpire2@demo.test')")
     check("1 May 1990" in req.inner_text() and "0400 777 888" in req.inner_text() and "Address" not in req.inner_text(), "the officer sees the details Hills asked for, and nothing it did not")
+    check("Shirt size" in req.inner_text() and "M" in req.locator("dd").all_inner_texts() and "Yes" in req.locator("dd").all_inner_texts(), "and the answers to its own questions")
 
     # Not listed: an association can stop taking new requests
     sign_out(page)
@@ -2055,7 +2069,7 @@ with sync_playwright() as p:
         page.click("nav .menu > summary")
         page.click(".menu-items .menu-switch:has-text('Parramatta')")
     page.wait_for_selector(".joining-card")
-    page.locator(".joining-card label:has-text('Show this association in the list') input").uncheck()
+    page.locator(".joining-card label:has-text('Open for new members') input").uncheck()
     page.locator(".joining-card button[type=submit]").click()
     page.wait_for_selector(".joining-card button[type=submit]:has-text('Saved')")
     sign_out(page)
@@ -2069,7 +2083,7 @@ with sync_playwright() as p:
     sign_in(page, "admin@demo.test", open_form=False)
     goto(page, BASE + "admin/settings/new-umpires")
     page.wait_for_selector(".joining-card")
-    page.locator(".joining-card label:has-text('Show this association in the list') input").check()
+    page.locator(".joining-card label:has-text('Open for new members') input").check()
     page.locator(".joining-card button[type=submit]").click()
     page.wait_for_selector(".joining-card button[type=submit]:has-text('Saved')")
 
@@ -2092,6 +2106,8 @@ with sync_playwright() as p:
     for f in page.locator(".join-form input[required]").all():
         if not f.input_value():
             f.fill("1990-05-01" if f.get_attribute("type") == "date" else "0400 999 000")
+    for f in page.locator(".join-form select[required]").all():
+        f.select_option(index=1)
     page.click(".join-form button[type=submit]")
     page.wait_for_selector(".avail-card, .pending-card")
     goto(page, BASE + "my")

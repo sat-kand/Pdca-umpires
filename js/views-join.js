@@ -85,16 +85,23 @@ export async function viewJoin(ctx, orgId) {
   const first = h('input', { required: true, value: nm.firstName || '', autocomplete: 'given-name' });
   const last = h('input', { required: true, value: nm.lastName || '', autocomplete: 'family-name' });
   const fields = joinFieldsFor(org);
-  const inputs = fields.map(f => ({ f, el: h('input', {
-    type: f.type, value: profile[f.key] || '', autocomplete: f.autocomplete || 'off', list: f.list, 'data-field': f.key,
-    ...(f.level === 'required' ? { required: true } : { placeholder: 'Optional' }) }) }));
+  const had = profile.answers || {};
+  const req = f => (f.level === 'required' ? { required: true } : {});
+  const inputs = fields.map(f => ({ f, el: !f.custom
+    ? h('input', { type: f.type, value: profile[f.key] || '', autocomplete: f.autocomplete || 'off', list: f.list, 'data-field': f.key,
+      ...(f.level === 'required' ? { required: true } : { placeholder: 'Optional' }) })
+    : f.type === 'text' ? h('input', { type: 'text', value: had[f.key] || '', 'data-field': f.key, ...req(f), ...(f.level === 'required' ? {} : { placeholder: 'Optional' }) })
+    : h('select', { 'data-field': f.key, ...req(f) }, h('option', { value: '' }, 'Choose…'),
+      (f.type === 'yesno' ? ['Yes', 'No'] : f.options).map(o => h('option', { value: o, selected: had[f.key] === o }, o))) }));
 
   const btn = h('button', { class: 'btn primary', type: 'submit' }, set.membershipRequired ? 'Request to join' : `Join ${org.name}`);
   const form = h('form', { class: 'card narrow join-form', onsubmit: busy(btn, async e => {
     e.preventDefault();
     const details = { email: S.user.email, firstName: first.value.trim(), lastName: last.value.trim() };
     details.name = fullName(details.firstName, details.lastName);
-    for (const { f, el } of inputs) details[f.key] = el.value.trim();
+    const answers = {};
+    for (const { f, el } of inputs) { if (f.custom) { if (el.value.trim()) answers[f.key] = el.value.trim(); } else details[f.key] = el.value.trim(); }
+    if (Object.keys(answers).length) details.answers = answers;
     const missing = missingJoinDetails(org, details);
     if (missing.length) { toast(`Please fill in: ${missing.join(', ')}`, 'err'); return; }
     await store.joinOrg(orgId, details);

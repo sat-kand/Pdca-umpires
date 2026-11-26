@@ -205,9 +205,14 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
       const email = (details.email || me).toLowerCase();
       const had = await one(sb.from('memberships').select('pid').eq('association_id', orgId).eq('email', email));
       await ok(sb.from('people').upsert(personRow({ ...details, email })));
-      if (had) return had.pid;
+      // The association's own questions are answered on the membership (needs the answers column, migration 0008).
+      const answers = details.answers && Object.keys(details.answers).length ? { answers: details.answers } : {};
+      if (had) {
+        if (answers.answers) await ok(sb.from('memberships').update(answers).eq('association_id', orgId).eq('email', email));
+        return had.pid;
+      }
       const pid = newPid();
-      await ok(sb.from('memberships').insert(membershipRow(orgId, { email, pid, active: false })));
+      await ok(sb.from('memberships').insert(membershipRow(orgId, { email, pid, active: false, ...answers })));
       return pid;
     },
     // Take back a request that is still waiting (the database refuses once an officer has decided).

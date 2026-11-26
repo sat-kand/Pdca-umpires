@@ -3,8 +3,9 @@
 
 import { h, toast, busy, copyText, setChildren, todayLocal } from './ui.js';
 import { syncFixtures } from './rounds.js';
+import { fixtureApi, fetchSeasons, fetchCompetitions } from './fixtures.js';
 import { playerUmpireAllowed } from './player-umpire.js';
-import { emailKey, joinSettings, JOIN_FIELDS, JOIN_LEVELS, COMPS, DEFAULT_GROUPS, guessGroup, groupKeyOf, suggestGroupName, suggestUmpires, suggestGroups, compareGrades, gradeShort } from './logic.js';
+import { emailKey, joinSettings, JOIN_FIELDS, JOIN_LEVELS, QUESTION_TYPES, customQuestions, COMPS, DEFAULT_GROUPS, guessGroup, groupKeyOf, suggestGroupName, suggestUmpires, suggestGroups, compareGrades, gradeShort } from './logic.js';
 import { applyOrg } from './org-setup.js';
 
 // Used when the tool's owner sets up an association; it then edits its own list in Settings.
@@ -53,6 +54,7 @@ export async function viewOrgSettings(ctx, section) {
   const draw = async () => setChildren(wrap, await build());
   // Save buttons are greyed out until something changes, and read "Saved" after saving.
   const saved = new Set();
+  let bgSync = null;                                           // the background PlayHQ update, if one is running
   const saveButton = (form, btn, key) => {
     const label = btn.textContent;
     btn.disabled = true;
@@ -106,25 +108,43 @@ export async function viewOrgSettings(ctx, section) {
     const notRequired = h('input', { type: 'checkbox', checked: !set.membershipRequired });
     const levels = JOIN_FIELDS.map(f => [f, h('select', { 'aria-label': `${f.label} when joining`, 'data-field': f.key },
       JOIN_LEVELS.map(([v, label]) => h('option', { value: v, selected: set.fields[f.key] === v }, label)))]);
+    // The association's own questions, beside the standard details.
+    const qs = set.custom.map(q => ({ ...q, options: [...q.options] }));
+    const qBox = h('div', { class: 'question-list' });
+    const drawQs = () => setChildren(qBox, qs.map((q, i) => h('div', { class: 'question-row' },
+      h('input', { value: q.label, placeholder: 'Question, e.g. Shirt size', 'aria-label': `Question ${i + 1}`, oninput: e => { q.label = e.target.value; } }),
+      h('div', { class: 'question-opts' },
+        h('select', { 'aria-label': `Answer type for question ${i + 1}`, onchange: e => { q.type = e.target.value; drawQs(); } },
+          QUESTION_TYPES.map(([v, label]) => h('option', { value: v, selected: q.type === v }, label))),
+        q.type === 'choice' && h('input', { class: 'question-choices', value: q.options.join(', '), placeholder: 'Choices, separated by commas: S, M, L', 'aria-label': `Choices for question ${i + 1}`,
+          oninput: e => { q.options = e.target.value.split(',').map(x => x.trim()).filter(Boolean); } }),
+        h('select', { 'aria-label': `Question ${i + 1} when joining`, onchange: e => { q.level = e.target.value; } },
+          JOIN_LEVELS.filter(([v]) => v !== 'off').map(([v, label]) => h('option', { value: v, selected: q.level === v }, label))),
+        h('button', { class: 'link', type: 'button', onclick: () => { qs.splice(i, 1); drawQs(); } }, 'Remove')))));
+    drawQs();
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
     return saveButton(h('form', { class: 'card joining-card', onsubmit: busy(saveBtn, async e => {
       e.preventDefault();
+      if (qs.some(q => q.label.trim() && q.type === 'choice' && !q.options.length)) { toast('Add the choices for each "Choose from a list" question', 'err'); return; }
       await store.saveOrg({ joining: { open: listed.checked, membershipRequired: !notRequired.checked,
-        fields: Object.fromEntries(levels.map(([f, sel]) => [f.key, sel.value])) }, updatedAt: new Date().toISOString() });
+        fields: Object.fromEntries(levels.map(([f, sel]) => [f.key, sel.value])), custom: customQuestions(qs) }, updatedAt: new Date().toISOString() });
       saved.add('joining');
       await ctx.refreshUser();
       toast('Saved', 'ok');
       await draw();
     }) },
     h('h2', {}, 'New umpires'),
-    h('p', { class: 'muted small' }, 'Someone who signs up chooses an association from the list. They give the details you ask for below (anything already on their profile is filled in), and you approve them on the Members page.'),
-    h('label', { class: 'inline' }, listed, ' Show this association in the list for new umpires'),
+    h('label', { class: 'inline' }, listed, ' Open for new members'),
     h('p', { class: 'muted small' }, 'Untick to stop new requests. People already in are not affected.'),
     h('label', { class: 'inline' }, notRequired, ' Membership is not required to umpire'),
     h('p', { class: 'muted small' }, 'When ticked, umpires give their availability as soon as they join, and you can allocate them before you approve them. When not ticked, they wait for your approval first.'),
     h('h3', {}, 'Details to ask for'),
     h('p', { class: 'muted small' }, 'Name and email are always asked for.'),
     levels.map(([f, sel]) => h('div', { class: 'join-field-row' }, h('span', {}, f.label), sel)),
+    h('h3', {}, 'Your own questions'),
+    h('p', { class: 'muted small' }, 'Anything else your association wants to know, such as shirt size or years of experience.'),
+    qBox,
+    h('p', {}, h('button', { class: 'btn small', type: 'button', onclick: () => { qs.push({ key: 'q' + Date.now().toString(36), label: '', type: 'text', options: [], level: 'optional' }); drawQs(); qBox.querySelector('.question-row:last-child input')?.focus(); } }, 'Add a question')),
     saveBtn), saveBtn, 'joining');
   }
 
@@ -169,17 +189,13 @@ export async function viewOrgSettings(ctx, section) {
     groupErr,
     h('p', { class: 'muted small' }, 'When this is off, members only give their availability. Games already chosen stay where they are.'),
     h('label', {}, 'What it is called (leave empty for "Player umpire")', title),
-    h('label', {}, 'What members are told (leave empty to show nothing)', text),
+    h('label', {}, 'Note for umpires (leave empty to show nothing)', text),
     saveBtn), saveBtn, 'playerUmpire');
   }
 
   // Groups and grades: which grades are allocated together (Allocate tiles, availability, reports), and
   // how many umpires each grade needs. Suggested from the fixtures; the officer adjusts once.
   async function groupsCard() {
-    // Opening this page reads the grades and competitions from PlayHQ as they are now (the demo's are made up).
-    if (store.playhq && store.mode !== 'demo') {
-      try { await syncFixtures(store, { today: todayLocal() }); } catch (e) { console.error(e); toast(`Could not get the latest grades from PlayHQ (${e.message || e}). Showing the last ones.`, 'warn'); }
-    }
     const org = store.org;
     let lists = [];
     try { lists = store.listFixtureLists ? await store.listFixtureLists() : []; } catch (e) { console.error(e); }
@@ -252,6 +268,7 @@ export async function viewOrgSettings(ctx, section) {
           o.list.map(gr => h('label', { class: 'grade-tick grade-row' },
             h('input', { type: 'checkbox', 'aria-label': `Bring ${gr} into ${g.name || 'this group'}`, onchange: e => { e.target.checked ? bring.add(gr) : bring.delete(gr); showBring(); } }),
             h('span', { class: 'chip grade' }, gradeShort(gr)), names(gr))))));
+      if (otherBlock) otherBlock.addEventListener('toggle', () => { if (otherBlock.open) requestAnimationFrame(() => otherBlock.scrollIntoView({ block: 'start', behavior: 'smooth' })); });
       const close = () => { dlg.close(); dlg.remove(); };
       const done = h('button', { class: 'btn primary', type: 'button', onclick: () => {
         for (const gr of mine) if (move[gr] !== g.key) ui.gradeGroups[gr] = move[gr];
@@ -261,7 +278,7 @@ export async function viewOrgSettings(ctx, section) {
       } }, 'Done');
       dlg.append(...[
         h('h2', {}, g.name || 'Grades'),
-        h('p', { class: 'muted' }, mine.length ? 'The grades in this group. Members give one availability for all of them. Which grades need umpires is chosen on Allocate.'
+        h('p', { class: 'muted' }, mine.length ? 'The grades in this group. Members give one availability for all of them.'
           : 'No grades in this group yet. Tick the grades to move here from your other groups.'),
         mine.length > 0 && h('div', { class: 'grade-list' }, rows),
         otherBlock,
@@ -290,7 +307,8 @@ export async function viewOrgSettings(ctx, section) {
     };
     draw2();
     const saveBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
-    return saveButton(h('form', { class: 'card groups-card', onsubmit: busy(saveBtn, async e => {
+    const liveLine = h('p', { class: 'muted small playhq-check', role: 'status', 'aria-live': 'polite', hidden: true });
+    const card = saveButton(h('form', { class: 'card groups-card', onsubmit: busy(saveBtn, async e => {
       e.preventDefault();
       const groups = ui.groups.map(g => ({ key: g.key, name: (g.name || '').trim() || 'Group', ...(g.addedAt ? { addedAt: g.addedAt } : {}), ...(g.closed ? { closed: true } : {}) }));
       const gradeGroups = Object.fromEntries(grades.map(gr => [gr, groupOf(gr)]));
@@ -300,6 +318,7 @@ export async function viewOrgSettings(ctx, section) {
       applyOrg(store.org);
       // Rebuild the weeks and members' availability dates now, with games in their new groups.
       const season = await store.getSeason();
+      if (bgSync) await bgSync.catch(() => {});                 // let the background update finish first
       if (store.playhq && store.mode !== 'demo') {                // the demo's made-up fixtures are rebuilt when Allocate opens
         // A status line that stays until the update finishes, so it never looks done while it is still working.
         const label = h('span', {}, 'Updating the availability dates from PlayHQ…');
@@ -322,9 +341,46 @@ export async function viewOrgSettings(ctx, section) {
     }) },
     h('h2', {}, 'Availability sheet'),
     h('p', { class: 'muted' }, 'Group the grades. Umpires fill a separate availability sheet per group.'),
+    liveLine,
     box,
     h('p', { class: 'muted small' }, 'Moving a grade to another group moves its upcoming games there. Members\' availability is kept per group, so check it after moving grades.'),
     saveBtn), saveBtn, 'groups');
+    checkPlayhq(seen, liveLine, saveBtn, card);
+    return card;
+  }
+
+  // The page shows the saved grades at once, then checks PlayHQ in the background: its grade list is two quick
+  // requests. Only when the grades or competitions have changed, or the fixtures are more than a few minutes old,
+  // are all the fixtures read again; the list is then redrawn (or, if something has been changed here, a line says so).
+  async function checkPlayhq(seen, line, saveBtn, card) {
+    if (!store.playhq || store.mode === 'demo' || !store.org.playhqOrgId) return;
+    const say = (t, spin) => { line.hidden = !t; setChildren(line, spin && h('span', { class: 'spin-dot', 'aria-hidden': 'true' }), t || ''); };
+    say('Checking PlayHQ for the latest grades…', true);
+    try {
+      const api = fixtureApi(store), pc = store.org.playhqOrgId;
+      const seasons = await fetchSeasons(api, pc);
+      const cur = seasons.find(x => x.current) || seasons[0];
+      if (!cur) throw new Error('No season found');
+      const comps = await fetchCompetitions(api, pc, cur.id);
+      const sig = JSON.stringify(comps.flatMap(c => c.grades.map(g => [g.name, c.name])).sort());
+      const sigKey = `tu-grades-${store.org.id}`;
+      let lastSig = null; try { lastSig = sessionStorage.getItem(sigKey); } catch (e) { /* private mode */ }
+      const fresh = new Map(JSON.parse(sig));
+      const same = sig === lastSig || ([...fresh].every(([g, c]) => seen.get(g) === c) && [...seen.keys()].every(g => fresh.has(g)));
+      const season = await store.getSeason();
+      const old = !season || Date.now() - Date.parse(season.updatedAt || 0) > 10 * 60 * 1000;
+      if (same && !old) { say(''); return; }
+      say('Getting the latest fixtures from PlayHQ…', true);
+      await (bgSync = syncFixtures(store, { today: todayLocal(), onProgress: (n, of) => say(`Getting the latest fixtures from PlayHQ… ${n} of ${of} grades`, true) }).finally(() => { bgSync = null; }));
+      try { sessionStorage.setItem(sigKey, sig); } catch (e) { /* private mode */ }
+      if (!card.isConnected) return;
+      if (same) { say(''); return; }
+      if (saveBtn.disabled) { await draw(); toast('Grades updated from PlayHQ', 'ok'); }
+      else say('PlayHQ has new or changed grades. Save or reload this page to see them.');
+    } catch (e) {
+      console.error(e);
+      if (card.isConnected) say(`Could not reach PlayHQ just now (${e.message || e}). Showing the grades from the last update.`);
+    }
   }
 
   // Settings is split into sections. Desktop: the list on the left, one section on the right. Phone: the list
@@ -348,9 +404,9 @@ export async function viewOrgSettings(ctx, section) {
     const nGroups = Array.isArray(org.groups) ? org.groups.length : 0;
     const summary = {
       association: `${org.name || ''} · ${admins.length} admin${admins.length === 1 ? '' : 's'}`,
-      groups: nGroups ? `${nGroups} group${nGroups === 1 ? '' : 's'}` : 'Grades and umpires needed',
+      groups: nGroups ? `${nGroups} group${nGroups === 1 ? '' : 's'}` : 'Group the grades',
       membership: types.length ? `${types.length} type${types.length === 1 ? '' : 's'}` : 'No types yet',
-      'new-umpires': !join.open ? 'Closed to new umpires' : join.membershipRequired ? 'Open · you approve' : 'Open · no approval',
+      'new-umpires': !join.open ? 'Closed to new members' : join.membershipRequired ? 'Open · you approve' : 'Open · no approval',
       'player-umpires': pu.enabled ? 'On' : 'Off',
     };
 
@@ -359,11 +415,10 @@ export async function viewOrgSettings(ctx, section) {
       groups: () => groupsCard(),
       _assoc: () => {
         const name = h('input', { required: true, value: org.name || '' });
-        const notify = h('input', { type: 'email', value: org.notifyEmail || '', placeholder: S.user.email });
         const save = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
         return saveButton(h('form', { class: 'card assoc-card', onsubmit: busy(save, async e => {
           e.preventDefault();
-          await store.saveOrg({ name: name.value.trim(), notifyEmail: (notify.value || '').trim().toLowerCase(), updatedAt: new Date().toISOString() });
+          await store.saveOrg({ name: name.value.trim(), updatedAt: new Date().toISOString() });
           saved.add('assoc');
           await ctx.refreshUser(); ctx.redrawHeader();
           toast('Saved', 'ok');
@@ -371,9 +426,7 @@ export async function viewOrgSettings(ctx, section) {
         }) },
         h('h2', {}, 'Association'),
         h('label', {}, 'Name', name),
-        h('p', { class: 'muted small' }, live ? (org.playhqOrgId ? 'Fixtures are read from PlayHQ. The PlayHQ link is set up by Third Umpire: contact us to change it.' : 'Your PlayHQ link has not been set up yet. Contact Third Umpire to connect your fixtures.') : 'Demo mode: the fixtures are made up. A live association reads its fixtures from PlayHQ.'),
-        h('label', {}, 'Send alerts to', notify),
-        h('p', { class: 'muted small' }, 'Where to email when an umpire pulls out of a published game.'),
+        live && !org.playhqOrgId && h('p', { class: 'muted small' }, 'Your PlayHQ link has not been set up yet. Contact Third Umpire to connect your fixtures.'),
         save), save, 'assoc');
       },
       _admins: () => {

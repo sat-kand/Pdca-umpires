@@ -99,7 +99,8 @@ export function createDemoStore() {
       const had = x.umpires[email];
       // The person's own details go on every association's copy that already has them; the new membership waits for approval.
       const person = Object.fromEntries(['firstName', 'lastName', 'name', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider'].filter(k => k in details).map(k => [k, details[k]]));
-      x.umpires[email] = had ? { ...had, ...clone(person) } : { ...clone(person), email, pid: newPid(), active: false, createdAt: new Date().toISOString() };
+      const answers = details.answers && Object.keys(details.answers).length ? { answers: clone(details.answers) } : {};
+      x.umpires[email] = had ? { ...had, ...clone(person), ...answers } : { ...clone(person), ...answers, email, pid: newPid(), active: false, createdAt: new Date().toISOString() };
       for (const y of Object.values(db.orgs)) if (y.umpires[email]) y.umpires[email] = { ...y.umpires[email], ...clone(person) };
       index(email, orgId); save();
       return x.umpires[email].pid;

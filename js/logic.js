@@ -299,16 +299,32 @@ export function joinSettings(org) {
   const j = (org && org.joining) || {};
   const fields = {};
   for (const f of JOIN_FIELDS) fields[f.key] = ['off', 'optional', 'required'].includes((j.fields || {})[f.key]) ? j.fields[f.key] : DEFAULT_JOIN_FIELDS[f.key];
-  return { open: j.open !== false, membershipRequired: j.membershipRequired !== false, fields };
+  return { open: j.open !== false, membershipRequired: j.membershipRequired !== false, fields, custom: customQuestions(j.custom) };
 }
-// The details asked for, in order, with how they are asked.
-export const joinFieldsFor = org => JOIN_FIELDS.map(f => ({ ...f, level: joinSettings(org).fields[f.key] })).filter(f => f.level !== 'off');
+// The association's own questions for people who join, beside the standard details: a short answer, yes or no,
+// or one of a list. [{ key, label, type: 'text'|'yesno'|'choice', options: [...], level: 'optional'|'required' }]
+export const QUESTION_TYPES = [['text', 'Short answer'], ['yesno', 'Yes or no'], ['choice', 'Choose from a list']];
+export function customQuestions(list) {
+  return (Array.isArray(list) ? list : []).filter(q => q && q.key && String(q.label || '').trim()).map(q => ({
+    key: String(q.key), label: String(q.label).trim(),
+    type: QUESTION_TYPES.some(([t]) => t === q.type) ? q.type : 'text',
+    options: q.type === 'choice' ? (Array.isArray(q.options) ? q.options : []).map(o => String(o).trim()).filter(Boolean) : [],
+    level: q.level === 'required' ? 'required' : 'optional',
+  })).filter(q => q.type !== 'choice' || q.options.length);
+}
+// The details asked for, in order, with how they are asked: the standard ones, then the association's own questions.
+export const joinFieldsFor = org => [
+  ...JOIN_FIELDS.map(f => ({ ...f, level: joinSettings(org).fields[f.key] })).filter(f => f.level !== 'off'),
+  ...joinSettings(org).custom.map(q => ({ ...q, custom: true })),
+];
+// A member's answer to a detail: the standard ones are on the person, the association's own questions in answers.
+export const answerOf = (d, f) => (f.custom ? ((d && d.answers) || {})[f.key] : (d || {})[f.key]);
 // Required details still blank, as labels. Names are always required.
 export function missingJoinDetails(org, d) {
   const out = [];
   if (!((d.firstName || '').trim())) out.push('First name');
   if (!((d.lastName || '').trim())) out.push('Last name');
-  for (const f of joinFieldsFor(org)) if (f.level === 'required' && !String(d[f.key] || '').trim()) out.push(f.label);
+  for (const f of joinFieldsFor(org)) if (f.level === 'required' && !String(answerOf(d, f) || '').trim()) out.push(f.label);
   return out;
 }
 // Where someone stands with an association they asked to join, in words for them.

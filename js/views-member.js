@@ -5,7 +5,7 @@
 // (association, type, active or not, since when), never another association's availability or games.
 
 import { h, toast, setChildren, busy, todayLocal } from './ui.js';
-import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey, firstGroup, byGame, gameCount, memberStatus, STATUS_LABEL, STATUS_CHIP, membershipOf, MEMBERSHIP_LABEL, MEMBERSHIP_CHIP, MEMBER_CHANGE, isActiveUmpire } from './logic.js';
+import { fmtDay, gradeShort, compLabel, compKeyOf, allocFor, publishedAllocFor, nameParts, COMPS, availKey, firstGroup, byGame, gameCount, memberStatus, STATUS_LABEL, STATUS_CHIP, membershipOf, MEMBERSHIP_LABEL, MEMBERSHIP_CHIP, MEMBER_CHANGE, isActiveUmpire, joinSettings } from './logic.js';
 import { feeFor, money, membershipTypes } from './views-org.js';
 import { myAssociationsList } from './views-join.js';
 
@@ -214,6 +214,7 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
       row('First name', n.firstName), row('Last name', n.lastName), row('Email', u.email), row('Mobile', u.phone),
       row('Date of birth', fmtLong(u.dob)), row('Address', u.address),
       row('Accreditation no.', u.accreditation), row('Accreditation provider', u.accreditationProvider),
+      joinSettings(store.org).custom.map(q => row(q.label, (u.answers || {})[q.key])),
       self
         ? [row('Membership type', u.membership ? `${u.membership}${feeFor(store.org, u.membership) ? ` · ${money(feeFor(store.org, u.membership))}` : ''}` : ''),
            h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Status'), h('span', {}, h('span', { class: 'chip ' + STATUS_CHIP[memberStatus(u, avail)] }, STATUS_LABEL[memberStatus(u, avail)]))),

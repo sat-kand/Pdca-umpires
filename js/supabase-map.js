@@ -2,7 +2,7 @@
 // No network, no DOM: unit-tested in tests/supabase-map.test.mjs.
 
 const PERSON_F = ['firstName', 'lastName', 'name', 'dob', 'address', 'phone', 'accreditation', 'accreditationProvider'];
-const MEMBER_F = ['membership', 'memberSince', 'wantsToUmpire', 'approved', 'deactivated', 'nonMember', 'rejected', 'suspended', 'active'];
+const MEMBER_F = ['answers', 'membership', 'memberSince', 'wantsToUmpire', 'approved', 'deactivated', 'nonMember', 'rejected', 'suspended', 'active'];
 const snake = k => k.replace(/[A-Z]/g, c => '_' + c.toLowerCase());
 const camel = k => k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 const blank = v => (v === '' ? null : v);

@@ -1056,7 +1056,7 @@ export async function viewUmpires(ctx) {
     const requests = members.filter(u => membershipOf(u) === 'applied').sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || '') || compareMembers(a, b));
     const needApproval = joinSettings(store.org).membershipRequired;
     const asked = joinFieldsFor(store.org);
-    const detail = (u, f) => (f.key === 'dob' && u.dob ? new Date(`${u.dob}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : u[f.key]);
+    const detail = (u, f) => (f.custom ? (u.answers || {})[f.key] : f.key === 'dob' && u.dob ? new Date(`${u.dob}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : u[f.key]);
     const requestsCard = () => h('section', { class: 'card join-requests' },
       h('h2', {}, `Join requests (${requests.length})`),
       h('ul', { class: 'plain request-list' }, requests.map(u => h('li', { class: 'request', 'data-pid': u.pid },
