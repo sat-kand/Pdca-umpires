@@ -174,7 +174,7 @@ export async function ensureGroups(store, games, comps = []) {
     // A grade still in the competition it was in last time keeps the group it is in: the officer may have moved it
     // in Settings (T20 into Seniors, say). Only a new grade, or one PlayHQ now lists elsewhere, is placed again.
     const was = gradeGroups[grade];
-    if (was && groups.some(g => g.key === was) && (org.gradeComps || {})[grade] === comp) continue;
+    if (was && groups.some(g => g.key === was) && (!org.gradeComps || !(grade in org.gradeComps) || org.gradeComps[grade] === comp)) continue;
     const s = sug.groups.find(g => g.key === sug.compGroup[comp]) || sug.groups[0];
     const same = groups.find(g => g.name === s.name);
     if (same) gradeGroups[grade] = same.key;

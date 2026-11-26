@@ -320,7 +320,7 @@ export async function viewOrgSettings(ctx, section) {
       applyOrg(store.org);
       // Rebuild the weeks and members' availability dates now, with games in their new groups.
       const season = await store.getSeason();
-      if (store.playhq) {
+      if (store.playhq && store.mode !== 'demo') {                // the demo's made-up fixtures are rebuilt when Allocate opens
         toast('Saved. Updating the availability dates…');
         try { await syncFixtures(store, { today: todayLocal() }); toast('Saved. Availability dates and Allocate are up to date.', 'ok'); }
         catch (err) {

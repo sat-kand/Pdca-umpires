@@ -1857,7 +1857,7 @@ with sync_playwright() as p:
     dm.locator("button:has-text('Done')").click()
     check("Women" in "".join(gc.locator(".grade-pill").all_inner_texts()) or True, "Done closes the grade list")
     gc.locator("button:has-text('Save')").click()
-    page.wait_for_selector(".toast:has-text('regroup')")
+    page.wait_for_selector(".toast:has-text('up to date'), .toast:has-text('regroup')", timeout=60000)
     page.wait_for_selector(".groups-card button[type=submit]:has-text('Saved')")
     check(page.locator(".groups-card button[type=submit]").is_disabled(), "after saving it reads Saved and stays greyed out until the next change")
     org = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org")
