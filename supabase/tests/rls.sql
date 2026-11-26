@@ -139,3 +139,14 @@ select as_user('j2@x.test');
 insert into memberships (association_id,email,pid,active) values ('pdca','j2@x.test','pj2',false);
 delete from memberships where email='j2@x.test' and association_id='pdca';
 select expect('a waiting request can be taken back', rows_visible($$select 1 from memberships where email='j2@x.test'$$) = 0);
+
+-- An admin adds a new member: the person record through officer_add_person (a plain insert is refused, since
+-- the admin cannot read a person who is not a member yet). Never for someone who is not an admin there.
+select as_user('off@x.test');
+select officer_add_person('pdca', '{"email":"Brand.New@x.test","first_name":"Brand","dob":"1990-01-02"}');
+insert into memberships (association_id,email,pid,active) values ('pdca','brand.new@x.test','p77',true);
+select expect('admin adds a new person, then sees them as a member', rows_visible($$select 1 from people where email='brand.new@x.test' and first_name='Brand'$$) = 1);
+select officer_add_person('pdca', '{"email":"u1@x.test","first_name":"Changed"}');
+reset role; select expect('adding never changes an existing person', (select name from people where email='u1@x.test') = 'U One'); set role authenticated;
+select as_user('u1@x.test');
+select denied('a member who is not an admin cannot add people', $$select officer_add_person('pdca', '{"email":"z@x.test"}')$$);

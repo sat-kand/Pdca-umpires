@@ -56,8 +56,11 @@ test('an officer adding a member never overwrites an existing person record', as
   await s.useOrg('pdca');
   await s.onAuth(() => {}); await new Promise(r => setTimeout(r, 0));   // learns who is signed in
   await s.saveUmpire({ pid: 'p9', email: 'new@x.test', name: 'New', phone: '1', active: true });
-  const [people, mem] = c.calls.filter(x => x.op === 'upsert');
-  assert.equal(people.table, 'people');
+  const add = c.calls.find(x => x.rpc === 'officer_add_person');
+  assert.equal(add.args.aid, 'pdca');
+  assert.equal(add.args.p.email, 'new@x.test');
+  assert.equal(c.calls.filter(x => x.table === 'people' && x.op === 'upsert').length, 0, 'no direct write to people');
+  const [mem] = c.calls.filter(x => x.op === 'upsert');
   assert.equal(mem.table, 'memberships');
   assert.equal(mem.payload.name, undefined);
 });
