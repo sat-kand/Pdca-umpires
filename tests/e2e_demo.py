@@ -1820,8 +1820,8 @@ with sync_playwright() as p:
     jr_pill.click()
     page.wait_for_selector("dialog.grades-modal[open]")
     dm = page.locator("dialog.grades-modal")
-    check(dm.locator(".grade-setting").count() > 1 and dm.locator(".grade-setting input[type=checkbox]:checked").count() == dm.locator(".grade-setting").count(),
-          "the Junior pill opens its grades, ticked (the sample association umpires its juniors)")
+    check(dm.locator(".grade-setting").count() > 1 and dm.locator(".grade-setting input[type=checkbox]").count() == 0 and "need umpires" not in jr_pill.inner_text(),
+          "the Junior pill opens its grades for grouping only: no umpire ticks")
     dm.locator("button:has-text('Cancel')").click()
     gc.locator(".group-list input:not([type=checkbox])").first.fill("Seniors")
     gc.locator("button:has-text('Add group')").click()
@@ -1841,7 +1841,6 @@ with sync_playwright() as p:
     new_pill.click()
     page.wait_for_selector("dialog.grades-modal[open]")
     check(dm.locator(f".grade-list .grade-setting:has-text('{first_name}')").count() == 1, "and it now shows in that group's list")
-    dm.locator("button:has-text('Move a grade out to another group')").click()
     dm.locator(f".grade-setting:has-text('{first_name}') select").select_option(label=f"Move to {from_group}")
     dm.locator("button:has-text('Done')").click()
     sen_pill = [r for r in gc.locator(".group-row").all() if r.locator("input").first.input_value() == "Seniors"][0].locator(".grade-pill")
@@ -1849,11 +1848,8 @@ with sync_playwright() as p:
     page.wait_for_selector("dialog.grades-modal[open]")
     dm = page.locator("dialog.grades-modal")
     women = dm.locator(".grade-setting:has-text('Senior Women')").first
-    dm.locator("button:has-text('Move a grade out to another group')").click()
     if women.count():
         women.locator("select").select_option(label="Move to Women")
-    first_cb = dm.locator(".grade-setting input[type=checkbox]").first
-    first_cb.uncheck()
     dm.locator("button:has-text('Done')").click()
     check("Women" in "".join(gc.locator(".grade-pill").all_inner_texts()) or True, "Done closes the grade list")
     gc.locator("button:has-text('Save')").click()
@@ -1958,12 +1954,11 @@ with sync_playwright() as p:
     page.wait_for_selector(".groups-card")
     gc = page.locator(".groups-card")
     t20 = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.groups.find(g => g.name === 'T20').key")
-    [r for r in gc.locator(".group-row").all() if r.locator("input").first.input_value() == "T20"][0].locator(".grade-pill").click()
-    page.wait_for_selector("dialog.grades-modal[open]")
-    page.locator("dialog.grades-modal button:has-text('None')").click()
-    page.locator("dialog.grades-modal button:has-text('Done')").click()
-    gc.locator("button:has-text('Save')").click()
-    page.wait_for_selector(".groups-card button[type=submit]:has-text('Saved')")
+    # Grades are set to None with the grade picker on Allocate; here, straight in the data.
+    page.evaluate("""t20 => { const k = 'pdca-umpires-demo-v2'; const d = JSON.parse(localStorage.getItem(k)); const o = d.orgs.pdca;
+      for (const [gr, g] of Object.entries(o.org.gradeGroups)) if (g === t20) o.org.gradeUmpires[gr] = 0;
+      if (o.season) o.season.updatedAt = '1970-01-01T00:00:00.000Z'; localStorage.setItem(k, JSON.stringify(d)); }""", t20)
+    page.reload()
     goto(page, BASE + "admin")
     page.wait_for_selector(".tile-round")
     page.wait_for_timeout(1500)

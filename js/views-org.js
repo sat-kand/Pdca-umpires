@@ -222,32 +222,21 @@ export async function viewOrgSettings(ctx, section) {
     const dirty = () => box.closest('form')?.dispatchEvent(new Event('input', { bubbles: true }));
     const gradesPill = g => {
       const mine = grades.filter(gr => groupOf(gr) === g.key);
-      const need = mine.filter(gr => umpOf(gr) > 0).length;
       return h('button', { class: 'grade-pill' + (mine.length ? '' : ' empty'), type: 'button', disabled: !grades.length, 'aria-label': `Grades in ${g.name || 'this group'}`, onclick: () => gradesModal(g) },
-        mine.length ? [h('strong', {}, `${mine.length} grade${mine.length === 1 ? '' : 's'}`), h('span', {}, ` · ${need} need${need === 1 ? 's' : ''} umpires`)]
-          : h('strong', {}, grades.length ? '+ Add grades' : '0 grades'),
+        h('strong', {}, mine.length ? `${mine.length} grade${mine.length === 1 ? '' : 's'}` : grades.length ? '+ Add grades' : '0 grades'),
         grades.length > 0 && h('span', { class: 'pill-chev', 'aria-hidden': 'true' }, ' ›'));
     };
-    // Like choosing grades on Allocate: tick the grades that need umpires. How many umpires a game gets is set on Allocate.
+    // Which grades are in a group: move one out, or bring one in from another group. Grouping only: which grades
+    // need umpires is chosen with the grade picker on Allocate.
     const gradesModal = g => {
       const mine = grades.filter(gr => groupOf(gr) === g.key);
-      const want = Object.fromEntries(mine.map(gr => [gr, umpOf(gr) > 0]));
       const move = Object.fromEntries(mine.map(gr => [gr, g.key]));
       const dlg = h('dialog', { class: 'modal grades-modal', 'aria-label': `Grades in ${g.name}` });
-      const total = h('span', { class: 'muted' });
-      const showTotal = () => { const n = mine.filter(gr => want[gr]).length; total.textContent = `${n} of ${mine.length} need umpires`; };
-      const rows = mine.map(gr => {
-        const cb = h('input', { type: 'checkbox', checked: want[gr], 'aria-label': `${gr} needs umpires` });
-        cb.onchange = () => { want[gr] = cb.checked; showTotal(); };
-        const sel = ui.groups.length > 1 && h('select', { class: 'in-sm grade-move', 'aria-label': `Group for ${gr}`, onchange: e => { move[gr] = e.target.value; } },
-          ui.groups.map(x => h('option', { value: x.key, selected: x.key === g.key }, x.key === g.key ? `In ${x.name || 'this group'}` : `Move to ${x.name || '(no name)'}`)));
-        return { gr, cb, row: h('div', { class: 'grade-row grade-setting' },
-          h('label', { class: 'grade-tick' }, cb, h('span', { class: 'chip grade' }, gradeShort(gr)),
-            h('span', { class: 'grade-names' }, h('span', {}, gr), seen.get(gr) && h('span', { class: 'muted small' }, seen.get(gr)))),
-          sel) };
-      });
-      const setAll = on => { rows.forEach(r => { r.cb.checked = on; want[r.gr] = on; }); showTotal(); };
-      // Grades from the other groups, to bring into this one. They keep whether they need umpires.
+      const names = gr => h('span', { class: 'grade-names' }, h('span', {}, gr), seen.get(gr) && h('span', { class: 'muted small' }, seen.get(gr)));
+      const rows = mine.map(gr => h('div', { class: 'grade-row grade-setting' },
+        h('span', { class: 'grade-tick' }, h('span', { class: 'chip grade' }, gradeShort(gr)), names(gr)),
+        ui.groups.length > 1 && h('select', { class: 'in-sm grade-move', 'aria-label': `Group for ${gr}`, onchange: e => { move[gr] = e.target.value; } },
+          ui.groups.map(x => h('option', { value: x.key, selected: x.key === g.key }, x.key === g.key ? `In ${x.name || 'this group'}` : `Move to ${x.name || '(no name)'}`)))));
       const bring = new Set();
       const others = ui.groups.filter(x => x.key !== g.key).map(x => ({ x, list: grades.filter(gr => groupOf(gr) === x.key) })).filter(o => o.list.length);
       const bringCount = h('span', { class: 'muted small' });
@@ -258,31 +247,23 @@ export async function viewOrgSettings(ctx, section) {
           h('h4', {}, `From ${o.x.name || '(no name)'}`),
           o.list.map(gr => h('label', { class: 'grade-tick grade-row' },
             h('input', { type: 'checkbox', 'aria-label': `Bring ${gr} into ${g.name || 'this group'}`, onchange: e => { e.target.checked ? bring.add(gr) : bring.delete(gr); showBring(); } }),
-            h('span', { class: 'chip grade' }, gradeShort(gr)),
-            h('span', { class: 'grade-names' }, h('span', {}, gr), h('span', { class: 'muted small' }, umpOf(gr) > 0 ? 'Needs umpires' : 'No umpires')))))));
+            h('span', { class: 'chip grade' }, gradeShort(gr)), names(gr))))));
       const close = () => { dlg.close(); dlg.remove(); };
       const done = h('button', { class: 'btn primary', type: 'button', onclick: () => {
-        for (const gr of mine) {
-          const was = umpOf(gr);
-          ui.gradeUmpires[gr] = want[gr] ? (was > 0 ? was : 1) : 0;
-          if (move[gr] !== g.key) ui.gradeGroups[gr] = move[gr];
-        }
+        for (const gr of mine) if (move[gr] !== g.key) ui.gradeGroups[gr] = move[gr];
         for (const gr of bring) ui.gradeGroups[gr] = g.key;
         grades.sort((a, b) => gi(groupOf(a)) - gi(groupOf(b)) || (seen.get(a) || '').localeCompare(seen.get(b) || '') || compareGrades(a, b));
         close(); draw2(); dirty();
       } }, 'Done');
       dlg.append(...[
         h('h2', {}, g.name || 'Grades'),
-        mine.length > 0 && h('p', { class: 'muted' }, 'Tick the grades that need umpires. Unticked grades are left off Allocate. How many umpires each game gets is set on Allocate.'),
-        mine.length > 0 && h('div', { class: 'row-between' }, total, h('span', {}, h('button', { class: 'link', type: 'button', onclick: () => setAll(true) }, 'All'), ' · ', h('button', { class: 'link', type: 'button', onclick: () => setAll(false) }, 'None'))),
-        mine.length > 0 && h('div', { class: 'grade-list' + (ui.groups.length > 1 ? ' hide-move' : '') }, rows.map(r => r.row)),
-        !mine.length && h('p', { class: 'muted' }, 'No grades in this group yet. Tick the grades to move here from your other groups. They keep whether they need umpires.'),
+        h('p', { class: 'muted' }, mine.length ? 'The grades in this group. Members give one availability for all of them. Which grades need umpires is chosen on Allocate.'
+          : 'No grades in this group yet. Tick the grades to move here from your other groups.'),
+        mine.length > 0 && h('div', { class: 'grade-list' }, rows),
         otherBlock,
-        mine.length > 0 && ui.groups.length > 1 && h('p', { class: 'small' }, h('button', { class: 'link', type: 'button', onclick: e => { dlg.querySelector('.grade-list').classList.remove('hide-move'); e.currentTarget.remove(); } }, 'Move a grade out to another group')),
         h('div', { class: 'modal-actions' }, h('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'), done)].filter(Boolean));
       dlg.addEventListener('cancel', () => dlg.remove());
       document.body.append(dlg);
-      showTotal();
       dlg.showModal();
     };
     const draw2 = () => {
@@ -316,7 +297,7 @@ export async function viewOrgSettings(ctx, section) {
       e.preventDefault();
       const groups = ui.groups.map(g => ({ key: g.key, name: (g.name || '').trim() || 'Group', ...(g.addedAt ? { addedAt: g.addedAt } : {}), ...(g.closed ? { closed: true } : {}) }));
       const gradeGroups = Object.fromEntries(grades.map(gr => [gr, groupOf(gr)]));
-      const gradeUmpires = Object.fromEntries(grades.map(gr => [gr, umpOf(gr)]));
+      const gradeUmpires = { ...Object.fromEntries(grades.map(gr => [gr, umpOf(gr)])), ...((store.org && store.org.gradeUmpires) || {}) };   // set on Allocate; only fill in grades with none yet
       await store.saveOrg({ groups, gradeGroups, gradeUmpires, updatedAt: new Date().toISOString() });
       saved.add('groups');
       applyOrg(store.org);
@@ -343,9 +324,9 @@ export async function viewOrgSettings(ctx, section) {
       await draw();
     }) },
     h('h2', {}, 'Availability sheet'),
-    h('p', { class: 'muted' }, 'Members give their availability for each group, such as Seniors or Juniors, while it is open. Each group has its own tile on Allocate. Tap a group\'s grades to choose which need umpires.'),
+    h('p', { class: 'muted' }, 'Members give their availability for each group, such as Seniors or Juniors, while it is open. Each group has its own tile on Allocate. Tap a group\'s grades to move grades between groups.'),
     box,
-    h('p', { class: 'muted small' }, 'Moving a grade to another group (in its grade list) moves its upcoming games there. Members\' availability is kept per group, so check it after moving grades.'),
+    h('p', { class: 'muted small' }, 'Moving a grade to another group moves its upcoming games there. Members\' availability is kept per group, so check it after moving grades.'),
     saveBtn), saveBtn, 'groups');
   }
 
