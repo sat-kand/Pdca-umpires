@@ -281,13 +281,6 @@ export async function viewOrgSettings(ctx, section) {
           ui.groups.length > 1 && !used(g.key) && h('button', { class: 'link', type: 'button', onclick: () => { ui.groups.splice(i, 1); draw2(); } }, 'Remove')))),
         h('button', { class: 'btn small', type: 'button', onclick: () => { ui.groups.push({ key: 'g' + Date.now().toString(36), name: 'New group', addedAt: new Date().toISOString() }); draw2(); } }, 'Add group'),
         !grades.length && h('p', { class: 'muted' }, 'Grades appear here once fixtures have been loaded on Allocate.'),
-        store.playhq && h('p', { class: 'row-gap' },
-          h('button', { class: 'btn small', type: 'button', onclick: async ev => {
-            const b = ev.currentTarget; b.disabled = true; b.textContent = 'Updating from PlayHQ…';
-            try { await syncFixtures(store, { today: todayLocal() }); toast('Grades updated from PlayHQ'); location.reload(); }
-            catch (e) { console.error(e); b.disabled = false; b.textContent = 'Update from PlayHQ'; toast(`Could not update (${e.message || e})`, 'err'); }
-          } }, 'Update from PlayHQ'),
-          h('span', { class: 'muted small' }, ' Reloads the grades and competitions as PlayHQ lists them now.')),
         h('p', { class: 'row-gap' },
           h('button', { class: 'link', type: 'button', onclick: useSuggestions }, 'Regroup by PlayHQ competition')));
     };
@@ -305,12 +298,12 @@ export async function viewOrgSettings(ctx, section) {
       const season = await store.getSeason();
       if (store.playhq && store.mode !== 'demo') {                // the demo's made-up fixtures are rebuilt when Allocate opens
         // A status line that stays until the update finishes, so it never looks done while it is still working.
-        const label = h('span', {}, 'Saved. Updating the availability dates from PlayHQ…');
+        const label = h('span', {}, 'Updating the availability dates from PlayHQ…');
         const status = h('p', { class: 'notice sync-status', role: 'status', 'aria-live': 'polite' }, h('span', { class: 'spin-dot', 'aria-hidden': 'true' }), label);
         saveBtn.textContent = 'Updating…';
         saveBtn.after(status);
         try {
-          await syncFixtures(store, { today: todayLocal(), onProgress: (n, of) => { label.textContent = `Saved. Updating the availability dates from PlayHQ… ${n} of ${of} grades`; } });
+          await syncFixtures(store, { today: todayLocal(), onProgress: (n, of) => { label.textContent = `Updating the availability dates from PlayHQ… ${n} of ${of} grades`; } });
           toast('Availability dates and Allocate are up to date.', 'ok');
         } catch (err) {
           console.error(err);
@@ -324,7 +317,7 @@ export async function viewOrgSettings(ctx, section) {
       await draw();
     }) },
     h('h2', {}, 'Availability sheet'),
-    h('p', { class: 'muted' }, 'Members give their availability for each group, such as Seniors or Juniors, while it is open. Each group has its own tile on Allocate. Tap a group\'s grades to move grades between groups.'),
+    h('p', { class: 'muted' }, 'Group the grades. Umpires fill a separate availability sheet per group.'),
     box,
     h('p', { class: 'muted small' }, 'Moving a grade to another group moves its upcoming games there. Members\' availability is kept per group, so check it after moving grades.'),
     saveBtn), saveBtn, 'groups');

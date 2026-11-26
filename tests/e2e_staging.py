@@ -98,12 +98,8 @@ def run_officer(browser):
         # Grades: refresh from PlayHQ, then Settings lists exactly what was saved from that fetch
         go(page, "admin/settings/groups")
         page.wait_for_selector(".groups-card", timeout=30000)
-        btn = page.locator("button:has-text('Update from PlayHQ')")
-        check(btn.count() == 1, "Settings has the Update from PlayHQ button")
-        if btn.count():
-            btn.click()
-            page.wait_for_selector(".groups-card .grade-pill", timeout=120000)
-            page.wait_for_timeout(1500)
+        check(page.locator("button:has-text('Update from PlayHQ')").count() == 0, "Settings has no Update from PlayHQ button")
+        page.wait_for_selector(".groups-card .grade-pill", timeout=120000)
         shown = []
         for pill in page.locator(".groups-card .grade-pill:enabled").all():
             pill.click()
