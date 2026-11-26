@@ -156,7 +156,8 @@ export async function syncFixtures(store, { today, onProgress } = {}) {
 
 // Keep the association's groups in step with its fixtures. The first time, groups are suggested from
 // its competitions' own names ("Shires", "Frank Gray", ...). Every sync after that puts each grade in the
-// group of the competition PlayHQ currently lists it under (an existing group of that name, or a new one),
+// group of the competition PlayHQ currently lists it under (an existing group of that name, or a new one) when
+// it is new or its competition changed; a grade the officer moved keeps its group,
 // drops grades no longer in the fixtures, and removes groups left with no grades. Umpire counts stand.
 export async function ensureGroups(store, games, comps = []) {
   const org = store.org;
@@ -170,6 +171,10 @@ export async function ensureGroups(store, games, comps = []) {
   const sug = suggestGroups(compNames, org.name || '', groups);
   for (const [grade, comp] of gradeComp) {
     if (!(grade in gradeUmpires)) gradeUmpires[grade] = suggestUmpires(grade, comp, { juniors: !!org.juniorsUmpired });
+    // A grade still in the competition it was in last time keeps the group it is in: the officer may have moved it
+    // in Settings (T20 into Seniors, say). Only a new grade, or one PlayHQ now lists elsewhere, is placed again.
+    const was = gradeGroups[grade];
+    if (was && groups.some(g => g.key === was) && (org.gradeComps || {})[grade] === comp) continue;
     const s = sug.groups.find(g => g.key === sug.compGroup[comp]) || sug.groups[0];
     const same = groups.find(g => g.name === s.name);
     if (same) gradeGroups[grade] = same.key;

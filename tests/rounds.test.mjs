@@ -333,6 +333,12 @@ test('groups follow the fixtures: suggested the first time, new grades placed, e
     assert.deepEqual(store.org.groups.map(g => g.name), ['Shires'], 'the new grade joins its competition\'s group; the empty Frank Gray group goes');
     assert.equal(store.org.gradeGroups['Second Grade'], shires);
     assert.equal(store.org.gradeGroups['First Grade (The RB Clark Cup)'], shires, 'existing grades stay in their competition\'s group');
+    // a grade the officer moved stays where they put it while its competition is unchanged
+    const fg = store.org.groups.find(g => g.name === 'Shires');
+    store.org.groups.push({ key: 'mine', name: 'Mine' }); store.org.gradeGroups['Second Grade'] = 'mine';
+    await ensureGroups(store, [game('1', 'Sydney Shires Competition', 'First Grade (The RB Clark Cup)', ['2026-11-21']), game('3', 'Sydney Shires Competition', 'Second Grade', ['2026-11-21'])]);
+    assert.equal(store.org.gradeGroups['Second Grade'], 'mine', 'a moved grade keeps its group');
+    assert.ok(fg && store.org.groups.some(g => g.key === 'mine'));
     // a grade PlayHQ now lists under another competition moves to that competition's group
     await ensureGroups(store, [game('1', 'Sydney Shires Competition', 'First Grade (The RB Clark Cup)', ['2026-11-21']), game('3', "Frank Gray Shield (U24's)", 'Second Grade', ['2026-11-21'])]);
     assert.notEqual(store.org.gradeGroups['Second Grade'], store.org.gradeGroups['First Grade (The RB Clark Cup)']);

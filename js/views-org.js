@@ -318,10 +318,20 @@ export async function viewOrgSettings(ctx, section) {
       await store.saveOrg({ groups, gradeGroups, gradeUmpires, updatedAt: new Date().toISOString() });
       saved.add('groups');
       applyOrg(store.org);
-      // Rebuild the weeks on the next visit to Allocate, with games in their new groups.
+      // Rebuild the weeks and members' availability dates now, with games in their new groups.
       const season = await store.getSeason();
-      if (season) await store.saveSeason({ ...season, updatedAt: '1970-01-01T00:00:00.000Z' });
-      toast('Saved. Allocate will regroup the fixtures next time it opens.', 'ok');
+      if (store.playhq) {
+        toast('Saved. Updating the availability dates…');
+        try { await syncFixtures(store, { today: todayLocal() }); toast('Saved. Availability dates and Allocate are up to date.', 'ok'); }
+        catch (err) {
+          console.error(err);
+          if (season) await store.saveSeason({ ...season, updatedAt: '1970-01-01T00:00:00.000Z' });
+          toast('Saved, but the dates could not be updated now. They will be next time Allocate opens.', 'warn');
+        }
+      } else {
+        if (season) await store.saveSeason({ ...season, updatedAt: '1970-01-01T00:00:00.000Z' });
+        toast('Saved. Allocate will regroup the fixtures next time it opens.', 'ok');
+      }
       await draw();
     }) },
     h('h2', {}, 'Availability sheet'),
