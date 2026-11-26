@@ -150,3 +150,21 @@ select officer_add_person('pdca', '{"email":"u1@x.test","first_name":"Changed"}'
 reset role; select expect('adding never changes an existing person', (select name from people where email='u1@x.test') = 'U One'); set role authenticated;
 select as_user('u1@x.test');
 select denied('a member who is not an admin cannot add people', $$select officer_add_person('pdca', '{"email":"z@x.test"}')$$);
+
+-- A membership file fills in what an existing member left blank, never what they have; an admin can delete a member.
+select as_user('off@x.test');
+select officer_add_person('pdca', '{"email":"u2@x.test","name":"Changed","phone":"0411"}');
+reset role;
+select expect('blank mobile filled in, name kept', (select phone = '0411' and name = 'U Two' from people where email='u2@x.test'));
+set role authenticated;
+select as_user('o2@x.test');
+select officer_add_person('other', '{"email":"off@x.test","address":"Elsewhere"}');
+reset role; select expect('an admin elsewhere cannot fill in a non-member', (select address is null from people where email='off@x.test')); set role authenticated;
+select as_user('off@x.test');
+delete from memberships where association_id='pdca' and email='brand.new@x.test';
+reset role; select expect('admin deleted an approved member', not exists (select 1 from memberships where association_id='pdca' and email='brand.new@x.test')); set role authenticated;
+select as_user('off@x.test');
+select denied('a member on a game cannot be deleted (their appointments stay)', $$delete from memberships where association_id='pdca' and email='u2@x.test'$$);
+select as_user('o2@x.test');
+delete from memberships where association_id='pdca' and email='u1@x.test';
+reset role; select expect('an admin of another association cannot delete', exists (select 1 from memberships where association_id='pdca' and email='u1@x.test')); set role authenticated;

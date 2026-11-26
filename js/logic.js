@@ -340,7 +340,7 @@ export function memberStatus(u, avail = null) {
   if (m !== 'member') return m;
   return isActiveUmpire(u, avail) ? 'active' : 'inactive';
 }
-export const STATUS_LABEL = { applied: 'Waiting for approval', active: 'Active umpire', inactive: 'Inactive member', nonmember: 'Not a member', suspended: 'Suspended', rejected: 'Rejected' };
+export const STATUS_LABEL = { applied: 'Waiting for approval', active: 'Active umpire', inactive: 'Inactive umpire', nonmember: 'Not a member', suspended: 'Suspended', rejected: 'Rejected' };
 export const STATUS_CHIP = { applied: 'warn', active: 'ok', inactive: 'muted-chip', nonmember: 'muted-chip', suspended: 'no', rejected: 'muted-chip' };
 // What each membership change sets. `active` is kept as "a member in good standing" for older data;
 // suspending or rejecting clears it.

@@ -15,7 +15,7 @@ import { membershipTypes, feeFor, money } from './views-org.js';
 import { membershipLink } from './views-member.js';
 const profileLink = u => h('a', { class: 'member-link', href: `/admin/member/${encodeURIComponent(u.pid)}`, title: 'Open profile' }, u.name);
 import { planImport, applyImport } from './import-availability.js';
-import { planMembers, applyMembers, MEMBER_FIELDS, VALUE_FIELDS, matchColumns, providerGuess, headKey } from './import-members.js';
+import { planMembers, applyMembers, FILLABLE, MEMBER_FIELDS, VALUE_FIELDS, matchColumns, providerGuess, headKey } from './import-members.js';
 import { readXlsx } from './xlsx-read.js';
 import { parseTable } from './import-availability.js';
 import { syncFixtures, refreshRound, currentRound, visibleRounds, needsSync, addDays, weekOf, upcomingRounds } from './rounds.js';
@@ -803,11 +803,9 @@ export async function viewUmpires(ctx) {
   const reload = async () => { members = await store.listUmpires(); await loadAvail(); draw(); };
 
   // A member's own details (name, date of birth, address, mobile, accreditation) are theirs to keep up
-  // to date; the officer only sets what the association decides: approval, active or inactive,
-  // membership type, member since.
+  // to date; the officer only sets what the association decides: approval and membership type.
   const save = (u, patch, redraw = false) => guard(async () => {
     Object.assign(u, patch);
-    if (membershipOf(u) === 'member' && !u.memberSince) u.memberSince = todayLocal();     // approved (or added) today
     await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
     if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error('membership link', e));
     if (redraw) draw();
@@ -841,13 +839,12 @@ export async function viewUmpires(ctx) {
   // kept for the association, so next season's file comes in the same way.
   function membershipImport() {
     const saved = (store.org && store.org.memberImport) || { columns: {}, values: {} };
-    const box = h('textarea', { rows: 5, placeholder: 'Or paste the rows here — heading row first, one member per row.' });
     const file = h('input', { type: 'file', accept: '.xlsx,.csv,.tsv,.txt,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const mapOut = h('div', { class: 'import-map' });
     const out = h('div', { class: 'import-out' });
     const checkBtn = h('button', { class: 'btn', type: 'button', disabled: true }, 'Check it');
     const importBtn = h('button', { class: 'btn primary', type: 'button', disabled: true }, 'Import');
-    let rows = null, head = [], choice = {}, values = {}, plan = null, headless = false;
+    let rows = null, head = [], choice = {}, values = {}, plan = null, headless = false, showAll = false;
 
     const cols = () => { const c = {}; head.forEach((hd, i) => { const f = choice[i]; if (f && !(f in c)) c[f] = i; }); return c; };
     const distinct = i => [...new Set(rows.slice(1).map(r => String(r[i] || '').trim()).filter(Boolean))];
@@ -885,11 +882,15 @@ export async function viewUmpires(ctx) {
           const k = headKey(v);
           if (!(k in values[f])) values[f][k] = (saved.values && saved.values[f] && k in saved.values[f]) ? saved.values[f][k]
             : f === 'membership' ? ((types.find(t => headKey(t.name) === k) || {}).name || v) : providerGuess(v);
-          const chip = h('span', { class: 'map-chip' }, chipFor(values[f][k]));
+          const chip = h('span', { class: 'map-chip' });
+          const removeBtn = h('button', { class: 'link map-remove', type: 'button', 'aria-label': `Do not add ${v}`,
+            onclick: () => { values[f][k] = ''; input.value = ''; showChip(); drawSummary(); plan = null; importBtn.disabled = true; } }, 'Remove');
+          const showChip = () => { setChildren(chip, chipFor(values[f][k])); removeBtn.hidden = !values[f][k] || isKnown(f, values[f][k]); };
           const input = h('input', { class: 'in-sm', value: values[f][k], list: listId, 'aria-label': `${T.to} for ${v}`, placeholder: 'Leave blank',
-            oninput: e => { const val = e.target.value.trim(); const hit = known(f).find(x => headKey(x) === headKey(val)); values[f][k] = hit || val; setChildren(chip, chipFor(values[f][k])); drawSummary(); } });
+            oninput: e => { const val = e.target.value.trim(); const hit = known(f).find(x => headKey(x) === headKey(val)); values[f][k] = hit || val; showChip(); drawSummary(); } });
+          showChip();
           return h('li', { class: 'map-row' }, h('span', { class: 'map-from' }, v), h('span', { class: 'map-arrow', 'aria-hidden': 'true' }, '→'),
-            h('span', { class: 'map-to' }, input, chip));
+            h('span', { class: 'map-to' }, input, chip, removeBtn));
         };
         const rowsEl = vals.map(row);
         drawSummary();
@@ -909,7 +910,9 @@ export async function viewUmpires(ctx) {
         h('div', { class: 'map-head muted small' }, h('span', {}, 'Column in your sheet'), h('span'), h('span', {}, 'Field in Third Umpire')),
         h('ul', { class: 'plain map-list' }, head.map((hd, i) => h('li', { class: 'map-row', 'data-col': i },
           h('span', { class: 'map-from' }, h('strong', {}, hd || `Column ${i + 1}`), h('span', { class: 'muted small map-sample' }, sample(i))),
-          h('span', { class: 'map-arrow', 'aria-hidden': 'true' }, '→'), fieldSel(i)))),
+          h('span', { class: 'map-arrow', 'aria-hidden': 'true' }, '→'),
+          h('span', { class: 'map-to' }, fieldSel(i), choice[i] && h('button', { class: 'link map-remove', type: 'button', 'aria-label': `Do not bring in ${hd || 'column ' + (i + 1)}`,
+            onclick: () => { choice[i] = ''; plan = null; importBtn.disabled = true; drawMap(); } }, 'Remove'))))),
         !('email' in c) && h('p', { class: 'notice warn' }, 'Choose which column has the email address.'),
         valueCards.filter(Boolean));
     };
@@ -930,32 +933,45 @@ export async function viewUmpires(ctx) {
       plan = planMembers({ rows, cols: headless ? undefined : cols(), values, members, types });
       importBtn.disabled = !!plan.error;
       if (plan.error) { setChildren(out, h('p', { class: 'notice warn' }, plan.error)); return; }
+      drawPlan();
+    };
+    // What the import will do: new people, people already on the list whose record changes (and how), and people
+    // already on the list with nothing to change. New first, then updated, then existing.
+    const STATUS = { new: ['chip st-new', 'New'], updated: ['chip st-upd', 'Updated'], existing: ['chip st-old', 'Existing'] };
+    const drawPlan = () => {
+      const order = { new: 0, updated: 1, existing: 2 };
+      const list = [...plan.people].sort((a, b) => order[a.status] - order[b.status]);
+      const LIMIT = 10;
+      const shownPeople = showAll ? list : list.slice(0, LIMIT);
+      const count = (n, label, cls) => h('span', { class: `import-count ${cls}` }, h('strong', {}, String(n)), ` ${label}`);
       setChildren(out,
-        h('p', {}, h('strong', {}, `${plan.added.length} new, ${plan.updated.length} already on the list`)),
-        plan.updated.length > 0 && h('p', { class: 'muted small' }, 'For people already on the list only membership type and member since are updated. Their own details stay as they keep them.'),
-        plan.unknownTypes.length > 0 && h('p', { class: 'notice' }, `New membership types, added to Settings when you import: ${plan.unknownTypes.join(', ')}. Set their fees there.`),
+        h('p', { class: 'import-counts' }, count(plan.added.length, 'new', 'is-new'), count(plan.updated.length, 'updated', 'is-upd'), count(plan.unchanged.length, 'existing, no change', 'is-old')),
+        plan.updated.length > 0 && h('p', { class: 'muted small' }, 'Updated: the file fills in details these members have left blank, or changes their membership type. Details they already have stay as they keep them.'),
+        plan.unknownTypes.length > 0 && h('p', { class: 'notice' }, `New membership types, added when you import: ${plan.unknownTypes.join(', ')}.`),
         plan.bad.length > 0 && h('p', { class: 'notice warn' }, `${plan.bad.length} row(s) skipped: they need an email address and a name. First: ${plan.bad[0]}`),
-        h('ul', { class: 'plain import-preview' }, plan.people.slice(0, 10).map(p => h('li', { class: 'row-between' },
-          h('span', {}, h('strong', {}, p.name || p.email), ' ', h('span', { class: 'muted small' }, [p.email, p.phone, p.membership, p.accreditationProvider].filter(Boolean).join(' · '))),
-          h('span', { class: 'chip ' + (p.existing ? '' : 'ok') }, p.existing ? 'Update' : 'New')))),
-        plan.people.length > 10 && h('p', { class: 'muted small' }, `… and ${plan.people.length - 10} more`));
+        h('ul', { class: 'plain import-preview' }, shownPeople.map(p => h('li', { class: 'row-between', 'data-status': p.status },
+          h('span', {}, h('strong', {}, p.name || p.email), ' ', h('span', { class: 'muted small' }, [p.email, p.phone, p.membership, p.accreditationProvider].filter(Boolean).join(' · ')),
+            p.status === 'updated' && h('div', { class: 'small upd-what' }, 'Adds: ', p.changes.join(', ')),
+            p.kept && p.kept.length > 0 && h('div', { class: 'muted small' }, `Kept as they have it: ${p.kept.join(', ')}`)),
+          h('span', { class: STATUS[p.status][0] }, STATUS[p.status][1])))),
+        list.length > LIMIT && h('p', {}, h('button', { class: 'link show-all', type: 'button', onclick: () => { showAll = !showAll; drawPlan(); } },
+          showAll ? 'Show fewer' : `… and ${list.length - LIMIT} more. Show all ${list.length}`)));
     };
     file.onchange = guard(async () => {
       const f = file.files && file.files[0];
       if (!f) return;
-      box.value = '';
+      showAll = false;
       if (/\.xlsx$/i.test(f.name)) {
         try { load(await readXlsx(await f.arrayBuffer())); } catch (e) { console.error(e); setChildren(mapOut, h('p', { class: 'notice warn' }, `Could not read ${f.name}: ${e.message}. Save it as CSV, or copy the rows and paste them.`)); }
       } else load(parseTable(await f.text()));
     });
-    box.oninput = () => { file.value = ''; load(parseTable(box.value)); };
     checkBtn.onclick = check;
     importBtn.onclick = busy(importBtn, guard(async () => {
       check();
       if (!plan || plan.error) return;
-      const res = await applyMembers(store, plan, { newPid, today: todayLocal() });
-      for (const p of plan.people) if (store.saveMembershipLink) {
-        const u = { ...(p.existing || {}), email: p.email, membership: p.membership || (p.existing && p.existing.membership) || '', active: true, memberSince: p.memberSince || (p.existing && p.existing.memberSince) || todayLocal() };
+      const res = await applyMembers(store, plan, { newPid, onProgress: (n, of) => { importBtn.textContent = `Importing… ${n} of ${of}`; } });
+      for (const p of plan.people) if (store.saveMembershipLink && p.status !== 'existing') {
+        const u = { ...(p.existing || {}), email: p.email, membership: p.membership || (p.existing && p.existing.membership) || '', active: true };
         store.saveMembershipLink(p.email, membershipLink(store.org, u)).catch(e => console.error('membership link', e));
       }
       // Keep the column and answer choices for this association's next file.
@@ -971,57 +987,72 @@ export async function viewUmpires(ctx) {
       }
       await store.saveOrg({ memberImport }).catch(e => console.error('import settings', e));
       if (store.org) try { store.org.memberImport = memberImport; } catch (e) { /* a copy in some stores */ }
-      toast(`${res.added} member(s) added, ${res.updated} updated`, 'ok');
-      box.value = ''; file.value = ''; rows = null; plan = null; setChildren(out); setChildren(mapOut); checkBtn.disabled = true;
+      toast(`${res.added} added, ${res.updated} updated, ${res.unchanged} already up to date`, 'ok');
+      file.value = ''; rows = null; plan = null; setChildren(out); setChildren(mapOut); checkBtn.disabled = true;
       await reload();
     }));
     return h('div', { class: 'import-step' },
-      h('p', {}, h('label', {}, 'Choose a file (.xlsx or .csv) ', file)), box, mapOut,
+      h('p', {}, h('label', {}, 'Choose a file (.xlsx or .csv) ', file)), mapOut,
       h('p', {}, checkBtn, ' ', importBtn), out);
   }
 
-  // Adding one person by hand: they become a member straight away, the same as a row of the membership file.
-  function addMemberCard() {
-    const field = (label, attrs) => { const el = h('input', attrs); return [el, h('label', {}, label, el)]; };
-    const [first, firstL] = field('First name', { required: true, autocomplete: 'off' });
-    const [last, lastL] = field('Last name', { required: true, autocomplete: 'off' });
-    const [email, emailL] = field('Email', { type: 'email', required: true, autocomplete: 'off' });
-    const [phone, phoneL] = field('Mobile', { type: 'tel', placeholder: 'Optional', autocomplete: 'off' });
-    const [since, sinceL] = field('Member since', { type: 'date', value: todayLocal() });
+  // Adding one person by hand, in a pop-up: name and email, then the details this association asks people who join
+  // for (Settings → New umpires, its own questions included), all optional here. They become a member straight away.
+  function addMemberModal() {
+    const fields = joinFieldsFor(store.org);
+    const inp = (attrs) => h('input', { autocomplete: 'off', ...attrs });
+    const first = inp({ required: true }), last = inp({ required: true }), email = inp({ type: 'email', required: true });
+    const extra = fields.map(f => ({ f, el: !f.custom ? inp({ type: f.type, list: f.list, 'data-field': f.key, placeholder: f.type === 'date' ? '' : 'Optional' })
+      : f.type === 'text' ? inp({ 'data-field': f.key, placeholder: 'Optional' })
+      : h('select', { 'data-field': f.key }, h('option', { value: '' }, '—'), (f.type === 'yesno' ? ['Yes', 'No'] : f.options).map(o => h('option', { value: o }, o))) }));
     const type = types.length ? h('select', {}, h('option', { value: '' }, '—'), types.map(t => h('option', { value: t.name }, t.name))) : null;
+    const dlg = h('dialog', { class: 'modal add-member-modal', 'aria-label': 'Add a member' });
+    const close = () => { dlg.close(); dlg.remove(); };
     const btn = h('button', { class: 'btn primary', type: 'submit' }, 'Add member');
     const form = h('form', { class: 'add-member', onsubmit: busy(btn, guard(async e => {
       e.preventDefault();
       const key = emailKey(email.value);
       const had = members.find(u => u.email === key) || null;
-      if (had && membershipOf(had) === 'member') { toast(`${had.name || key} is already a member.`, 'warn'); return; }
-      const p = { email: key, firstName: first.value.trim(), lastName: last.value.trim(), name: had ? had.name : fullName(first.value.trim(), last.value.trim()),
-        phone: phone.value.trim(), dob: '', address: '', accreditation: '', accreditationProvider: '',
-        membership: type ? type.value : '', memberSince: since.value || todayLocal(), existing: had };
-      await applyMembers(store, { people: [p] }, { newPid, today: todayLocal() });
-      if (store.saveMembershipLink) store.saveMembershipLink(key, membershipLink(store.org, { ...(had || {}), email: key, membership: p.membership, active: true, memberSince: p.memberSince })).catch(err => console.error('membership link', err));
+      if (had && ['member', 'suspended'].includes(membershipOf(had))) { toast(`${had.name || key} is already a member.`, 'warn'); return; }
+      const given = { firstName: first.value.trim(), lastName: last.value.trim() };
+      const answers = {};
+      for (const { f, el } of extra) { const v = el.value.trim(); if (!v) continue; if (f.custom) answers[f.key] = v; else given[f.key] = v; }
+      const p = { email: key, ...given, name: had ? had.name : fullName(given.firstName, given.lastName), membership: type ? type.value : '', existing: had,
+        ...(Object.keys(answers).length ? { answers } : {}) };
+      if (had) {
+        p.status = 'updated';
+        p.fills = Object.fromEntries(FILLABLE.filter(([k]) => given[k] && !String(had[k] || '').trim()).map(([k]) => [k, given[k]]));
+        if (p.answers) p.fills.answers = { ...(had.answers || {}), ...p.answers };
+      } else p.status = 'new';
+      await applyMembers(store, { people: [p] }, { newPid });
+      if (store.saveMembershipLink) store.saveMembershipLink(key, membershipLink(store.org, { ...(had || {}), email: key, membership: p.membership, active: true })).catch(err => console.error('membership link', err));
       toast(`${p.name} added as a member`, 'ok');
-      ui.addOpen = false;
+      close();
       await reload();
     })) },
-      h('div', { class: 'two-up' }, firstL, lastL),
-      h('div', { class: 'two-up' }, emailL, phoneL),
-      h('div', { class: 'two-up' }, type ? h('label', {}, 'Membership type', type) : h('span'), sinceL),
-      h('p', { class: 'muted small' }, 'They can sign in with this email to see their games and give their availability, and fill in the rest of their details themselves.'),
-      h('p', {}, btn));
-    return h('details', { class: 'card add-member-card', open: !!ui.addOpen, ontoggle: e => { ui.addOpen = e.currentTarget.open; } },
-      h('summary', {}, 'Add a member'), form);
+      h('h2', {}, 'Add a member'),
+      h('div', { class: 'two-up' }, h('label', {}, 'First name', first), h('label', {}, 'Last name', last)),
+      h('label', {}, 'Email', email),
+      extra.map(({ f, el }) => h('label', {}, f.label, el)),
+      fields.some(f => f.list) && h('datalist', { id: 'acc-providers' }, ['Cricket NSW', 'Cricket Australia', 'NSW Cricket Umpires & Scorers Association'].map(v => h('option', { value: v }))),
+      type && h('label', {}, 'Membership type', type),
+      h('p', { class: 'muted small' }, 'They can sign in with this email to see their games, give their availability and fill in the rest of their details.'),
+      h('div', { class: 'modal-actions' }, h('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'), btn));
+    dlg.append(form);
+    dlg.addEventListener('cancel', () => dlg.remove());
+    document.body.append(dlg);
+    dlg.showModal();
+    first.focus();
   }
 
   // The list: waiting for approval first, then everyone else, by last name. Approving and rejecting is done in the
   // Join requests card above it (or on the member's profile); so is suspending.
-  const FILTERS = [['all', 'All'], ['active', 'Active umpires'], ['inactive', 'Inactive members'], ['applied', 'Waiting for approval'],
+  const FILTERS = [['all', 'All'], ['active', 'Active umpires'], ['inactive', 'Inactive umpires'], ['applied', 'Waiting for approval'],
     ['suspended', 'Suspended'], ['rejected', 'Rejected'], ['nonmember', 'Not members']];
   const inFilter = u => { const st = statusOf(u); return ui.filter === 'all' ? !['rejected', 'nonmember'].includes(st) : st === ui.filter; };
   const change = (list, kind) => guard(async () => {
     for (const u of list) {
       Object.assign(u, MEMBER_CHANGE[kind](u));
-      if (membershipOf(u) === 'member' && !u.memberSince) u.memberSince = todayLocal();     // approved (or added) today
       await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
       if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error('membership link', e));
     }
@@ -1042,7 +1073,7 @@ export async function viewUmpires(ctx) {
     const umpiringCell = u => {
       if (membershipOf(u) !== 'member') return h('span', { class: 'muted' }, '\u2014');
       const on = statusOf(u) === 'active';
-      return h('span', { class: 'chip ' + (on ? 'ok' : 'muted-chip'), title: on ? 'Available to at least one date this season' : 'No date marked Available this season' }, on ? 'Active umpire' : 'Inactive member');
+      return h('span', { class: 'chip ' + (on ? 'ok' : 'muted-chip'), title: on ? 'Available to at least one date this season' : 'No date marked Available this season' }, on ? 'Active umpire' : 'Inactive umpire');
     };
     // Membership: where they stand.
     const membershipCell = u => {
@@ -1068,22 +1099,22 @@ export async function viewUmpires(ctx) {
           h('button', { type: 'button', class: 'btn small primary', onclick: () => change([u], 'approve') }, 'Approve'),
           h('button', { type: 'button', class: 'btn small danger', onclick: () => change([u], 'reject') }, 'Reject'))))));
     setChildren(wrap,
-      h('h1', {}, 'Members'),
+      h('div', { class: 'page-head' }, h('h1', {}, 'Members'),
+        h('button', { class: 'btn primary add-member-btn', type: 'button', onclick: addMemberModal }, '+ Add a member')),
       requests.length > 0 && requestsCard(),
-      h('p', { class: 'member-mail' }, emailBtn('Email active members', active), ' ', emailBtn('Email inactive members', inactive)),
+      h('p', { class: 'member-mail' }, emailBtn('Email active umpires', active), ' ', emailBtn('Email inactive umpires', inactive)),
       h('section', { class: 'card' },
         h('div', { class: 'member-tools' }, search,
           h('select', { 'aria-label': 'Show', onchange: e => { ui.filter = e.target.value; draw(); } },
             filters.map(([k, label]) => h('option', { value: k, selected: ui.filter === k }, `${label} (${counts[k]})`)))),
         shown.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'board members' },        // stacks into cards on a phone
           h('thead', {}, h('tr', {}, COLS.map(c => h('th', {}, c)))),
-          h('tbody', {}, shown.map(u => { const st = statusOf(u); return h('tr', { class: st === 'applied' ? 'needs' : st === 'active' ? '' : 'inactive', 'data-pid': u.pid },
+          h('tbody', {}, shown.map(u => { const st = statusOf(u); return h('tr', { class: st === 'applied' ? 'needs' : ['suspended', 'rejected', 'nonmember'].includes(st) ? 'inactive' : '', 'data-pid': u.pid },
             h('td', {}, profileLink(u)),
             h('td', {}, umpiringCell(u)),
             h('td', {}, membershipCell(u)),
             h('td', {}, ['member', 'suspended'].includes(membershipOf(u)) ? membershipTypeCell(u) : '')); }))))
-          : h('p', { class: 'muted' }, members.length ? 'No one matches.' : 'No members yet. Bulk upload your membership list below, or send people the link from Settings so they can apply.')),
-      addMemberCard(),
+          : h('p', { class: 'muted' }, members.length ? 'No one matches.' : 'No members yet. Add them one by one, bulk upload your membership list below, or send people the link from Settings so they can apply.')),
       h('details', { class: 'card import-card', open: ui.importOpen || !members.length, ontoggle: e => { ui.importOpen = e.currentTarget.open; } },
         h('summary', {}, 'Bulk upload your membership list'),
         h('p', { class: 'muted' }, 'Add many members at once. Each person in the file becomes a member and can sign in with their email; anyone already on your list is updated, not added twice.'),

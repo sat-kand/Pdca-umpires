@@ -161,6 +161,11 @@ def sign_in(page, email, open_form=True):
         unfold(page)
 
 
+def upload_csv(page, text, name="members.csv"):
+    page.set_input_files(".import-step input[type=file]", {"name": name, "mimeType": "text/plain", "buffer": text.encode()})
+    page.wait_for_timeout(200)
+
+
 def row_of(page, email):
     """A Members row, found by the member's email (the table no longer shows emails)."""
     pid = page.evaluate("""(e) => { const db = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2'));
@@ -706,11 +711,11 @@ with sync_playwright() as p:
     check(page.locator(".join-requests .request").count() == 5, "a Join requests card lists everyone waiting")
     check("0400 111 222" in page.locator(".join-requests .request:has-text('newbie@demo.test')").inner_text(), "it shows the details they gave when they asked to join")
     check([t.strip() for t in page.locator("table.members thead th").all_inner_texts()] == ["NAME", "UMPIRING", "MEMBERSHIP", "MEMBERSHIP TYPE"],
-          "the Members list: name, umpiring, membership and membership type (member since is on the profile)")
+          "the Members list: name, umpiring, membership and membership type")
     u1 = row_of(page, "umpire1@demo.test")
     check(u1.locator("input:not([type=checkbox])").count() == 0 and u1.locator("select").count() == 1 and "L1-2200" not in u1.inner_text() and "@" not in page.inner_text("table.members"),
           "personal details (email, mobile, date of birth, address, accreditation) are not on the list, only on profiles")
-    check(page.locator("button:has-text('Email active members')").count() == 1 and page.locator("button:has-text('Email inactive members')").count() == 1,
+    check(page.locator("button:has-text('Email active umpires')").count() == 1 and page.locator("button:has-text('Email inactive umpires')").count() == 1,
           "buttons to draft an email to active or inactive members")
     names = page.locator("table.members tbody tr a.member-link").all_inner_texts()
     waiting = page.locator("table.members tbody tr.needs").count()
@@ -735,7 +740,7 @@ with sync_playwright() as p:
     goto(page, BASE + "admin/members")
     page.wait_for_selector("table.members")
     page.wait_for_timeout(300)
-    check("Member" in row_of(page, "newbie@demo.test").inner_text() and "Inactive member" in row_of(page, "newbie@demo.test").inner_text(),
+    check("Member" in row_of(page, "newbie@demo.test").inner_text() and "Inactive umpire" in row_of(page, "newbie@demo.test").inner_text(),
           "approved: a Member; an Inactive member until they say Available to a date")
     check(row_of(page, "newbie@demo.test").locator("button.tagbtn").count() == 0, "Active umpire / Inactive member is not something the officer changes")
     # Their availability decides it, for this association: Not available to everything keeps them inactive,
@@ -748,7 +753,7 @@ with sync_playwright() as p:
         page.wait_for_selector("table.members")
     dates = page.evaluate("() => { const o = JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca; return o.season.calendar.slice(0, 2).map(e => e.comp + ':' + e.dates[0]); }")
     set_days("socialmember@demo.test", {dates[0]: "no", dates[1]: "no"})
-    check("Inactive member" in row_of(page, "socialmember@demo.test").inner_text(), "Not available to everything: still an Inactive member")
+    check("Inactive umpire" in row_of(page, "socialmember@demo.test").inner_text(), "Not available to everything: still an Inactive member")
     set_days("socialmember@demo.test", {dates[0]: "no", dates[1]: "yes"})
     check("Active umpire" in row_of(page, "socialmember@demo.test").inner_text(), "Available to one date: an Active umpire")
     page.fill(".member-search", "social")
@@ -758,56 +763,77 @@ with sync_playwright() as p:
     bring = page.locator("details.import-card:has(> summary:has-text('Bulk upload'))")
     if bring.get_attribute("open") is None:
         bring.locator("> summary").click()
-    page.fill(".import-step textarea >> nth=0", "Pat, Example, pat@example.com, 0400 000 000, L3-7782\nbad line")
-    page.evaluate("() => { window.__mark = 1; document.querySelector('.import-step').dataset.mark = 'x'; document.dispatchEvent(new Event('visibilitychange')); }")
+    check(page.locator(".import-step textarea").count() == 0, "bulk upload takes a file only: no box to paste into")
+    upload_csv(page, "Pat, Example, pat@example.com, 0400 000 000, L3-7782\nbad line")
+    page.evaluate("() => { document.querySelector('.import-step').dataset.mark = 'x'; document.dispatchEvent(new Event('visibilitychange')); }")
     page.wait_for_timeout(600)
-    check(page.locator(".import-step textarea >> nth=0").input_value().startswith("Pat, Example") and page.locator(".import-step[data-mark=x]").count() == 1,
-          "coming back to the tab keeps the Members page as it was: pasted text (and a chosen file) stay")
+    check(page.evaluate("() => document.querySelector('.import-step input[type=file]').files.length") == 1 and page.locator(".import-step[data-mark=x]").count() == 1,
+          "coming back to the tab keeps the Members page as it was: the chosen file stays")
     page.click(".import-step button:has-text('Check it') >> nth=0")
     page.click(".import-step button:has-text('Import') >> nth=0")
     page.wait_for_selector("a.member-link:has-text('Pat Example')")
     patu = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['pat@example.com']")
     check(patu["firstName"] == "Pat" and patu["lastName"] == "Example" and patu["phone"] == "0400 000 000" and patu["accreditation"] == "L3-7782",
           "bulk add reads First name, Last name, email, mobile and accreditation number")
-    # A membership file with headings: an existing member (their own details kept) and two new members.
+    # A membership file with headings: an existing member (their own details kept, a blank filled in), one with nothing new, and two new members.
+    page.evaluate("""() => { const k = 'pdca-umpires-demo-v2'; const db = JSON.parse(localStorage.getItem(k)); db.orgs.pdca.umpires['umpire1@demo.test'].address = ''; localStorage.setItem(k, JSON.stringify(db)); }""")
+    reload(page); page.wait_for_selector("table.members")
     before_u1 = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['umpire1@demo.test']")
+    pat_now = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['pat@example.com']")
     bring = page.locator("details.import-card:has(> summary:has-text('Bulk upload'))")
     if bring.get_attribute("open") is None:
         bring.locator("> summary").click()
     check(page.locator(".import-step select").count() == 0, "the membership file has no active or inactive choice: that follows availability")
-    page.fill(".import-step textarea >> nth=0", "First name\tLast name\tEmail\tMembership type\tMember since\n"
-              "Changed\tName\tumpire1@demo.test\tLife member\t2015\n"
-              "Quiet\tMember\tquiet@example.com\t\t\n"
-              "Keen\tUmpire\tkeen@example.com\tOrdinary member\t15/04/2019")
+    upload_csv(page, "First name\tLast name\tEmail\tAddress\tMembership type\tMember since\n"
+              "Changed\tName\tumpire1@demo.test\t1 New St\tLife member\t2015\n"
+              f"Pat\tExample\tpat@example.com\t\t{pat_now.get('membership', '')}\t\n"
+              "Quiet\tMember\tquiet@example.com\t\t\t\n"
+              "Keen\tUmpire\tkeen@example.com\t\tOrdinary member\t15/04/2019", "members.tsv")
+    check(page.locator(".import-map select option:has-text('Member since')").count() == 0, "member since is not a field any more")
     page.click(".import-step button:has-text('Check it') >> nth=0")
     prev = page.inner_text(".import-step .import-out >> nth=0")
-    check("2 new, 1 already on the list" in prev, f"the check says who is new and who is updated ({prev[:80]!r})")
+    check("2 new" in prev and "1 updated" in prev and "1 existing, no change" in prev, f"the check counts new, updated and existing ({prev[:90]!r})")
+    upd = page.locator(".import-preview li[data-status=updated]")
+    check(upd.count() == 1 and "Address" in upd.inner_text() and "Membership type" in upd.inner_text() and "Kept as they have it: First name, Last name" in upd.inner_text() and "Updated" in upd.inner_text(),
+          "an updated member says what it adds (a blank address, the membership type) and what is kept as they have it")
+    check(page.locator(".import-preview li[data-status=existing]:has-text('pat@example.com') .chip:has-text('Existing')").count() == 1, "someone with nothing to change is tagged Existing, not Update")
+    check(page.locator(".import-preview li[data-status=new] .chip:has-text('New')").count() == 2, "and the new people are tagged New")
     page.click(".import-step button:has-text('Import') >> nth=0")
-    page.wait_for_selector(".toast:has-text('2 member(s) added, 1 updated')")
+    page.wait_for_selector(".toast:has-text('2 added, 1 updated, 1 already up to date')")
     db = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires")
     u1 = db["umpire1@demo.test"]
-    check(u1["name"] == before_u1["name"] and u1.get("phone") == before_u1.get("phone") and u1["membership"] == "Life member" and u1["memberSince"] == "2015-01-01",
-          "an existing member keeps their own details; only membership type and member since change")
-    check(db["keen@example.com"]["memberSince"] == "2019-04-15" and db["quiet@example.com"].get("approved"), "new people come in as members, with their member-since date")
-    check("Inactive member" in row_of(page, "quiet@example.com").inner_text() and "Active umpire" in row_of(page, "umpire1@demo.test").inner_text(),
-          "a new member with no availability is an Inactive member; one with Available dates is an Active umpire")
+    check(u1["name"] == before_u1["name"] and u1.get("phone") == before_u1.get("phone") and u1["membership"] == "Life member" and u1["address"] == "1 New St",
+          "an existing member keeps their own details; the blank address is filled in and the membership type changes")
+    check(not db["keen@example.com"].get("memberSince") and db["quiet@example.com"].get("approved"), "new people come in as members, with no member-since date")
+    check("Inactive umpire" in row_of(page, "quiet@example.com").inner_text() and "Active umpire" in row_of(page, "umpire1@demo.test").inner_text(),
+          "a new member with no availability is an Inactive umpire; one with Available dates is an Active umpire")
+    check(page.evaluate("() => getComputedStyle(document.querySelector('table.members tr[data-pid] td')).opacity") == "1" and row_of(page, "quiet@example.com").get_attribute("class") in ("", None),
+          "Inactive umpires are not greyed out")
     check(page.locator(".import-step").count() == 1 and "Add many members at once" in page.inner_text(".import-card") and "Availabilities page" not in page.inner_text(".import-card"), "Members bulk uploads only the membership list, with no mention of availability files")
-    page.click("details.add-member-card > summary")
-    page.fill(".add-member label:has-text('First name') input", "Hand")
-    page.fill(".add-member label:has-text('Last name') input", "Added")
-    page.fill(".add-member input[type=email]", "Hand.Added@Example.com")
-    page.fill(".add-member input[type=tel]", "0411 222 333")
-    page.click(".add-member button[type=submit]")
+    check(page.locator(".page-head .add-member-btn").count() == 1, "Add a member is a button at the top of the page")
+    page.click(".add-member-btn")
+    page.wait_for_selector("dialog.add-member-modal[open]")
+    amd = page.locator("dialog.add-member-modal")
+    check(all(t in amd.inner_text() for t in ["First name", "Last name", "Email", "Mobile", "Date of birth", "Accreditation provider"]) and "Member since" not in amd.inner_text(),
+          "it opens a pop-up with the details the association asks for, and no member since")
+    amd.locator("label:has-text('First name') input").fill("Hand")
+    amd.locator("label:has-text('Last name') input").fill("Added")
+    amd.locator("input[type=email]").fill("Hand.Added@Example.com")
+    amd.locator("input[data-field=phone]").fill("0411 222 333")
+    amd.locator("button[type=submit]").click()
     page.wait_for_selector("a.member-link:has-text('Hand Added')")
     ha = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['hand.added@example.com']")
-    check(ha and ha.get("approved") and ha["phone"] == "0411 222 333" and ha.get("memberSince"), "Add a member adds one person as a member, email lower-cased, member since today")
-    page.click("details.add-member-card > summary")
-    page.fill(".add-member label:has-text('First name') input", "Hand")
-    page.fill(".add-member label:has-text('Last name') input", "Again")
-    page.fill(".add-member input[type=email]", "hand.added@example.com")
-    page.click(".add-member button[type=submit]")
+    check(ha and ha.get("approved") and ha["phone"] == "0411 222 333" and not ha.get("memberSince") and page.locator("dialog.add-member-modal").count() == 0,
+          "Add a member adds one person as a member, email lower-cased, and closes")
+    page.click(".add-member-btn")
+    amd = page.locator("dialog.add-member-modal")
+    amd.locator("label:has-text('First name') input").fill("Hand")
+    amd.locator("label:has-text('Last name') input").fill("Again")
+    amd.locator("input[type=email]").fill("hand.added@example.com")
+    amd.locator("button[type=submit]").click()
     page.wait_for_selector(".toast:has-text('already a member')")
     check(True, "adding someone already a member says so and changes nothing")
+    amd.locator("button:has-text('Cancel')").click()
     # An association's own Excel file (PDCA's membership form layout, made-up people): columns matched, answers translated, choices kept.
     xlsx = os.path.join(ROOT, "tests", "fixtures-members.xlsx")
     bring = page.locator("details.import-card:has(> summary:has-text('Bulk upload'))")
@@ -829,12 +855,18 @@ with sync_playwright() as p:
         mt.locator(".map-row:has(.map-from:text-is('Existing Member')) input").fill(first)
         check(mt.locator(".map-row:has(.map-from:text-is('Existing Member')) .chip.ok:has-text('Existing type')").count() == 1, "choosing one of their own types marks it Existing type")
         mt.locator(".map-row:has(.map-from:text-is('Existing Member')) input").fill("Existing Member")
-    page.locator(".import-map > .map-list > .map-row:has(strong:text-is('Address')) select").select_option("")
+    nm = mt.locator(".map-row:has(.map-from:text-is('New Member'))")
+    check(nm.locator("button.map-remove:visible").count() == 1, "a new membership type has a Remove button")
+    nm.locator("button.map-remove").click()
+    check(nm.locator("input").input_value() == "" and "1 new membership type" in mt.inner_text(), "Remove leaves that answer blank, so the type is not added")
+    nm.locator("input").fill("New Member")
+    page.locator(".import-map > .map-list > .map-row:has(strong:text-is('Address')) button.map-remove").click()
+    check(field_of("Address") == "", "Remove beside a column stops it being brought in")
     page.click(".import-step button:has-text('Check it')")
     prev = page.inner_text(".import-step .import-out")
     check("3 new" in prev, f"the check reads all three rows ({prev[:60]!r})")
     page.click(".import-step button:has-text('Import')")
-    page.wait_for_selector(".toast:has-text('3 member(s) added')")
+    page.wait_for_selector(".toast:has-text('3 added')")
     db = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires")
     x, y, z = db["xavier.sample@example.com"], db["yara.sample@example.com"], db["zed.sample@example.com"]
     check(x["firstName"] == "Xavier" and x["lastName"] == "Sample" and x["dob"] == "1980-03-09" and x["accreditation"] == "20/1234-O"
@@ -853,7 +885,7 @@ with sync_playwright() as p:
     page.evaluate("t => { const k = 'pdca-umpires-demo-v2'; const d = JSON.parse(localStorage.getItem(k)); d.orgs.pdca.org.membership = JSON.parse(t); localStorage.setItem(k, JSON.stringify(d)); }", types_before)   # the Settings checks below start from the seeded types
     page.reload()
     page.select_option(".member-tools select", "inactive")
-    check(row_of(page, "quiet@example.com").count() == 1 and row_of(page, "umpire1@demo.test").count() == 0, "the Show filter lists Inactive members")
+    check(row_of(page, "quiet@example.com").count() == 1 and row_of(page, "umpire1@demo.test").count() == 0, "the Show filter lists Inactive umpires")
     check(page.locator("table.members input[type=checkbox]").count() == 0 and page.locator(".bulk-bar").count() == 0
           and page.locator("table.members button:has-text('Approve'), table.members button:has-text('Reject')").count() == 0,
           "the members table has no tick boxes or Approve / Reject buttons (those are in the Join requests card)")
@@ -1619,7 +1651,7 @@ with sync_playwright() as p:
     check(page.locator(".past-row").count() == 0 and "Nothing here yet" in page.inner_text("main"), "it starts with no history of its own")
     page.click("nav .menu > summary")
     page.click(".menu-items .nav-link:has-text('Members')")
-    page.wait_for_selector("textarea")
+    page.wait_for_selector(".import-step")
     check(page.locator("table.members tbody tr").count() == 0, "its member list is empty: PDCA's members are not visible")
     page.click("nav .menu > summary")
     page.click(".menu-items .nav-link:has-text('Settings')")
@@ -1692,15 +1724,10 @@ with sync_playwright() as p:
           and page.locator(".member-profile .assoc-card").count() >= 1 and "Parramatta" in page.inner_text(".assoc-card h2"),
           "clicking their name opens their own profile: their details once, then each association they belong to")
     card = page.locator(".member-profile .assoc-card").first
-    check(all(t in card.inner_text() for t in ["Membership type", "Member since", "umpired", "pull-out", "fulfilment rate", "Past appointments"]),
-          "membership type, status, member since, games, pull-outs, fulfilment and past appointments are per association")
+    check(all(t in card.inner_text() for t in ["Membership type", "umpired", "pull-out", "fulfilment rate", "Past appointments"]) and "Member since" not in card.inner_text(),
+          "membership type, status, games, pull-outs, fulfilment and past appointments are per association (no member since)")
     check(page.locator(".member-profile h2:has-text('Availability'), .member-profile h2:has-text('Upcoming')").count() == 0,
           "availability and upcoming games are left to their home page")
-    card.locator("input[type=date]").fill("2015-02-01")
-    card.locator("input[type=date]").dispatch_event("change")
-    page.wait_for_timeout(300)
-    check(page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['umpire2@demo.test'].memberSince") == "2015-02-01",
-          "they can correct when they became a member of that association")
     page.click("a:has-text('Edit my details')")
     page.wait_for_selector("form input")
     page.locator("label:has-text('Accreditation provider') input").fill("Cricket NSW")
@@ -1721,7 +1748,7 @@ with sync_playwright() as p:
     row_of(page, "umpire2@demo.test").locator("a.member-link").click()
     page.wait_for_selector(".member-profile")
     prof = page.inner_text(".member-profile")
-    check("D Everton" in page.inner_text(".member-profile h1") and "umpire2@demo.test" in prof and "Member since" in prof,
+    check("D Everton" in page.inner_text(".member-profile h1") and "umpire2@demo.test" in prof and "Member since" not in prof,
           "clicking a name in Members opens their profile with their membership details")
     stats = page.locator(".member-profile .stat").all_inner_texts()
     check(any("games umpired here" in t or "game umpired here" in t for t in stats) and any("fulfilment rate" in t for t in stats) and any("pull-out" in t for t in stats),
@@ -1744,6 +1771,12 @@ with sync_playwright() as p:
     # Umpiring follows their availability: no buttons for it
     check(page.locator(".status-box .chip:has-text('Active umpire')").count() == 1 and page.locator(".status-box button:has-text('Make')").count() == 0,
           "the profile shows Active umpire from their availability, with nothing to change by hand")
+    rows_ = page.locator(".member-profile .kv:has(> span:text-is('Membership')), .member-profile .kv:has(> span:text-is('Umpiring'))")
+    boxes = [r.bounding_box() for r in rows_.all()]
+    check(len(boxes) == 2 and boxes[1]["y"] >= boxes[0]["y"] + boxes[0]["height"] - 1 and "Available to at least one date" in rows_.nth(1).inner_text(),
+          "Membership and Umpiring are separate rows, with the reason under Umpiring")
+    check(page.locator(".delete-member button:has-text('Delete member')").is_disabled() and "on " in page.inner_text(".delete-member"),
+          "someone on games cannot be deleted; the card says why")
     page.click(".status-box button:has-text('Suspend')")
     page.wait_for_selector(".status-box .chip:has-text('Suspended')")
     u2 = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['umpire2@demo.test']")
@@ -1787,6 +1820,12 @@ with sync_playwright() as p:
     page.select_option(".member-tools select", "rejected")
     check(page.locator("a.member-link:has-text('X Nope')").count() == 1, "and shown under Rejected")
     page.select_option(".member-tools select", "all")
+    goto(page, BASE + "admin/member/pnew1")
+    page.wait_for_selector(".delete-member")
+    page.click(".delete-member button:has-text('Delete member')")
+    page.wait_for_selector("table.members")
+    check(page.evaluate("() => !JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires['newbie@demo.test']") and page.locator("a.member-link:has-text('N Newbie')").count() == 0,
+          "a member with no games can be deleted from their profile; it goes back to Members")
 
     goto(page, BASE + "admin/availability")
     page.wait_for_selector("a.member-link")

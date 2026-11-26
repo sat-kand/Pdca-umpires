@@ -79,8 +79,7 @@ export async function seedDemo(store) {
   for (const [i, [firstName, lastName]] of NAMES.entries()) {
     const email = `umpire${i + 1}@demo.test`;
     const had = await store.getUmpire(email);
-    await store.saveUmpire({ pid: had ? had.pid : newPid(), email, name: `${firstName} ${lastName}`, firstName, lastName, phone: '', dob: '', address: '', accreditation: `L${(i % 3) + 1}-${2200 + i}`, active: true,
-      memberSince: `${2016 + (i % 8)}-0${1 + (i % 9)}-15` });
+    await store.saveUmpire({ pid: had ? had.pid : newPid(), email, name: `${firstName} ${lastName}`, firstName, lastName, phone: '', dob: '', address: '', accreditation: `L${(i % 3) + 1}-${2200 + i}`, active: true });
   }
   // Three people who applied through the join link and are waiting to be approved; the first has
   // already given availability, so they show as Available Non-Member on the board.

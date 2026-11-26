@@ -25,26 +25,39 @@ test('a membership file: everyone becomes a member; rows that cannot be read are
   const types = [{ name: 'Ordinary member' }, { name: 'Junior member' }];
   const plan = planMembers({ text: FILE, members: [], types });
   assert.equal(plan.error, '');
-  assert.deepEqual(plan.people.map(p => [p.email, p.membership, p.memberSince]), [
-    ['j.smith@example.com', 'Ordinary member', '2019-04-15'],
-    ['raj@example.com', 'Life member', '2012-01-01'],
-    ['ann@example.com', '', ''],
+  assert.deepEqual(plan.people.map(p => [p.email, p.membership, p.status]), [
+    ['j.smith@example.com', 'Ordinary member', 'new'],
+    ['raj@example.com', 'Life member', 'new'],
+    ['ann@example.com', '', 'new'],
   ]);
+  assert.equal(plan.people[0].memberSince, undefined, 'member since is not read any more');
   assert.deepEqual(plan.unknownTypes, ['Life member']);
   assert.equal(plan.bad.length, 1);
 });
 
-test('people already on the list keep their own details; only the association part changes', async () => {
+test('people already on the list: blanks filled in, their own details kept; new, updated or existing', async () => {
   const saved = [];
   const store = { saveUmpire: async u => saved.push(u) };
-  const existing = { pid: 'p1', email: 'raj@example.com', firstName: 'Rajesh', lastName: 'K', name: 'Rajesh K', phone: '0411' };
-  const suspended = { pid: 'p2', email: 'ann@example.com', name: 'A Lee', approved: true, suspended: true, active: false };
-  const plan = planMembers({ text: FILE, members: [existing, suspended] });
-  const res = await applyMembers(store, plan, { newPid: () => 'new', today: '2026-11-19' });
-  assert.deepEqual(res, { added: 1, updated: 2 });
+  const existing = { pid: 'p1', email: 'raj@example.com', firstName: 'Rajesh', lastName: 'K', name: 'Rajesh K', phone: '0411', approved: true };
+  const suspended = { pid: 'p2', email: 'ann@example.com', firstName: 'Ann', lastName: 'Lee', name: 'A Lee', approved: true, suspended: true, active: false };
+  const file = FILE.replace('raj@example.com\t', 'raj@example.com\t0499 999 999').replace('Raj\tKumar', 'Raj\tKumar');
+  const plan = planMembers({ text: FILE + '\n', members: [existing, suspended] });
+  assert.deepEqual(plan.people.map(p => [p.email, p.status]), [['j.smith@example.com', 'new'], ['raj@example.com', 'updated'], ['ann@example.com', 'existing']]);
+  assert.deepEqual(plan.people[1].changes, ['Membership type'], 'Raj: a new membership type; his own name is kept');
+  assert.deepEqual(plan.people[1].kept, ['First name', 'Last name']);
+  assert.deepEqual([plan.added.length, plan.updated.length, plan.unchanged.length], [1, 1, 1]);
+  const res = await applyMembers(store, plan, { newPid: () => 'new' });
+  assert.deepEqual(res, { added: 1, updated: 1, unchanged: 1 });
+  assert.equal(saved.find(u => u.email === 'ann@example.com'), undefined, 'nothing to change: not written');
   const raj = saved.find(u => u.email === 'raj@example.com');
-  assert.deepEqual([raj.name, raj.phone, raj.memberSince, membershipOf(raj)], ['Rajesh K', '0411', '2012-01-01', 'member']);
-  assert.equal(membershipOf(saved.find(u => u.email === 'ann@example.com')), 'suspended');      // a suspension stays
+  assert.deepEqual([raj.name, raj.phone, raj.membership, membershipOf(raj)], ['Rajesh K', '0411', 'Life member', 'member']);
+  // A blank mobile is filled in from the file; one they have is kept.
+  const blank = { ...existing, phone: '', membership: 'Life member' };
+  const p2 = planMembers({ text: FILE.replace('raj@example.com\t\t', 'raj@example.com\t0499 999 999\t'), members: [blank] });
+  const r2 = p2.people.find(p => p.email === 'raj@example.com');
+  assert.deepEqual([r2.status, r2.changes, r2.fills.phone], ['updated', ['Mobile'], '0499 999 999']);
+  const p3 = planMembers({ text: FILE.replace('raj@example.com\t\t', 'raj@example.com\t0499 999 999\t'), members: [{ ...existing, membership: 'Life member' }] });
+  assert.deepEqual([p3.people.find(p => p.email === 'raj@example.com').status, p3.people.find(p => p.email === 'raj@example.com').kept], ['existing', ['First name', 'Last name', 'Mobile']]);
   const jane = saved.find(u => u.email === 'j.smith@example.com');
   assert.deepEqual([jane.name, membershipOf(jane), memberStatus(jane, null)], ['Jane Smith', 'member', 'inactive']);   // no availability yet
 });
@@ -54,7 +67,7 @@ test('the old one-line format still works', () => {
   assert.deepEqual(plan.people.map(p => [p.firstName, p.lastName, p.email, p.phone, p.accreditation]), [['Jane', 'Smith', 'jane@example.com', '0400 000 000', 'L1-2284']]);
 });
 
-test('Active umpire or Inactive member follows availability, for members only', () => {
+test('Active umpire or Inactive umpire follows availability, for members only', () => {
   const m = { approved: true };
   assert.deepEqual([
     memberStatus(m, null),                                                   // no answer

@@ -59,10 +59,9 @@ test('association: known columns split from the rest of its settings', () => {
 });
 
 test('umpire splits into person and membership and joins back', () => {
-  const u = { pid: 'p1', email: 'a@b.c', name: 'A B', firstName: 'A', lastName: 'B', phone: '0400', active: true, membership: 'Ordinary member', memberSince: '2020-07-01', wantsToUmpire: true };
+  const u = { pid: 'p1', email: 'a@b.c', name: 'A B', firstName: 'A', lastName: 'B', phone: '0400', active: true, membership: 'Ordinary member', wantsToUmpire: true };
   const person = personRow(u), mem = membershipRow('pdca', u);
   assert.equal(person.phone, '0400');
-  assert.equal(mem.member_since, '2020-07-01');
   assert.equal(mem.name, undefined);                       // personal details never go in the membership
   const back = rowToUmpire({ ...mem, people: { ...person } });
   assert.deepEqual(back, u);

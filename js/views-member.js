@@ -13,7 +13,7 @@ import { myAssociationsList } from './views-join.js';
 export function membershipLink(org, u) {
   return {
     orgId: org.id, orgName: org.name || org.id, membership: u.membership || '', active: !!u.active,
-    since: u.memberSince || '', updatedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -78,7 +78,6 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
   const rate = kept + dropped ? kept / (kept + dropped) : null;
 
   // ---- membership: keep this association's line for others up to date, then read them all
-  const since = u.memberSince || (past[0] && past[0].d.date) || '';
   let others = [];
   try {
     if (!self && store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error(e));
@@ -103,13 +102,6 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
   const n = nameParts(u);
   const fee = feeFor(store.org, u.membership);
   const row = (label, value) => h('div', { class: 'kv' }, h('span', { class: 'muted' }, label), h('span', {}, value || '—'));
-  const sinceInput = h('input', { type: 'date', value: u.memberSince || '', 'aria-label': 'Member since', class: 'in-dob' });
-  sinceInput.onchange = busy(sinceInput, async () => {
-    u.memberSince = sinceInput.value;
-    await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
-    if (store.saveMembershipLink) await store.saveMembershipLink(u.email, membershipLink(store.org, u));
-    toast('Saved', 'ok');
-  });
 
   // Clicking a date steps it on, exactly like the officer's Availability sheet, and is marked as theirs.
   const NEXT = { none: 'yes', yes: 'no', no: 'none' };
@@ -165,7 +157,6 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
   const statusBox = h('div', { class: 'status-box' });
   const saveStatus = async (patch, msg) => {
     Object.assign(u, patch);
-    if (membershipOf(u) === 'member' && !u.memberSince) { u.memberSince = today; sinceInput.value = today; }
     await store.saveUmpire({ ...u, updatedAt: new Date().toISOString() });
     if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error(e));
     drawStatus();
@@ -185,9 +176,9 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
         m === 'suspended' && btn('Lift suspension', 'primary', () => set('unsuspend', 'Suspension lifted')),
         (m === 'rejected' || m === 'nonmember') && btn('Approve as member', 'primary', () => set('approve', 'Approved')))),
       // Umpiring: from this season's availability, not set by hand.
-      m === 'member' && h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Umpiring'), h('div', { class: 'status-line' },
-        h('span', { class: 'chip ' + (isActiveUmpire(u, avail) ? 'ok' : 'muted-chip') }, isActiveUmpire(u, avail) ? 'Active umpire' : 'Inactive member'),
-        h('span', { class: 'muted small' }, isActiveUmpire(u, avail) ? 'Available to at least one date this season' : 'No date marked Available this season'))));
+      m === 'member' && h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Umpiring'), h('div', {},
+        h('span', { class: 'chip ' + (isActiveUmpire(u, avail) ? 'ok' : 'muted-chip') }, isActiveUmpire(u, avail) ? 'Active umpire' : 'Inactive umpire'),
+        h('div', { class: 'muted small umpiring-why' }, isActiveUmpire(u, avail) ? 'Available to at least one date this season' : 'No date marked Available this season'))));
   }
   drawStatus();
 
@@ -222,13 +213,10 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
       self
         ? [row('Membership type', u.membership ? `${u.membership}${feeFor(store.org, u.membership) ? ` · ${money(feeFor(store.org, u.membership))}` : ''}` : ''),
            h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Status'), h('span', {}, h('span', { class: 'chip ' + STATUS_CHIP[memberStatus(u, avail)] }, STATUS_LABEL[memberStatus(u, avail)]))),
-           row('Member since', fmtLong(u.memberSince)),
-           h('p', { class: 'muted small' }, 'The association sets your membership, membership type and member since; you are an Active umpire once you say Available to a date. Your date of birth, address and mobile are only visible to them.')]
+           h('p', { class: 'muted small' }, 'The association sets your membership and membership type; you are an Active umpire once you say Available to a date. Your date of birth, address and mobile are only visible to them.')]
         : [h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Membership type'), typeBox),
            statusBox,
-           h('div', { class: 'kv' }, h('span', { class: 'muted' }, 'Member since'),
-             h('span', {}, sinceInput, !u.memberSince && since ? h('span', { class: 'muted small' }, ` first game here ${fmtLong(since)}`) : null)),
-           h('p', { class: 'muted small' }, 'Members keep their own details up to date. You set their status, membership type and member since.')]),
+           h('p', { class: 'muted small' }, 'Members keep their own details up to date. You set their status and membership type.')]),
 
     h('section', { class: 'card' }, h('h2', {}, 'Availability'),
       !season ? h('p', { class: 'muted' }, 'No season set up yet.')
@@ -258,14 +246,37 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
       h('p', { class: 'muted small' }, self ? 'Your memberships with other associations using Third Umpire. Only the membership is shared between them.' : 'Membership only. Their availability and appointments elsewhere are not shared.'),
       others.length ? h('ul', { class: 'plain appt-list' }, others.map(m => h('li', { class: 'row-between' },
         h('span', {}, h('strong', {}, m.orgName || m.orgId), m.membership ? h('span', { class: 'muted' }, ` · ${m.membership}`) : null,
-          m.since ? h('span', { class: 'muted' }, ` · since ${fmtLong(m.since)}`) : null),
+          null),
         h('span', { class: 'chip ' + (m.active ? 'ok' : 'muted-chip') }, m.active ? 'Active' : 'Past'))))
-        : h('p', { class: 'muted' }, 'No other memberships on record.')));
+        : h('p', { class: 'muted' }, 'No other memberships on record.')),
+
+    !self && deleteCard());
+
+  // Taking someone off this association's list. Their own record and other memberships stay. Someone who is on a
+  // game here (past or upcoming) stays, so the games keep their umpire: suspend them instead.
+  function deleteCard() {
+    const onGames = gameCount(appts);
+    const name = u.name || u.email;
+    const btn = h('button', { class: 'btn danger', type: 'button', disabled: onGames > 0 }, 'Delete member');
+    btn.onclick = busy(btn, async () => {
+      if (!confirm(`Delete ${name} from ${store.org.name || 'this association'}? They come off your Members list and can no longer give availability here. This cannot be undone, but you can add them again later.`)) return;
+      try { await store.deleteUmpire(u.email); }
+      catch (e) { console.error(e); toast(`Could not delete ${name} (${e.message || e})`, 'err'); return; }
+      toast(`${name} deleted from ${store.org.name || 'the association'}`, 'ok');
+      if (ctx.refreshPending) ctx.refreshPending();
+      ctx.go('/admin/members');
+    });
+    return h('section', { class: 'card delete-member' }, h('h2', {}, 'Delete member'),
+      h('p', { class: 'muted small' }, onGames
+        ? `${name} is on ${onGames} game${onGames === 1 ? '' : 's'} here, so they stay on the list to keep those games' umpire. To stop them umpiring, suspend their membership above.`
+        : `Takes ${name} off ${store.org.name || 'this association'}'s list. Their own details and memberships with other associations are not affected.`),
+      h('p', {}, btn));
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
 // A member's own profile. Personal details are theirs and the same everywhere; everything about a
-// membership (type, status, member since, games, pull-outs, fulfilment) belongs to one association,
+// membership (type, status, games, pull-outs, fulfilment) belongs to one association,
 // so it is shown per association. Availability and upcoming games are on their home page instead.
 export async function viewMyProfile(ctx) {
   const { store, S } = ctx;
@@ -375,13 +386,6 @@ async function membershipSection(org, view, u, today) {
   const rate = gameCount(appts) + gameCount(pulls) ? gameCount(appts) / (gameCount(appts) + gameCount(pulls)) : null;
   const status = [STATUS_LABEL[memberStatus(u, avail)], STATUS_CHIP[memberStatus(u, avail)]];
 
-  // When they became a member there: theirs to correct (a list loaded from a file may not have it).
-  const since = h('input', { type: 'date', value: u.memberSince || '', 'aria-label': `Member since, ${org.name || org.id}`, max: today });
-  since.onchange = busy(since, async () => {
-    await view.saveUmpire({ ...u, memberSince: since.value, updatedAt: new Date().toISOString() });
-    u.memberSince = since.value;
-    toast('Saved', 'ok');
-  });
 
   const stat = (big, label) => h('div', { class: 'stat' }, h('strong', {}, big), h('span', { class: 'muted' }, label));
   const kv = (label, ...v) => h('div', { class: 'kv' }, h('span', { class: 'muted' }, label), h('span', {}, ...v));
@@ -390,7 +394,6 @@ async function membershipSection(org, view, u, today) {
   return h('section', { class: 'card assoc-card' },
     h('div', { class: 'row-between' }, h('h2', {}, org.name || org.id), h('span', { class: 'chip ' + status[1] }, status[0])),
     kv('Membership type', u.membership || '\u2014'),
-    kv('Member since', since),
     h('div', { class: 'stats' },
       stat(String(gamesUmpired), gamesUmpired === 1 ? 'game umpired' : 'games umpired'),
       stat(String(gameCount(pulls)), gameCount(pulls) === 1 ? 'pull-out' : 'pull-outs'),

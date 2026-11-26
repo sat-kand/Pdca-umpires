@@ -182,7 +182,7 @@ export function createDemoStore() {
       const out = [];
       for (const [id, x] of Object.entries(db.orgs)) {
         const u = x.umpires && x.umpires[email];
-        if (u) out.push({ orgId: id, orgName: x.org.name || id, membership: u.membership || '', active: !!u.active, since: u.memberSince || '' });
+        if (u) out.push({ orgId: id, orgName: x.org.name || id, membership: u.membership || '', active: !!u.active });
       }
       return [...out, ...clone((db.otherMemberships || {})[email] || [])];
     },

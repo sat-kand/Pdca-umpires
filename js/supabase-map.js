@@ -106,7 +106,7 @@ export const withdrawalToRow = (aid, w) => { const { id, email, pid, handled, ..
 export const rowToWithdrawal = r => ({ ...(r.data || {}), id: r.id, email: r.email, pid: r.pid, handled: !!r.handled });
 
 // ----- membership across associations -----
-export const rowToMembershipLine = m => ({ orgId: m.association_id, orgName: (m.associations && m.associations.name) || m.association_id, membership: m.membership || '', active: !!m.active, since: m.member_since || '' });
+export const rowToMembershipLine = m => ({ orgId: m.association_id, orgName: (m.associations && m.associations.name) || m.association_id, membership: m.membership || '', active: !!m.active });
 
 export { camel, snake };
 

@@ -3,19 +3,24 @@
 //
 // The file has a heading row; columns are found by their names, in any order:
 //
-//   First name | Last name | Email | Mobile | Membership type | Member since
-//   Jane       | Smith     | j.smith@example.com | 0400 000 000 | Ordinary member | 2019-04-15
+//   First name | Last name | Email | Mobile | Membership type
+//   Jane       | Smith     | j.smith@example.com | 0400 000 000 | Ordinary member
 //
 // A single "Name" column works too. Everyone in the file becomes a member. Whether they are an Active
-// umpire or an Inactive member is not taken from the file: it follows the availability they give (or that
+// umpire or an Inactive umpire is not taken from the file: it follows the availability they give (or that
 // is brought in). A list with no heading row is read the old way: First name, Last name, email, mobile,
 // accreditation no.
 //
-// Members already on the list (same email) keep their own details: only the association's part
-// (membership type, member since) is updated, and only where the file says something.
+// Members already on the list (same email) keep their own details: the file only fills in what they have left
+// blank, and the association's part (membership type) where the file says something. Each person in the plan is
+// new, updated (with what changes) or existing (nothing to change).
+
+// The person's own details a file can fill in when they are blank.
+export const FILLABLE = [['firstName', 'First name'], ['lastName', 'Last name'], ['phone', 'Mobile'], ['dob', 'Date of birth'],
+  ['address', 'Address'], ['accreditation', 'Accreditation no.'], ['accreditationProvider', 'Accreditation provider']];
 
 import { parseTable } from './import-availability.js';
-import { emailKey, fullName } from './logic.js';
+import { emailKey, fullName, membershipOf } from './logic.js';
 
 const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9@.]+/g, ' ').trim();
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -32,7 +37,6 @@ const FIELDS = [
   ['accreditationProvider', /provider|accredited (by|with)|eligib|qualifi/],
   ['accreditation', /accreditation|accred|umpire (no|number)|card (no|number)|level/],
   ['membership', /membership( type)?|member type|type of membership|category/],
-  ['memberSince', /since|joined|join date|start date|member from/],
   ['status', /status|active|umpir(e|ing)|role/],
 ];
 
@@ -40,7 +44,7 @@ const FIELDS = [
 export const MEMBER_FIELDS = [
   ['email', 'Email'], ['firstName', 'First name'], ['lastName', 'Last name'], ['name', 'Full name'], ['phone', 'Mobile'],
   ['dob', 'Date of birth'], ['address', 'Address'], ['accreditation', 'Accreditation no.'], ['accreditationProvider', 'Accreditation provider'],
-  ['membership', 'Membership type'], ['memberSince', 'Member since'],
+  ['membership', 'Membership type'],
 ];
 // Fields whose values can be translated one by one (a short list of answers, like a form's options).
 export const VALUE_FIELDS = ['membership', 'accreditationProvider'];
@@ -144,14 +148,13 @@ export function planMembers({ text, rows: given, cols: chosen, values = {}, memb
       const type = get('membership');
       p = { email, firstName: first, lastName: last, phone: phoneFrom(get('phone')), dob: dateFrom(get('dob')), address: get('address'),
         accreditation: get('accreditation'), accreditationProvider: get('accreditationProvider'),
-        membership: type ? (typeNames.get(norm(type)) || type) : '', unknownType: !!type && types.length > 0 && !typeNames.has(norm(type)),
-        memberSince: dateFrom(get('memberSince')) };
+        membership: type ? (typeNames.get(norm(type)) || type) : '', unknownType: !!type && types.length > 0 && !typeNames.has(norm(type)) };
     } else {
       const parts = row.map(c => (c || '').trim());
       const at = parts.findIndex(x => EMAIL.test(x));
       p = { email: at < 0 ? '' : emailKey(parts[at]), firstName: at > 0 ? parts[0] : '', lastName: at > 1 ? parts.slice(1, at).join(' ') : '',
         phone: parts[at + 1] || '', accreditation: parts[at + 2] || '', dob: '', address: '', accreditationProvider: '',
-        membership: '', memberSince: '' };
+        membership: '' };
     }
     if (!p.email || !EMAIL.test(p.email)) { if (row.some(c => (c || '').trim())) bad.push(row.join(', ')); continue; }
     if (seen.has(p.email)) continue;                      // the same person twice in one file: the first row wins
@@ -160,37 +163,52 @@ export function planMembers({ text, rows: given, cols: chosen, values = {}, memb
     if (!had && !p.firstName) { bad.push(row.join(', ')); continue; }
     p.existing = had;
     p.name = had ? had.name : fullName(p.firstName, p.lastName);
+    if (had) {
+      // What the file would change: blanks it fills in, the membership type, becoming a member.
+      p.fills = Object.fromEntries(FILLABLE.filter(([k]) => p[k] && !String(had[k] || '').trim()).map(([k]) => [k, p[k]]));
+      p.kept = FILLABLE.filter(([k]) => p[k] && String(had[k] || '').trim() && norm(String(had[k])) !== norm(p[k])).map(([, label]) => label);
+      p.changes = [
+        ...FILLABLE.filter(([k]) => k in p.fills).map(([, label]) => label),
+        ...(p.membership && p.membership !== had.membership ? ['Membership type'] : []),
+        ...(!['member', 'suspended'].includes(membershipOf(had)) ? ['Membership'] : []),
+      ];
+      p.status = p.changes.length ? 'updated' : 'existing';
+    } else p.status = 'new';
     people.push(p);
   }
   return {
     error: people.length ? '' : (bad.length ? 'No one could be read. Each row needs an email address and a name.' : 'No one found in the list.'),
     people, bad,
-    added: people.filter(p => !p.existing),
-    updated: people.filter(p => p.existing),
+    added: people.filter(p => p.status === 'new'),
+    updated: people.filter(p => p.status === 'updated'),
+    unchanged: people.filter(p => p.status === 'existing'),
     unknownTypes: [...new Set(people.filter(p => p.unknownType).map(p => p.membership))],
   };
 }
 
 // Write the plan. New people are added as members; people already on the list become members if they
 // were not (a suspension stays) and get the association's part from the file. Returns counts.
-export async function applyMembers(store, plan, { newPid, today }) {
-  let added = 0, updated = 0;
+export async function applyMembers(store, plan, { newPid, onProgress } = {}) {
+  let added = 0, updated = 0, unchanged = 0, done = 0;
   const now = new Date().toISOString();
   for (const p of plan.people) {
     const assoc = { approved: true, nonMember: false };
     if (p.membership) assoc.membership = p.membership;
-    if (p.memberSince) assoc.memberSince = p.memberSince;
-    if (p.existing) {
+    if (p.existing && p.status === 'existing') unchanged++;            // nothing to change: no write
+    else if (p.existing) {
       const was = p.existing;
-      await store.saveUmpire({ ...was, ...assoc, ...(was.suspended ? {} : { active: true }), rejected: false,     // a suspension stays
-        memberSince: assoc.memberSince || was.memberSince || today, updatedAt: now });
+      const fills = p.fills || {};
+      if (fills.firstName || fills.lastName) fills.name = was.name || fullName(fills.firstName || was.firstName, fills.lastName || was.lastName);
+      await store.saveUmpire({ ...was, ...fills, ...assoc, ...(was.suspended ? {} : { active: true }), rejected: false,     // a suspension stays
+        updatedAt: now });
       updated++;
     } else {
       await store.saveUmpire({ pid: newPid(), email: p.email, firstName: p.firstName, lastName: p.lastName, name: p.name,
         phone: p.phone, dob: p.dob, address: p.address, accreditation: p.accreditation, accreditationProvider: p.accreditationProvider,
-        ...assoc, active: true, memberSince: assoc.memberSince || today, updatedAt: now });
+        ...(p.answers ? { answers: p.answers } : {}), ...assoc, active: true, updatedAt: now });
       added++;
     }
+    if (onProgress) onProgress(++done, plan.people.length);
   }
-  return { added, updated };
+  return { added, updated, unchanged };
 }

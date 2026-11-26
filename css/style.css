@@ -305,7 +305,6 @@ a.member-link:hover { text-decoration-color: currentColor; }
 .member-profile .date-btn { cursor: pointer; border: 1px solid transparent; font: inherit; font-size: .8rem; }
 .member-profile .date-btn:hover { border-color: currentColor; }
 .member-profile .date-btn:disabled { opacity: .6; cursor: progress; }
-.member-profile .status-box { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
 .board tr.inactive td { opacity: .6; }
 .member-profile .date-btn.readonly { cursor: default; opacity: 1; }
 .member-profile .date-btn.readonly:hover { border-color: transparent; }
@@ -563,3 +562,22 @@ main.enter > * { animation: page-in .18s ease-out; }
 .question-choices { flex: 1 1 100%; }
 .menu-head > .menu-org { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; }
 .menu:not(.who-menu) .menu-items { width: max-content; max-width: min(20rem, calc(100vw - 1.5rem)); }
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; }
+.page-head h1 { margin-bottom: .4rem; }
+.add-member-modal { width: min(520px, 96vw); }
+.add-member-modal form { display: grid; gap: .6rem; }
+.add-member-modal label { display: grid; gap: .2rem; }
+.add-member-modal .modal-actions { position: sticky; bottom: -1.1rem; background: #fff; padding: .6rem 0 .2rem; border-top: 1px solid var(--line); }
+.map-to { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.map-remove { color: var(--red, #b3261e); font-size: .85rem; }
+.import-counts { display: flex; flex-wrap: wrap; gap: .5rem; }
+.import-count { padding: .25rem .65rem; border-radius: 999px; border: 1px solid var(--line); }
+.import-count.is-new { background: #e3f0ff; border-color: #b8d4f5; }
+.import-count.is-upd { background: #fff4dc; border-color: #f2d699; }
+.import-count.is-old { background: var(--green-l); border-color: #b9dcc7; }
+.import-preview li { padding: .35rem 0; border-bottom: 1px solid var(--line); align-items: flex-start; }
+.upd-what { color: #8a5a00; }
+.show-all { font-weight: 600; }
+.chip.st-new { background: #e3f0ff; color: #1d4f9c; font-weight: 600; }
+.chip.st-upd { background: #fff4dc; color: #8a5a00; font-weight: 600; }
+.chip.st-old { background: var(--green-l); color: var(--green-d); }
