@@ -321,13 +321,19 @@ export async function viewOrgSettings(ctx, section) {
       // Rebuild the weeks and members' availability dates now, with games in their new groups.
       const season = await store.getSeason();
       if (store.playhq && store.mode !== 'demo') {                // the demo's made-up fixtures are rebuilt when Allocate opens
-        toast('Saved. Updating the availability dates…');
-        try { await syncFixtures(store, { today: todayLocal() }); toast('Saved. Availability dates and Allocate are up to date.', 'ok'); }
-        catch (err) {
+        // A status line that stays until the update finishes, so it never looks done while it is still working.
+        const label = h('span', {}, 'Saved. Updating the availability dates from PlayHQ…');
+        const status = h('p', { class: 'notice sync-status', role: 'status', 'aria-live': 'polite' }, h('span', { class: 'spin-dot', 'aria-hidden': 'true' }), label);
+        saveBtn.textContent = 'Updating…';
+        saveBtn.after(status);
+        try {
+          await syncFixtures(store, { today: todayLocal(), onProgress: (n, of) => { label.textContent = `Saved. Updating the availability dates from PlayHQ… ${n} of ${of} grades`; } });
+          toast('Availability dates and Allocate are up to date.', 'ok');
+        } catch (err) {
           console.error(err);
           if (season) await store.saveSeason({ ...season, updatedAt: '1970-01-01T00:00:00.000Z' });
           toast('Saved, but the dates could not be updated now. They will be next time Allocate opens.', 'warn');
-        }
+        } finally { status.remove(); }
       } else {
         if (season) await store.saveSeason({ ...season, updatedAt: '1970-01-01T00:00:00.000Z' });
         toast('Saved. Allocate will regroup the fixtures next time it opens.', 'ok');
