@@ -26,6 +26,7 @@ export const DEMO_ORG = {
   id: 'pdca',
   name: 'Parramatta District Cricket Association',
   playhqOrgId: '00000000-0000-4000-8000-000000000001',        // a made-up id: the demo never calls PlayHQ
+  juniorsUmpired: true,          // the sample association umpires its junior grades; a new association starts with juniors needing none
   plan: 'trial',
   flags: { player_umpire: true },                              // features the platform owner switches on per association
   notifyEmail: 'admin@demo.test',

@@ -193,7 +193,7 @@ export async function viewOrgSettings(ctx, section) {
     };
     const groupOf = gr => ui.gradeGroups[gr] && ui.groups.some(g => g.key === ui.gradeGroups[gr]) ? ui.gradeGroups[gr]
       : (ui.groups.find(g => g.key === groupKeyOf(suggestGroupName(seen.get(gr) || '', org.name || ''))) || ui.groups[0]).key;
-    const umpOf = gr => (gr in ui.gradeUmpires ? ui.gradeUmpires[gr] : suggestUmpires(gr, seen.get(gr)));
+    const umpOf = gr => (gr in ui.gradeUmpires ? ui.gradeUmpires[gr] : suggestUmpires(gr, seen.get(gr), { juniors: !!org.juniorsUmpired }));
     // Groups with no grades (left from another association's fixtures, say) are not kept.
     if (grades.length) ui.groups = ui.groups.filter(g => grades.some(gr => groupOf(gr) === g.key)).concat([]);
     if (!ui.groups.length) ui.groups = DEFAULT_GROUPS.map(g => ({ ...g }));
@@ -216,6 +216,57 @@ export async function viewOrgSettings(ctx, section) {
       draw2();
       box.closest('form')?.dispatchEvent(new Event('input', { bubbles: true }));
     };
+    // The grades of a group, as a pill: how many, and how many need umpires. Tapping it opens the list.
+    const dirty = () => box.closest('form')?.dispatchEvent(new Event('input', { bubbles: true }));
+    const gradesPill = g => {
+      const mine = grades.filter(gr => groupOf(gr) === g.key);
+      const need = mine.filter(gr => umpOf(gr) > 0).length;
+      return h('button', { class: 'grade-pill', type: 'button', disabled: !mine.length, 'aria-label': `Grades in ${g.name || 'this group'}`, onclick: () => gradesModal(g) },
+        h('strong', {}, `${mine.length} grade${mine.length === 1 ? '' : 's'}`),
+        mine.length > 0 && h('span', {}, ` · ${need} need${need === 1 ? 's' : ''} umpires`),
+        mine.length > 0 && h('span', { class: 'pill-chev', 'aria-hidden': 'true' }, ' ›'));
+    };
+    // Like choosing grades on Allocate: tick the grades that need umpires. How many umpires a game gets is set on Allocate.
+    const gradesModal = g => {
+      const mine = grades.filter(gr => groupOf(gr) === g.key);
+      const want = Object.fromEntries(mine.map(gr => [gr, umpOf(gr) > 0]));
+      const move = Object.fromEntries(mine.map(gr => [gr, g.key]));
+      const dlg = h('dialog', { class: 'modal grades-modal', 'aria-label': `Grades in ${g.name}` });
+      const total = h('span', { class: 'muted' });
+      const showTotal = () => { const n = mine.filter(gr => want[gr]).length; total.textContent = `${n} of ${mine.length} need umpires`; };
+      const rows = mine.map(gr => {
+        const cb = h('input', { type: 'checkbox', checked: want[gr], 'aria-label': `${gr} needs umpires` });
+        cb.onchange = () => { want[gr] = cb.checked; showTotal(); };
+        const sel = ui.groups.length > 1 && h('select', { class: 'in-sm grade-move', 'aria-label': `Group for ${gr}`, onchange: e => { move[gr] = e.target.value; } },
+          ui.groups.map(x => h('option', { value: x.key, selected: x.key === g.key }, x.key === g.key ? `In ${x.name || 'this group'}` : `Move to ${x.name || '(no name)'}`)));
+        return { gr, cb, row: h('div', { class: 'grade-row grade-setting' },
+          h('label', { class: 'grade-tick' }, cb, h('span', { class: 'chip grade' }, gradeShort(gr)),
+            h('span', { class: 'grade-names' }, h('span', {}, gr), seen.get(gr) && h('span', { class: 'muted small' }, seen.get(gr)))),
+          sel) };
+      });
+      const setAll = on => { rows.forEach(r => { r.cb.checked = on; want[r.gr] = on; }); showTotal(); };
+      const close = () => { dlg.close(); dlg.remove(); };
+      const done = h('button', { class: 'btn primary', type: 'button', onclick: () => {
+        for (const gr of mine) {
+          const was = umpOf(gr);
+          ui.gradeUmpires[gr] = want[gr] ? (was > 0 ? was : 1) : 0;
+          if (move[gr] !== g.key) ui.gradeGroups[gr] = move[gr];
+        }
+        grades.sort((a, b) => gi(groupOf(a)) - gi(groupOf(b)) || (seen.get(a) || '').localeCompare(seen.get(b) || '') || compareGrades(a, b));
+        close(); draw2(); dirty();
+      } }, 'Done');
+      dlg.append(
+        h('h2', {}, g.name || 'Grades'),
+        h('p', { class: 'muted' }, 'Tick the grades that need umpires. Unticked grades are left off Allocate. How many umpires each game gets is set on Allocate.'),
+        h('div', { class: 'row-between' }, total, h('span', {}, h('button', { class: 'link', type: 'button', onclick: () => setAll(true) }, 'All'), ' · ', h('button', { class: 'link', type: 'button', onclick: () => setAll(false) }, 'None'))),
+        h('div', { class: 'grade-list' + (ui.groups.length > 1 ? ' hide-move' : '') }, rows.map(r => r.row)),
+        ui.groups.length > 1 && h('p', { class: 'small' }, h('button', { class: 'link', type: 'button', onclick: e => { dlg.querySelector('.grade-list').classList.remove('hide-move'); e.currentTarget.remove(); } }, 'Move a grade to another group')),
+        h('div', { class: 'modal-actions' }, h('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'), done));
+      dlg.addEventListener('cancel', () => dlg.remove());
+      document.body.append(dlg);
+      showTotal();
+      dlg.showModal();
+    };
     const draw2 = () => {
       const used = k => grades.some(gr => groupOf(gr) === k);
       setChildren(box,
@@ -225,12 +276,12 @@ export async function viewOrgSettings(ctx, section) {
             g.name = e.target.value;                        // rename it in the grade drop-downs as you type
             box.querySelectorAll(`option[value="${g.key}"]`).forEach(o => { o.textContent = g.name || '(no name)'; });
           } }),
-          h('span', { class: 'muted small' }, `${grades.filter(gr => groupOf(gr) === g.key).length} grades`),
+          gradesPill(g),
           h('label', { class: 'inline open-toggle', title: 'When off, members do not see this group on My availability' },
             h('input', { type: 'checkbox', 'aria-label': `${g.name || 'Group'} open for availability`, checked: !g.closed, onchange: e => { if (e.target.checked) delete g.closed; else g.closed = true; } }), ' Open for availability'),
           ui.groups.length > 1 && !used(g.key) && h('button', { class: 'link', type: 'button', onclick: () => { ui.groups.splice(i, 1); draw2(); } }, 'Remove')))),
         h('button', { class: 'btn small', type: 'button', onclick: () => { ui.groups.push({ key: 'g' + Date.now().toString(36), name: 'New group', addedAt: new Date().toISOString() }); draw2(); } }, 'Add group'),
-        h('h3', {}, 'Grades'),
+        !grades.length && h('p', { class: 'muted' }, 'Grades appear here once fixtures have been loaded on Allocate.'),
         store.playhq && h('p', { class: 'row-gap' },
           h('button', { class: 'btn small', type: 'button', onclick: async ev => {
             const b = ev.currentTarget; b.disabled = true; b.textContent = 'Updating from PlayHQ…';
@@ -238,16 +289,6 @@ export async function viewOrgSettings(ctx, section) {
             catch (e) { console.error(e); b.disabled = false; b.textContent = 'Update from PlayHQ'; toast(`Could not update (${e.message || e})`, 'err'); }
           } }, 'Update from PlayHQ'),
           h('span', { class: 'muted small' }, ' Reloads the grades and competitions as PlayHQ lists them now.')),
-        !grades.length ? h('p', { class: 'muted' }, 'Grades appear here once fixtures have been loaded on Allocate.')
-          : h('div', { class: 'table-wrap' }, h('table', { class: 'board grades-table' },
-            h('thead', {}, h('tr', {}, ['Grade', 'Competition', 'Group', 'Umpires'].map(c => h('th', {}, c)))),
-            h('tbody', {}, grades.map(gr => h('tr', { class: umpOf(gr) === 0 ? 'inactive' : '' },
-              h('td', {}, h('span', { class: 'chip grade' }, gradeShort(gr)), ' ', h('span', { class: 'muted small' }, gr)),
-              h('td', { class: 'muted small' }, seen.get(gr) || ''),
-              h('td', {}, h('select', { 'aria-label': `Group for ${gr}`, onchange: e => { ui.gradeGroups[gr] = e.target.value; draw2(); } },
-                ui.groups.map(g => h('option', { value: g.key, selected: groupOf(gr) === g.key }, g.name || '(no name)')))),
-              h('td', {}, h('select', { 'aria-label': `Umpires for ${gr}`, onchange: e => { ui.gradeUmpires[gr] = Number(e.target.value); draw2(); } },
-                [0, 1, 2].map(n => h('option', { value: n, selected: umpOf(gr) === n }, n === 0 ? 'None' : String(n)))))))))),
         h('p', { class: 'row-gap' },
           h('button', { class: 'link', type: 'button', onclick: useSuggestions }, 'Use the suggestions')));
     };
@@ -267,10 +308,10 @@ export async function viewOrgSettings(ctx, section) {
       toast('Saved. Allocate will regroup the fixtures next time it opens.', 'ok');
       await draw();
     }) },
-    h('h2', {}, 'Groups and grades'),
-    h('p', { class: 'muted' }, 'A group is a set of grades you allocate together, such as Seniors, Juniors or Friday Girls. Each has its own tile on Allocate, and members give their availability per group, and you choose which groups are open for it. Grades set to "None" never need umpires and are left off the board.'),
+    h('h2', {}, 'Availability sheet'),
+    h('p', { class: 'muted' }, 'Members give their availability for each group, such as Seniors or Juniors, while it is open. Each group has its own tile on Allocate. Tap a group\'s grades to choose which need umpires.'),
     box,
-    h('p', { class: 'muted small' }, 'Moving a grade to another group moves its upcoming games there. Members\' availability is kept per group, so check it after moving grades.'),
+    h('p', { class: 'muted small' }, 'Moving a grade to another group (in its grade list) moves its upcoming games there. Members\' availability is kept per group, so check it after moving grades.'),
     saveBtn), saveBtn, 'groups');
   }
 
@@ -278,8 +319,7 @@ export async function viewOrgSettings(ctx, section) {
   // first; tapping a section opens it, with a way back. Each list item says what is set now.
   const SECTIONS = [
     { key: 'association', title: 'Association', icon: '🏏' },
-    { key: 'admins', title: 'Admins', icon: '👤' },
-    { key: 'groups', title: 'Groups and grades', icon: '🗂' },
+    { key: 'groups', title: 'Availability sheet', icon: '🗂' },
     { key: 'membership', title: 'Membership', icon: '💳' },
     { key: 'new-umpires', title: 'New umpires', icon: '✉️' },
     { key: 'player-umpires', title: 'Player umpires', icon: '🙋' },
@@ -295,8 +335,7 @@ export async function viewOrgSettings(ctx, section) {
     const types = membershipTypes(org), join = joinSettings(org), pu = org.playerUmpire || {};
     const nGroups = Array.isArray(org.groups) ? org.groups.length : 0;
     const summary = {
-      association: org.name || '',
-      admins: `${admins.length} admin${admins.length === 1 ? '' : 's'}`,
+      association: `${org.name || ''} · ${admins.length} admin${admins.length === 1 ? '' : 's'}`,
       groups: nGroups ? `${nGroups} group${nGroups === 1 ? '' : 's'}` : 'Grades and umpires needed',
       membership: types.length ? `${types.length} type${types.length === 1 ? '' : 's'}` : 'No types yet',
       'new-umpires': !join.open ? 'Closed to new umpires' : join.membershipRequired ? 'Open · you approve' : 'Open · no approval',
@@ -304,11 +343,13 @@ export async function viewOrgSettings(ctx, section) {
     };
 
     const body = {
-      association: () => {
+      association: () => [body._assoc(), body._admins()],
+      groups: () => groupsCard(),
+      _assoc: () => {
         const name = h('input', { required: true, value: org.name || '' });
         const notify = h('input', { type: 'email', value: org.notifyEmail || '', placeholder: S.user.email });
         const save = h('button', { class: 'btn primary', type: 'submit' }, 'Save');
-        return saveButton(h('form', { class: 'card', onsubmit: busy(save, async e => {
+        return saveButton(h('form', { class: 'card assoc-card', onsubmit: busy(save, async e => {
           e.preventDefault();
           await store.saveOrg({ name: name.value.trim(), notifyEmail: (notify.value || '').trim().toLowerCase(), updatedAt: new Date().toISOString() });
           saved.add('assoc');
@@ -323,7 +364,7 @@ export async function viewOrgSettings(ctx, section) {
         h('p', { class: 'muted small' }, 'Where to email when an umpire pulls out of a published game.'),
         save), save, 'assoc');
       },
-      admins: () => {
+      _admins: () => {
         const add = h('input', { type: 'email', placeholder: 'admin@example.com', 'aria-label': 'Email of the new admin' });
         const addBtn = h('button', { class: 'btn', type: 'submit' }, 'Add admin');
         return h('div', { class: 'card' }, h('h2', {}, 'Admins'),
@@ -340,7 +381,6 @@ export async function viewOrgSettings(ctx, section) {
             await draw();
           }) }, add, addBtn));
       },
-      groups: () => groupsCard(),
       membership: () => membershipCard(),
       'new-umpires': () => [
         h('div', { class: 'card' }, h('h2', {}, 'Link for umpires'),

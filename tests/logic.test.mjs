@@ -440,3 +440,10 @@ test('the warning says why someone cannot be appointed', async () => {
   assert.match(notAppointableReason({ membership: 'applied' }), /waiting for approval/);
   assert.match(notAppointableReason({ suspended: true }), /suspended/);
 });
+
+test('junior grades start needing no umpires, unless the association umpires its juniors', async () => {
+  const { suggestUmpires } = await import('../js/logic.js');
+  assert.equal(suggestUmpires('U14 Blue', 'PDCA Junior Competition'), 0);
+  assert.equal(suggestUmpires('U14 Blue', 'PDCA Junior Competition', { juniors: true }), 1);
+  assert.equal(suggestUmpires('First Grade', 'Senior Competition'), 1);
+});

@@ -67,8 +67,9 @@ export const umpiresForGrade = grade => (grade in GRADE_UMPIRES ? GRADE_UMPIRES[
 
 // A first suggestion for a grade's umpires: none for the youngest (Blast, Futures, under-11s), else one.
 // The officer sets None, 1 or 2 where wanted.
-export function suggestUmpires(grade, comp = '') {
+export function suggestUmpires(grade, comp = '', { juniors = false } = {}) {
   const s = `${grade} ${comp}`;
+  if (!juniors && /junior/i.test(s)) return 0;                   // junior grades are unticked to start with: most are umpired by parents
   if (/blast|futures|smash|master blaster|\bu\s?(?:[5-9]|1[01])\b|under\s?(?:[5-9]|1[01])\b/i.test(s)) return 0;
   return 1;
 }

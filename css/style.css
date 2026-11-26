@@ -533,3 +533,15 @@ main.enter > * { animation: page-in .18s ease-out; }
   .settings-page.has-section > h1 { display: none; }
   .settings-back { display: inline-block; }
 }
+
+/* Availability sheet: a group's grades as a pill that opens the list of grades to tick. */
+.grade-pill { display: inline-flex; align-items: center; gap: .1rem; padding: .3rem .75rem; border-radius: 999px; border: 1px solid var(--green); background: var(--green-l); color: var(--green-d); font: inherit; font-size: .9rem; cursor: pointer; white-space: nowrap; }
+.grade-pill:hover:not(:disabled) { background: #d6eadf; }
+.grade-pill:disabled { border-color: var(--line); background: none; color: var(--muted); cursor: default; }
+.grade-pill .pill-chev { font-size: 1.1rem; line-height: 1; }
+.grades-modal { width: min(560px, 96vw); }
+.grade-setting { display: flex; align-items: center; justify-content: space-between; gap: .6rem; flex-wrap: wrap; }
+.grade-tick { display: flex; align-items: center; gap: .55rem; flex: 1; min-width: 12rem; cursor: pointer; margin: 0; }
+.grade-names { display: flex; flex-direction: column; min-width: 0; }
+.grade-move { max-width: 11rem; }
+.grade-list.hide-move .grade-move { display: none; }

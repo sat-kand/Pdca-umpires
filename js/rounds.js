@@ -169,7 +169,7 @@ export async function ensureGroups(store, games, comps = []) {
   const gradeUmpires = { ...(org.gradeUmpires || {}) };
   const sug = suggestGroups(compNames, org.name || '', groups);
   for (const [grade, comp] of gradeComp) {
-    if (!(grade in gradeUmpires)) gradeUmpires[grade] = suggestUmpires(grade, comp);
+    if (!(grade in gradeUmpires)) gradeUmpires[grade] = suggestUmpires(grade, comp, { juniors: !!org.juniorsUmpired });
     const s = sug.groups.find(g => g.key === sug.compGroup[comp]) || sug.groups[0];
     const same = groups.find(g => g.name === s.name);
     if (same) gradeGroups[grade] = same.key;

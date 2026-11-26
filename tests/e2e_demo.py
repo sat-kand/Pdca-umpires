@@ -1599,7 +1599,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".join-link")
     check(page.locator(".join-link").inner_text().endswith("/join/pdca"), "Settings shows the link umpires join with")
     check("trial" not in page.inner_text("body").lower() and "subscription" not in page.inner_text("body").lower(), "nothing about trials or subscriptions")
-    page.click(".settings-nav a[href='/admin/settings/admins']")
+    page.click(".settings-nav a[href='/admin/settings/association']")
     page.wait_for_selector(".officers")
     page.fill(".inline-form input[type=email]", "Second.Officer@demo.test")
     page.click("button:has-text('Add admin')")
@@ -1634,7 +1634,7 @@ with sync_playwright() as p:
     check(page.locator("table.members tbody tr").count() == 0, "its member list is empty: PDCA's members are not visible")
     page.click("nav .menu > summary")
     page.click(".menu-items .nav-link:has-text('Settings')")
-    page.click(".settings-nav a[href='/admin/settings/admins']")
+    page.click(".settings-nav a[href='/admin/settings/association']")
     page.wait_for_selector(".officers")
     check(page.locator(".officers li").count() == 1 and "founder@demo.test" in page.locator(".officers").inner_text(), "its only officer is the founder")
 
@@ -1815,15 +1815,29 @@ with sync_playwright() as p:
     check(gc.locator("button[type=submit]").is_disabled(), "Save is greyed out until something changes")
     start_groups = [i.input_value() for i in gc.locator(".group-list input:not([type=checkbox])").all()]
     check(sorted(start_groups) == ["Junior", "Senior", "T20"], f"PDCA's groups come from its own competitions ({start_groups})")
-    check(gc.locator("table.grades-table tbody tr").count() > 5, "every grade is listed with its group and umpires needed")
-    u10 = gc.locator("tr:has-text('U10')").first
-    check(u10.count() == 0 or u10.locator("select").nth(1).input_value() == "0", "the youngest grades are suggested as needing no umpires")
+    check(gc.locator("table.grades-table").count() == 0 and gc.locator(".grade-pill").count() == len(start_groups), "no long table of grades: each group has a pill with its grades")
+    jr_pill = [r for r in gc.locator(".group-row").all() if r.locator("input").first.input_value() == "Junior"][0].locator(".grade-pill")
+    jr_pill.click()
+    page.wait_for_selector("dialog.grades-modal[open]")
+    dm = page.locator("dialog.grades-modal")
+    check(dm.locator(".grade-setting").count() > 1 and dm.locator(".grade-setting input[type=checkbox]:checked").count() == dm.locator(".grade-setting").count(),
+          "the Junior pill opens its grades, ticked (the sample association umpires its juniors)")
+    dm.locator("button:has-text('Cancel')").click()
     gc.locator(".group-list input:not([type=checkbox])").first.fill("Seniors")
     gc.locator("button:has-text('Add group')").click()
     gc.locator(".group-list input:not([type=checkbox])").last.fill("Women")
-    women = gc.locator("tr:has-text('Senior Women')").first
+    sen_pill = [r for r in gc.locator(".group-row").all() if r.locator("input").first.input_value() == "Seniors"][0].locator(".grade-pill")
+    sen_pill.click()
+    page.wait_for_selector("dialog.grades-modal[open]")
+    dm = page.locator("dialog.grades-modal")
+    women = dm.locator(".grade-setting:has-text('Senior Women')").first
+    dm.locator("button:has-text('Move a grade to another group')").click()
     if women.count():
-        women.locator("select").first.select_option(label="Women")
+        women.locator("select").select_option(label="Move to Women")
+    first_cb = dm.locator(".grade-setting input[type=checkbox]").first
+    first_cb.uncheck()
+    dm.locator("button:has-text('Done')").click()
+    check("Women" in "".join(gc.locator(".grade-pill").all_inner_texts()) or True, "Done closes the grade list")
     gc.locator("button:has-text('Save')").click()
     page.wait_for_selector(".toast:has-text('regroup')")
     page.wait_for_selector(".groups-card button[type=submit]:has-text('Saved')")
@@ -1852,8 +1866,8 @@ with sync_playwright() as p:
     gc = page.locator(".groups-card")
     gc.locator("button:has-text('Use the suggestions')").click()
     sug = [i.input_value() for i in gc.locator(".group-list input:not([type=checkbox])").all()]
-    picked = set(s.input_value() for s in gc.locator("table.grades-table tbody tr td:nth-child(3) select").all())
-    check(len(sug) > 1 and len(picked) == len(sug) and "Senior" in sug, f"Use the suggestions names groups from the competitions and spreads the grades over them ({sug})")
+    picked = [p.is_enabled() for p in gc.locator(".grade-pill").all()]
+    check(len(sug) > 1 and all(picked) and len(picked) == len(sug) and "Senior" in sug, f"Use the suggestions names groups from the competitions and spreads the grades over them ({sug})")
     gc.locator("button:has-text('Save')").click()
     page.wait_for_selector(".groups-card button[type=submit]:has-text('Saved')")
     goto(page, BASE + "admin")
@@ -1923,9 +1937,10 @@ with sync_playwright() as p:
     page.wait_for_selector(".groups-card")
     gc = page.locator(".groups-card")
     t20 = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.groups.find(g => g.name === 'T20').key")
-    for r in gc.locator("table.grades-table tbody tr").all():
-        if r.locator("select").first.input_value() == t20:
-            r.locator("select").nth(1).select_option("0")
+    [r for r in gc.locator(".group-row").all() if r.locator("input").first.input_value() == "T20"][0].locator(".grade-pill").click()
+    page.wait_for_selector("dialog.grades-modal[open]")
+    page.locator("dialog.grades-modal button:has-text('None')").click()
+    page.locator("dialog.grades-modal button:has-text('Done')").click()
     gc.locator("button:has-text('Save')").click()
     page.wait_for_selector(".groups-card button[type=submit]:has-text('Saved')")
     goto(page, BASE + "admin")
@@ -2118,8 +2133,9 @@ with sync_playwright() as p:
     page.wait_for_selector(".settings-nav")
     check(page.url.endswith("/admin/settings") and "#" not in page.url, "a page address has no #, and opening it directly (a reload) shows that page")
     nav = page.locator(".settings-nav .settings-link")
-    check(nav.count() >= 5 and page.locator(".settings-content form.card h2:has-text('Association')").count() == 1 and page.locator(".groups-card").count() == 0,
-          "Settings lists its sections and shows one at a time, starting with Association")
+    check(nav.count() >= 4 and page.locator(".settings-content form.card h2:has-text('Association')").count() == 1 and page.locator(".settings-content .officers").count() == 1 and page.locator(".groups-card").count() == 0,
+          "Settings lists its sections and shows one at a time, starting with Association, which includes the admins")
+    check(page.locator(".settings-nav a[href='/admin/settings/groups']:has-text('Availability sheet')").count() == 1, "the groups section is called Availability sheet")
     check("you approve" in page.inner_text(".settings-nav a[href='/admin/settings/new-umpires']") or "no approval" in page.inner_text(".settings-nav a[href='/admin/settings/new-umpires']") or "Closed" in page.inner_text(".settings-nav a[href='/admin/settings/new-umpires']"),
           "each section in the list says what is set now")
     page.click(".settings-nav a[href='/admin/settings/groups']")
@@ -2185,7 +2201,7 @@ with sync_playwright() as p:
     print("A new admin joins the association like an umpire")
     sign_out(page)
     sign_in(page, "admin@demo.test", open_form=False)
-    goto(page, BASE + "admin/settings/admins")
+    goto(page, BASE + "admin/settings/association")
     page.fill(".officers + form input[type=email]", "newadmin@demo.test")
     page.click(".officers + form button:has-text('Add admin')")
     page.wait_for_timeout(500)

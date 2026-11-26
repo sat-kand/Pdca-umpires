@@ -102,14 +102,18 @@ def run_officer(browser):
         check(btn.count() == 1, "Settings has the Update from PlayHQ button")
         if btn.count():
             btn.click()
-            page.wait_for_selector(".groups-card table.grades-table", timeout=120000)
+            page.wait_for_selector(".groups-card .grade-pill", timeout=120000)
             page.wait_for_timeout(1500)
-        rows = page.locator("table.grades-table tbody tr")
-        check(rows.count() >= 1, f"Settings lists grades after the update ({rows.count()})")
+        shown = []
+        for pill in page.locator(".groups-card .grade-pill:enabled").all():
+            pill.click()
+            page.wait_for_selector("dialog.grades-modal[open]")
+            shown += [x.strip() for x in page.locator("dialog.grades-modal .grade-names > span:first-child").all_inner_texts()]
+            page.locator("dialog.grades-modal button:has-text('Cancel')").click()
+        check(len(shown) >= 1, f"Settings lists grades after the update, in each group's grade list ({len(shown)})")
         cfg = api(page, "GET", "associations?select=id,config&id=eq.pdca")
         grade_comps = ((cfg["body"] or [{}])[0].get("config") or {}).get("gradeComps") or {}
         check(len(grade_comps) >= 1, "the grade list from PlayHQ was saved (gradeComps)")
-        shown = [r.locator("td").first.locator("span.muted").inner_text().strip() for r in rows.all()]   # the full grade name (the chip beside it is the short form)
         norm = lambda x: " ".join(str(x).split())                        # the page collapses runs of spaces; so compare without them
         keys = [norm(k) for k in grade_comps]
         stale = [g for g in shown if g and norm(g) not in keys]
