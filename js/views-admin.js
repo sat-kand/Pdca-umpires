@@ -815,7 +815,7 @@ export async function viewUmpires(ctx) {
   const text = v => (v ? v : h('span', { class: 'muted' }, '—'));
   const types = membershipTypes(store.org);
   const membershipTypeCell = u => {
-    if (!types.length) return h('a', { class: 'muted', href: '/admin/settings' }, 'Set up types');
+    if (!types.length) return h('span', { class: 'muted' }, '—');
     const sel = h('select', { class: 'in-sm', 'aria-label': 'membership', onchange: e => save(u, { membership: e.target.value }) },
       h('option', { value: '' }, '—'), types.map(t => h('option', { value: t.name, selected: u.membership === t.name }, t.name)));
     const fee = feeFor(store.org, u.membership);

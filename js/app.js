@@ -107,7 +107,7 @@ function drawHeader() {
       S.isAdmin && h('nav', { class: 'nav' }, link('/admin', 'Allocate'), link('/admin/availability', 'Availability'),
         // Members, Settings and the association picker sit together, out of the way of the weekly work.
         h('details', { class: 'menu' }, h('summary', { class: 'nav-link' }, 'My Organisation', S.pending > 0 && h('span', { class: 'badge', 'aria-label': `${S.pending} waiting to join` }, S.pending)),
-          h('div', { class: 'menu-items' }, S.org && h('div', { class: 'menu-head' }, h('strong', {}, S.org.name)),
+          h('div', { class: 'menu-items' }, S.org && h('div', { class: 'menu-head' }, h('strong', { class: 'menu-org' }, S.org.name)),
             link('/admin/members', 'Members'), link('/admin/past', 'Past allocations'), link('/admin/settings', 'Settings'), ...switchItems()))),
       // The account menu, top right as on most sites: their name, then profile, availability and Sign out.
       S.user && (() => {

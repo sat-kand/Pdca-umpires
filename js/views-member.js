@@ -153,7 +153,7 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
       if (store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error(e));
       drawType(); toast('Saved', 'ok');
     });
-    setChildren(typeBox, types.length ? sel : h('a', { class: 'muted', href: '/admin/settings' }, 'Set up types in Settings'), f ? h('span', { class: 'muted' }, money(f)) : null);
+    setChildren(typeBox, types.length ? sel : h('span', { class: 'muted' }, 'No membership types yet'), f ? h('span', { class: 'muted' }, money(f)) : null);
   };
   drawType();
 

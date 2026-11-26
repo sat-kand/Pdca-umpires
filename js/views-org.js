@@ -67,6 +67,8 @@ export async function viewOrgSettings(ctx, section) {
   };
 
   // Membership: when it falls due, and the types an association offers, each with its own fee.
+  // Not shown for now: membership types and fees come back with payments.
+  // eslint-disable-next-line no-unused-vars
   function membershipCard() {
     const org = store.org;
     const m = org.membership || {};
@@ -388,7 +390,6 @@ export async function viewOrgSettings(ctx, section) {
   const SECTIONS = [
     { key: 'association', title: 'Association', icon: '🏏' },
     { key: 'groups', title: 'Availability sheet', icon: '🗂' },
-    { key: 'membership', title: 'Membership', icon: '💳' },
     { key: 'new-umpires', title: 'New umpires', icon: '✉️' },
     { key: 'player-umpires', title: 'Player umpires', icon: '🙋' },
   ];
@@ -446,7 +447,6 @@ export async function viewOrgSettings(ctx, section) {
             await draw();
           }) }, add, addBtn));
       },
-      membership: () => membershipCard(),
       'new-umpires': () => [
         h('div', { class: 'card' }, h('h2', {}, 'Link for umpires'),
           h('p', { class: 'muted' }, 'Send this link to your umpires.'),

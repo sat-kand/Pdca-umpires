@@ -858,27 +858,12 @@ with sync_playwright() as p:
     page.wait_for_selector("table.members")
     check(page.locator("h1").first.inner_text() == "Members", "the old /admin/umpires link still opens it")
 
-    print("Admin: membership settings")
+    print("Admin: no Membership section in Settings (it comes with payments)")
     page.click("nav .menu > summary")
+    check(page.locator(".menu-head .menu-org").evaluate("e => e.scrollWidth <= e.clientWidth + 1") and page.locator(".menu-head .menu-org").inner_text().startswith("Parramatta"), "My Organisation shows the whole association name, not cut off")
     page.click(".menu-items .nav-link:has-text('Settings')")
-    page.click(".settings-nav a[href='/admin/settings/membership']")
-    page.wait_for_selector(".type-rows")
-    rows = page.locator(".type-row")
-    check(rows.count() == 3 and rows.first.locator("input").first.input_value() == "Ordinary member" and rows.first.locator("input[type=number]").input_value() == "60",
-          "Settings lists the membership types with their own fees")
-    page.click("button:has-text('Add type')")
-    page.locator(".type-row").last.locator("input").first.fill("Student member")
-    page.locator(".type-row").last.locator("input[type=number]").fill("15")
-    check(page.locator(".daymonth select").count() == 0 and "renew" not in page.inner_text("form:has(.type-rows)").lower(), "no renewal date: it is not built yet")
-    page.click("button:has-text('Save membership')")
-    page.wait_for_selector(".toast:has-text('Membership saved')")
-    reload(page)
-    page.wait_for_selector(".type-rows")
-    check(page.locator(".type-row").count() == 4, "the new type is saved")
-    page.locator(".type-row").last.locator("button:has-text('Remove')").click()
-    page.click("button:has-text('Save membership')")
-    page.wait_for_selector(".toast:has-text('Membership saved')")
-    check(page.locator(".type-row").count() == 3, "a type can be removed again")
+    page.wait_for_selector(".settings-nav")
+    check(page.locator(".settings-nav a[href='/admin/settings/membership']").count() == 0, "Settings has no Membership section")
 
     print("Members: membership type and fee")
     page.click("nav .menu > summary")
@@ -2165,7 +2150,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".settings-nav")
     check(page.url.endswith("/admin/settings") and "#" not in page.url, "a page address has no #, and opening it directly (a reload) shows that page")
     nav = page.locator(".settings-nav .settings-link")
-    check(nav.count() >= 4 and page.locator(".settings-content form.card h2:has-text('Association')").count() == 1 and page.locator(".settings-content .officers").count() == 1 and page.locator(".groups-card").count() == 0,
+    check(nav.count() >= 3 and page.locator(".settings-content form.card h2:has-text('Association')").count() == 1 and page.locator(".settings-content .officers").count() == 1 and page.locator(".groups-card").count() == 0,
           "Settings lists its sections and shows one at a time, starting with Association, which includes the admins")
     check(page.locator(".settings-nav a[href='/admin/settings/groups']:has-text('Availability sheet')").count() == 1, "the groups section is called Availability sheet")
     check("you approve" in page.inner_text(".settings-nav a[href='/admin/settings/new-umpires']") or "no approval" in page.inner_text(".settings-nav a[href='/admin/settings/new-umpires']") or "Closed" in page.inner_text(".settings-nav a[href='/admin/settings/new-umpires']"),
