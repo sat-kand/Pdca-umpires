@@ -545,3 +545,10 @@ main.enter > * { animation: page-in .18s ease-out; }
 .grade-names { display: flex; flex-direction: column; min-width: 0; }
 .grade-move { max-width: 11rem; }
 .grade-list.hide-move .grade-move { display: none; }
+
+.grade-pill.empty { border-style: dashed; background: #fff; }
+.bring-grades { margin-top: .8rem; border: 1px solid var(--line); border-radius: 10px; padding: .5rem .7rem; }
+.bring-grades > summary { cursor: pointer; font-weight: 600; color: var(--green-d); }
+.bring-group h4 { margin: .7rem 0 .2rem; }
+.bring-group .grade-row { padding: .35rem 0; }
+.grades-modal .modal-actions { position: sticky; bottom: -1.1rem; background: #fff; padding: .6rem 0 .2rem; margin-bottom: -.2rem; border-top: 1px solid var(--line); }
