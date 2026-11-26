@@ -249,6 +249,7 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
     async getUmpire(email) { return view(A()).getUmpire(email); },
     async saveUmpire(u) { return saveUmpire(A(), u); },
     async deleteUmpire(email) { await ok(sb.from('memberships').delete().eq('association_id', A()).eq('email', email)); },
+    async getUmpireByPid(pid) { return rowToUmpire(await one(sb.from('memberships').select('*, people(*)').eq('association_id', A()).eq('pid', pid))); },
     async listUmpires() { return (await all(() => sb.from('memberships').select('*, people(*)').eq('association_id', A()).order('pid'))).map(rowToUmpire); },
 
     // ----- rounds & games -----
@@ -259,6 +260,13 @@ export async function createSupabaseStore(cfg, { createClient } = {}) {
       await ok(sb.from('rounds').upsert(roundToRow(A(), { ...(old || {}), ...r })));
     },
     listGames(rid) { return gamesOf(A(), rid); },
+    // Every round's games in two queries (not two per round), each round's list by its id.
+    async gamesByRound() {
+      const games = await gamesOf(A());
+      const by = new Map();
+      for (const g of games) { const k = games.roundOf.get(g.id); (by.get(k) || by.set(k, []).get(k)).push(g); }
+      return by;
+    },
     async saveGame(rid, g) { await saveItems(A(), rid, [g]); },
     async saveGames(rid, games) { await saveItems(A(), rid, games); },
 

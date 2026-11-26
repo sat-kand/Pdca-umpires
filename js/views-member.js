@@ -28,22 +28,26 @@ const ymd = iso => (iso || '').slice(0, 10);
 export async function viewMember(ctx, pid, { self = false } = {}) {
   const { store } = ctx;
   const today = todayLocal();
-  const u = self ? ctx.S.umpire : (await store.listUmpires()).find(x => x.pid === pid);
+  const u = self ? ctx.S.umpire : store.getUmpireByPid ? await store.getUmpireByPid(pid) : (await store.listUmpires()).find(x => x.pid === pid);
   if (!u) return h('p', { class: 'notice warn' }, 'Member not found. ', h('a', { href: '/admin/members' }, 'Back to Members'));
 
+  // Everything at once: one round trip's wait, not one after another.
   const season = await store.getSeason();
-  const [avail, rounds, withdrawals] = await Promise.all([
+  const [avail, rounds, withdrawals, gamesBy, othersRaw] = await Promise.all([
     season ? store.getAvailability(season.id, u.email) : null,
     store.listRounds(),
     !self && store.listWithdrawals ? store.listWithdrawals() : [],
+    !self && store.gamesByRound ? store.gamesByRound() : null,
+    store.listMemberships ? store.listMemberships(u.email).catch(e => { console.error('memberships', e); return []; }) : [],
   ]);
 
   // ---- appointments in this association: every round, every game day they are in
   const appts = [];
   const gameById = new Map();
-  for (const r of rounds) {
-    if (self && !r.published) continue;                 // members only ever see published rounds
-    const games = await store.listGames(r.id);
+  const shown = rounds.filter(r => !self || r.published);    // members only ever see published rounds
+  const lists = gamesBy ? shown.map(r => gamesBy.get(r.id) || []) : await Promise.all(shown.map(r => store.listGames(r.id)));
+  for (const [i, r] of shown.entries()) {
+    const games = lists[i];
     for (const g of games) gameById.set(g.id, g);
     for (const g of games) {
       if (g.removed) continue;
@@ -77,8 +81,8 @@ export async function viewMember(ctx, pid, { self = false } = {}) {
   const since = u.memberSince || (past[0] && past[0].d.date) || '';
   let others = [];
   try {
-    if (!self && store.saveMembershipLink) await store.saveMembershipLink(u.email, membershipLink(store.org, u));
-    others = store.listMemberships ? (await store.listMemberships(u.email)).filter(m => m.orgId !== store.org.id) : [];
+    if (!self && store.saveMembershipLink) store.saveMembershipLink(u.email, membershipLink(store.org, u)).catch(e => console.error(e));
+    others = (othersRaw || []).filter(m => m.orgId !== store.org.id);
   } catch (e) { console.error('memberships', e); }
 
   // ---- availability this season: every upcoming playing date by competition, from the season calendar

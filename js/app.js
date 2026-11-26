@@ -126,8 +126,10 @@ function drawHeader() {
     S.org && S.org.plan === 'suspended' && h('div', { class: 'demo-banner' }, 'This association has been set to read-only, so changes cannot be saved.'));
 }
 
+let typed = false;                                   // see busyHere in boot
 async function render(quiet) {
   if (!S.store) return;
+  typed = false;
   const id = ++renderId;
   drawHeader();
   const path = routePath();
@@ -226,7 +228,14 @@ async function boot() {
   });
   // Coming back to the officer's pages (another tab, the phone unlocked): redraw, so choices and
   // pull-outs made meanwhile are applied to the board without a manual refresh.
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && routePath().startsWith('/admin')) render(true); });
+  // Only the pages that show live allocation data, and never over something half done: a chosen file, typed or
+  // pasted text, a changed drop-down, an open dialog or an unsaved form would be lost.
+  const LIVE = /^\/admin(?:\/round\/[^/]+(?:\/[a-z-]+)?|\/availability)?\/?$/;
+  // Something typed, pasted or chosen as a file since the page was drawn (drop-downs on the board save at once).
+  main.addEventListener('input', e => { if (e.target.matches('textarea, input:not([type=checkbox]):not([type=radio]), input[type=file]')) typed = true; }, true);
+  main.addEventListener('change', e => { if (e.target.matches('input[type=file]')) typed = true; }, true);
+  const busyHere = () => typed || !!document.querySelector('dialog[open]');
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && LIVE.test(routePath()) && !busyHere()) render(true); });
   try { await S.store.completeLink(async () => prompt('To finish signing in, please type the email address the link was sent to:')); }
   catch (e) { if (e && e.signInLink) S.linkProblem = e.message; else toast('Sign-in problem: ' + (e.message || e), 'err'); }
   // If starting takes far too long (a network that never answers, say), say so instead of showing "Starting..." for ever.

@@ -154,6 +154,9 @@ export function createDemoStore() {
     async getRound(id) { return clone(o().rounds[id]) || null; },
     async saveRound(r) { o().rounds[r.id] = { ...(o().rounds[r.id] || {}), ...clone(r) }; save(); },
     async listGames(rid) { return Object.values(clone(o().games[rid] || {})); },
+    // Every round's games at once, each round's list by its id.
+    async gamesByRound() { return new Map(Object.entries(clone(o().games)).map(([rid, gs]) => [rid, Object.values(gs)])); },
+    async getUmpireByPid(pid) { return clone(Object.values(o().umpires).find(u => u.pid === pid)) || null; },
     async saveGame(rid, g) { (o().games[rid] ||= {})[g.id] = clone(g); save(); },
     async saveGames(rid, games) { for (const g of games) (o().games[rid] ||= {})[g.id] = clone(g); save(); },
 

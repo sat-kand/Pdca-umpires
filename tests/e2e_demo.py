@@ -759,6 +759,10 @@ with sync_playwright() as p:
     if bring.get_attribute("open") is None:
         bring.locator("> summary").click()
     page.fill(".import-step textarea >> nth=0", "Pat, Example, pat@example.com, 0400 000 000, L3-7782\nbad line")
+    page.evaluate("() => { window.__mark = 1; document.querySelector('.import-step').dataset.mark = 'x'; document.dispatchEvent(new Event('visibilitychange')); }")
+    page.wait_for_timeout(600)
+    check(page.locator(".import-step textarea >> nth=0").input_value().startswith("Pat, Example") and page.locator(".import-step[data-mark=x]").count() == 1,
+          "coming back to the tab keeps the Members page as it was: pasted text (and a chosen file) stay")
     page.click(".import-step button:has-text('Check it') >> nth=0")
     page.click(".import-step button:has-text('Import') >> nth=0")
     page.wait_for_selector("a.member-link:has-text('Pat Example')")
