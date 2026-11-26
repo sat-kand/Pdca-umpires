@@ -176,6 +176,10 @@ export async function viewOrgSettings(ctx, section) {
   // Groups and grades: which grades are allocated together (Allocate tiles, availability, reports), and
   // how many umpires each grade needs. Suggested from the fixtures; the officer adjusts once.
   async function groupsCard() {
+    // Opening this page reads the grades and competitions from PlayHQ as they are now (the demo's are made up).
+    if (store.playhq && store.mode !== 'demo') {
+      try { await syncFixtures(store, { today: todayLocal() }); } catch (e) { console.error(e); toast(`Could not get the latest grades from PlayHQ (${e.message || e}). Showing the last ones.`, 'warn'); }
+    }
     const org = store.org;
     let lists = [];
     try { lists = store.listFixtureLists ? await store.listFixtureLists() : []; } catch (e) { console.error(e); }
