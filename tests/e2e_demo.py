@@ -903,6 +903,7 @@ with sync_playwright() as p:
     page.set_input_files(".import-step input[type=file]", xlsx)
     page.wait_for_selector(".import-map .map-row")
     check(field_of("Contact number") == "phone", "next time, the columns come in the same way")
+    check(page.locator(".value-map[data-field=membership]").count() == 0, "when every membership type in the sheet is already one of theirs, the Membership types card is not shown")
     page.evaluate("t => { const k = 'pdca-umpires-demo-v2'; const d = JSON.parse(localStorage.getItem(k)); d.orgs.pdca.org.membership = JSON.parse(t); localStorage.setItem(k, JSON.stringify(d)); }", types_before)   # the Settings checks below start from the seeded types
     page.reload()
     page.select_option(".member-tools select", "inactive")

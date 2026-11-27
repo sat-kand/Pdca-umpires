@@ -812,7 +812,7 @@ export async function viewUmpires(ctx) {
   const wrap = h('div');
   const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { console.error(e); toast(e.message || String(e), 'err'); } };
   const ui = homeMembers;                                // the filter and open cards stay while the page is open
-  const reload = async () => { members = await store.listUmpires(); await loadAvail(); draw(); };
+  const reload = async () => { members = await store.listUmpires(); types = membershipTypes(store.org); await loadAvail(); draw(); };
 
   // A member's own details (name, date of birth, address, mobile, accreditation) are theirs to keep up
   // to date; the officer only sets what the association decides: approval and membership type.
@@ -823,7 +823,7 @@ export async function viewUmpires(ctx) {
     if (redraw) draw();
   })();
   const text = v => (v ? v : h('span', { class: 'muted' }, '—'));
-  const types = membershipTypes(store.org);
+  let types = membershipTypes(store.org);
   const membershipTypeCell = u => {
     if (!types.length) return h('span', { class: 'muted' }, '—');
     const sel = h('select', { class: 'in-sm', 'aria-label': 'membership', onchange: e => save(u, { membership: e.target.value }) },
@@ -917,6 +917,8 @@ export async function viewUmpires(ctx) {
             h('span', { class: 'map-to' }, input, chip, removeBtn));
         };
         const rowsEl = vals.map(row);
+        // Every answer is already one the association has: nothing to decide, so the card is not shown.
+        if (vals.every(v => { const x = values[f][headKey(v)]; return x && isKnown(f, x); })) return null;
         drawSummary();
         const have = known(f);
         return h('div', { class: 'value-map', 'data-field': f },
