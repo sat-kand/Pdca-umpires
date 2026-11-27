@@ -176,9 +176,7 @@ export async function viewAdminHome(ctx) {
   // Inside a group's tile: its two-day games from an earlier week whose second day is this week.
   const contLines = (cont, week) => cont.length > 0 && h('ul', { class: 'plain tile-cont' }, cont.map(r => h('li', { class: 'info-panel' },
     h('span', { class: 'info-i', 'aria-hidden': 'true' }, 'i'),
-    h('a', { href: `/admin/round/${r.id}` },
-      h('strong', {}, (r.dates || []).filter(d => d >= week && d <= addDays(week, 6)).map(fmtDay).join(' & ')),
-      ' ', h('span', { class: 'muted' }, `day 2 of the two-day games from ${fmtDay(r.start)}, allocated with that round`)))));
+    h('span', {}, `Day 2 of the two-day games from ${fmtDay(r.start)}, allocated ${weekOf(r.start, startDay) === addDays(week, -7) ? 'last week' : `in the week of ${fmtDay(weekOf(r.start, startDay))}`}.`))));
   // A group with only second days this week still gets its tile, so it sits with the group.
   const contTile = (comp, cont, week) => h('div', { class: 'card comp-tile cont-only' },
     h('h2', {}, compLabel(comp)), contLines(cont, week));

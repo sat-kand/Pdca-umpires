@@ -590,10 +590,7 @@ main.enter > * { animation: page-in .18s ease-out; }
   border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: tu-spin .7s linear infinite; }
 @keyframes tu-spin { to { transform: rotate(360deg); } }
 .tile-cont { margin: .7rem 0 0; display: grid; gap: .4rem; font-size: .9rem; }
-.info-panel { display: flex; align-items: center; gap: .7rem; padding: .7rem .95rem; border-radius: 10px; background: #e6e9f7; color: var(--ink); }
-.info-i { flex: none; width: 1.3rem; height: 1.3rem; border-radius: 50%; background: #1e2a9b; color: #fff; display: grid; place-items: center;
+.tile-cont > .info-panel, .info-panel { display: flex; align-items: center; gap: .7rem; padding: .7rem .95rem; border-radius: 10px; background: var(--green-l); color: var(--ink); }
+.info-i { flex: none; width: 1.3rem; height: 1.3rem; border-radius: 50%; background: var(--green-d); color: #fff; display: grid; place-items: center;
   font: italic 700 .8rem/1 Georgia, 'Times New Roman', serif; margin-top: .05rem; }
-.tile-cont a { color: inherit; text-decoration: none; }
-.tile-cont a:hover strong { text-decoration: underline; }
-.tile-cont .muted { color: #4a4f63; }
 .comp-tile.cont-only .tile-cont { margin-top: .3rem; }
