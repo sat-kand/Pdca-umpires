@@ -225,11 +225,16 @@ with sync_playwright() as p:
     page.click("button:has-text('Load sample data')")
     page.wait_for_selector(".tile-round")
     tile = lambda name, n=0: page.locator(f".comp-tile:has(h2:has-text('{name}'))").nth(n)
-    check(page.locator(".comp-tile h2").all_inner_texts() == ["Senior", "Junior", "T20", "Junior"] and page.locator("section.week").count() == 2,
-          "one section per week: this week Senior and Junior; next week T20 and the Junior one-day games on the two-day games' second Saturday (groups in the order the fixtures list the competitions)")
+    check(page.locator(".comp-tile h2").all_inner_texts() == ["Senior", "Junior", "T20", "Junior", "Senior"] and page.locator("section.week").count() == 2,
+          "one section per week: this week Senior and Junior; next week T20, the Junior one-day games on the two-day games' second Saturday, and Senior's second day")
+    st2 = page.locator("section.week").nth(1).locator(".comp-tile.cont-only:has(h2:text-is('Senior'))")
+    check(st2.count() == 1 and "day 2 of the two-day games" in st2.inner_text() and st2.locator("a[href^='/admin/round/']").count() == 1,
+          "a group with only second days that week gets its own small tile saying so, linking to the round")
     check(page.locator(".week-head h2").all_inner_texts()[:2] == ["This week", "Next week"], "weeks are headed This week, Next week")
     wk2 = page.locator("section.week").nth(1).inner_text()
-    check(f"two-day games from {S1} continue {S2}" in wk2, "next week lists the two-day games continuing from this week, instead of repeating them")
+    jt2 = tile("Junior", 1).inner_text()
+    check(S2 in jt2 and f"day 2 of the two-day games from {S1}" in jt2 and page.locator("ul.continuing").count() == 0,
+          "next week's Junior tile itself says its two-day games from this week have day 2 that week (no separate line above the tiles)")
     check("One Day" in tile("Junior", 1).inner_text() and "Two Day" not in tile("Junior", 1).inner_text() and re.search(N2.upper(), tile("Junior", 1).inner_text().upper()) and f"{sat1.day}/{sat2.day}" not in tile("Junior", 1).inner_text(), "the extra Junior tile has its own date and only One Day games")
     check(page.locator("button:has-text('Load next week')").count() == 1, "Load next week is offered: the sample season has later weeks")
     bx = page.locator(".load-more button").bounding_box()

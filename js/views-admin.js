@@ -145,7 +145,7 @@ export async function viewAdminHome(ctx) {
 
   const startDay = Number.isInteger(store.org && store.org.weekStart) ? store.org.weekStart : 1;
   // A tile shows only its own week's days; a two-day game's second day next week is a note, not a date.
-  function tile(r, week) {
+  function tile(r, week, cont = []) {
     const c = COMPS.find(x => x.key === r.comp) || { label: compLabel(r.comp) };
     const st = r.stats || { needed: 0, filled: 0 };
     const picked = r.picked || 0;
@@ -170,17 +170,32 @@ export async function viewAdminHome(ctx) {
             ? [h('span', { class: 'chip' }, `${picked} grade${picked === 1 ? '' : 's'} selected`), ' ',
                (n => h('span', { class: 'chip ' + (st.games && n >= st.games ? 'ok' : 'warn') }, `${n} / ${st.games || 0} filled`))(st.gamesFilled ?? 0), ' ',
                (p => h('span', { class: 'chip ' + p.cls }, p.short))(publishState(r))]
-            : h('span', { class: 'chip warn' }, 'Choose grades'))));
+            : h('span', { class: 'chip warn' }, 'Choose grades'))),
+      contLines(cont, week));
   }
+  // Inside a group's tile: its two-day games from an earlier week whose second day is this week.
+  const contLines = (cont, week) => cont.length > 0 && h('ul', { class: 'plain tile-cont' }, cont.map(r => h('li', {},
+    h('a', { href: `/admin/round/${r.id}` },
+      h('strong', {}, (r.dates || []).filter(d => d >= week && d <= addDays(week, 6)).map(fmtDay).join(' & ')),
+      ' ', h('span', { class: 'muted' }, `day 2 of the two-day games from ${fmtDay(r.start)}, allocated with that round`)))));
+  // A group with only second days this week still gets its tile, so it sits with the group.
+  const contTile = (comp, cont, week) => h('div', { class: 'card comp-tile cont-only' },
+    h('h2', {}, compLabel(comp)), contLines(cont, week));
   const weekName = w => {
     const now = weekOf(today, startDay);
     return w === now ? 'This week' : w === addDays(now, 7) ? 'Next week' : w < now ? 'Started last week' : `Week of ${fmtDay(w)}`;
   };
-  // Second days of two-day games that started in an earlier week, shown under the week they fall in.
+  // Second days of two-day games that started in an earlier week, shown in their group's tile for the week they fall in.
   const continuing = week => upcomingRounds(state.rounds, today).filter(r => groupNeedsUmpires(r.comp))
-    .filter(r => weekOf(r.start, startDay) < week && (r.dates || []).some(d => d >= week && d <= addDays(week, 6)))
-    .map(r => h('li', {}, h('a', { href: `/admin/round/${r.id}` }, `${compLabel(r.comp)}: two-day games from ${fmtDay(r.start)}`),
-      ` continue ${(r.dates || []).filter(d => d >= week && d <= addDays(week, 6)).map(fmtDay).join(' & ')} (allocated previous week)`));
+    .filter(r => weekOf(r.start, startDay) < week && (r.dates || []).some(d => d >= week && d <= addDays(week, 6)));
+  const weekTiles = set => {
+    const cont = continuing(set.week);
+    const of = comp => cont.filter(r => (r.comp || firstGroup()) === (comp || firstGroup()));
+    const used = new Set();
+    const tiles = set.map(r => { const c = used.has(r.comp) ? [] : of(r.comp); used.add(r.comp); return tile(r, set.week, c); });
+    const alone = [...new Set(cont.map(r => r.comp))].filter(c => !used.has(c)).map(c => contTile(c, of(c), set.week));
+    return [...tiles, ...alone];
+  };
 
   function draw() {
     // Groups whose grades are all set to None need no umpires: no tile.
@@ -205,8 +220,7 @@ export async function viewAdminHome(ctx) {
         h('button', { class: 'btn small', type: 'button', onclick: async ev => { ev.currentTarget.disabled = true; await dismissWithdrawals(store, state.dropouts); state.dropouts = []; draw(); } }, 'Got it')),
       shown.sets.map(set => h('section', { class: 'week' },
         h('div', { class: 'week-head' }, h('h2', {}, weekName(set.week)), h('span', { class: 'muted' }, `${fmtDay(set.week)} – ${fmtDay(addDays(set.week, 6))}`)),
-        (c => c.length > 0 && h('ul', { class: 'plain continuing muted' }, c))(continuing(set.week)),
-        h('div', { class: 'cards' }, set.map(r => tile(r, set.week))))),
+        h('div', { class: 'cards' }, weekTiles(set)))),
       (e => e.length > 0 && h('div', { class: 'cards' }, e.map(empty)))(COMPS.filter(c => groupNeedsUmpires(c.key) && !currentRound(state.rounds, c.key, today))),
       shown.hasMore && h('div', { class: 'load-more' }, h('button', { class: 'btn', type: 'button', onclick: () => { state.more = ++homeWeeks.more; draw(); } }, 'Load next week')));
   }
