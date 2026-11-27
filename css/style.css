@@ -584,3 +584,8 @@ main.enter > * { animation: page-in .18s ease-out; }
 .chip.st-old { background: var(--green-l); color: var(--green-d); }
 .map-list > .map-row > .map-to { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; justify-self: stretch; }
 .map-list > .map-row > .map-to > select { flex: 1 1 100%; }
+/* A button that is working: a small spinner right away, so a tap never looks missed. */
+.btn.is-busy { cursor: progress; position: relative; }
+.btn.is-busy::before { content: ''; display: inline-block; width: .85em; height: .85em; margin-right: .45em; vertical-align: -.1em;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: tu-spin .7s linear infinite; }
+@keyframes tu-spin { to { transform: rotate(360deg); } }

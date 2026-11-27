@@ -886,8 +886,10 @@ with sync_playwright() as p:
     page.click(".import-step button:has-text('Check it')")
     prev = page.inner_text(".import-step .import-out")
     check("3 new" in prev, f"the check reads all three rows ({prev[:60]!r})")
+    page.evaluate("() => { const b = [...document.querySelectorAll('.import-step button')].find(x => x.textContent === 'Import'); b.addEventListener('click', () => setTimeout(() => { window.__fb = [b.textContent, b.classList.contains('is-busy')]; }, 0)); }")
     page.click(".import-step button:has-text('Import')")
     page.wait_for_selector(".toast:has-text('3 added')")
+    check(page.evaluate("() => window.__fb")[1] is True and page.evaluate("() => window.__fb")[0].startswith("Importing"), "Import shows a spinner and 'Importing…' the moment it is clicked")
     db = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires")
     x, y, z = db["xavier.sample@example.com"], db["yara.sample@example.com"], db["zed.sample@example.com"]
     check(x["firstName"] == "Xavier" and x["lastName"] == "Sample" and x["dob"] == "1980-03-09" and x["accreditation"] == "20/1234-O"

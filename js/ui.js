@@ -53,7 +53,9 @@ export function busy(btn, fn) {
   return async (...a) => {
     if (btn.disabled) return;
     btn.disabled = true;
-    try { await fn(...a); } catch (e) { console.error(e); toast(e.message || String(e), 'err'); } finally { btn.disabled = false; }
+    btn.classList.add('is-busy');                          // a spinner on the button straight away, so the tap shows
+    btn.setAttribute('aria-busy', 'true');
+    try { await fn(...a); } catch (e) { console.error(e); toast(e.message || String(e), 'err'); } finally { btn.disabled = false; btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy'); }
   };
 }
 

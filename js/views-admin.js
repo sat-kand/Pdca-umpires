@@ -1009,8 +1009,13 @@ export async function viewUmpires(ctx) {
     });
     checkBtn.onclick = check;
     importBtn.onclick = busy(importBtn, guard(async () => {
+      const label = importBtn.textContent;
+      importBtn.textContent = 'Importing…';
+      checkBtn.disabled = true;
+      await new Promise(r => requestAnimationFrame(() => setTimeout(r)));   // show it before the work starts
       check();
-      if (!plan || plan.error) return;
+      if (!plan || plan.error) { importBtn.textContent = label; checkBtn.disabled = false; return; }
+      importBtn.textContent = `Importing… 0 of ${plan.people.length}`;
       const res = await applyMembers(store, plan, { newPid, onProgress: (n, of) => { importBtn.textContent = `Importing… ${n} of ${of}`; } });
       for (const p of plan.people) if (store.saveMembershipLink && p.status !== 'existing') {
         const u = { ...(p.existing || {}), email: p.email, membership: p.membership || (p.existing && p.existing.membership) || '', active: true };
