@@ -174,7 +174,8 @@ export async function viewAdminHome(ctx) {
       contLines(cont, week));
   }
   // Inside a group's tile: its two-day games from an earlier week whose second day is this week.
-  const contLines = (cont, week) => cont.length > 0 && h('ul', { class: 'plain tile-cont' }, cont.map(r => h('li', {},
+  const contLines = (cont, week) => cont.length > 0 && h('ul', { class: 'plain tile-cont' }, cont.map(r => h('li', { class: 'info-panel' },
+    h('span', { class: 'info-i', 'aria-hidden': 'true' }, 'i'),
     h('a', { href: `/admin/round/${r.id}` },
       h('strong', {}, (r.dates || []).filter(d => d >= week && d <= addDays(week, 6)).map(fmtDay).join(' & ')),
       ' ', h('span', { class: 'muted' }, `day 2 of the two-day games from ${fmtDay(r.start)}, allocated with that round`)))));
