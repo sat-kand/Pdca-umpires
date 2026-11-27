@@ -285,8 +285,13 @@ with sync_playwright() as p:
         page.click("a.tab:has-text('Back to Allocate')")
         page.wait_for_selector(".comp-tile")
 
+    # A grade that starts with no umpires (as juniors do by default) is still in the popup, unticked.
+    page.evaluate("""() => { const k = 'pdca-umpires-demo-v2'; const db = JSON.parse(localStorage.getItem(k)); const o = db.orgs.pdca.org;
+        o.gradeUmpires = o.gradeUmpires || {}; for (const g of Object.keys(o.gradeGroups || {})) if (/14/.test(g)) o.gradeUmpires[g] = 0;
+        localStorage.setItem(k, JSON.stringify(db)); }""")
+    reload(page); page.wait_for_selector(".comp-tile")
     open_grades("Junior")
-    check(dlg.locator(".grade-row").count() == 2, "popup lists the Junior grades that play this round (U12 Gold, U14 Blue)")
+    check(dlg.locator(".grade-row").count() == 2, "popup lists the Junior grades that play this round (U12 Gold, U14 Blue), including one set to no umpires")
     check("2 games" in dlg.locator(".grade-row:has-text('U12')").inner_text() and "1 game" in dlg.locator(".grade-row:has-text('U14')").inner_text(), "each grade shows its game count")
     check("One Day" in dlg.locator(".grade-row:has-text('U12')").inner_text() and "Two Day" in dlg.locator(".grade-row:has-text('U14')").inner_text() and "Round" not in dlg.locator(".grade-list").inner_text(), "each grade shows its match type, not the round")
     check("No grades selected" in dlg.inner_text(), "nothing ticked at first")
@@ -297,6 +302,9 @@ with sync_playwright() as p:
     check(dlg.locator("select").count() == 0 and "umpire" not in dlg.locator(".grade-row").first.inner_text(), "no 1 / 2 umpires choice in the popup (that is set per game on the board)")
     dlg.locator("button:has-text('Done')").click()
     dlg.wait_for(state="detached")
+    gu = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.gradeUmpires")
+    check(all(v >= 1 for g, v in gu.items() if "14" in g) and page.locator("table.board tr:has-text('U14'), .board :text('U14')").count() > 0,
+          "ticking a grade that had no umpires turns it on: it is on the board and needs umpires from now on")
     back_to_rounds()
     jt = tile("Junior").inner_text()
     check("2 grades selected" in jt and " / " in jt, f"Junior tile shows its grades selected and games filled: {jt!r}")

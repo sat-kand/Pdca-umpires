@@ -5,7 +5,7 @@ import {
   fmtDay, fmtRange, gradeShort, compareGrades, groupSections, allocFor, buildBusyMap, assignmentWarnings,
   slotOptions, recount, summarise, formatSummary, publishState, nameParts, fullName, compareMembers, seasonLoads, autoAllocate, applyChanges, umpireText, slotCount, isPicked, newPid, emailKey,
   joinFieldsFor, joinSettings,
-  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot, umpiresForGrade, suggestUmpires, firstGroup, groupNeedsUmpires, memberStatus, STATUS_LABEL, STATUS_CHIP, membershipOf, MEMBERSHIP_LABEL, MEMBERSHIP_CHIP, MEMBER_CHANGE, canUmpire, isActiveUmpire,
+  availStatus, availKey, compLabel, compKeyOf, roundColumns, COMPS, reliabilityOf, publishedSnapshot, umpiresForGrade, suggestUmpires, firstGroup, setGroups, groupNeedsUmpires, memberStatus, STATUS_LABEL, STATUS_CHIP, membershipOf, MEMBERSHIP_LABEL, MEMBERSHIP_CHIP, MEMBER_CHANGE, canUmpire, isActiveUmpire,
 } from './logic.js';
 import { saveReportPdf } from './report-pdf.js';
 import { applyWithdrawals, dismissWithdrawals } from './withdrawals.js';
@@ -49,8 +49,9 @@ function tabs(rid, active, locked = false) {
 // listed on the board, and the slot totals follow. `onDone` runs after saving.
 async function openGradesModal({ store, round, chosenGames = new Set(), onDone }) {
   const [games, settings] = await Promise.all([store.listGames(round.id), store.getSettings()]);
-  // Grades the association set to 0 umpires (Blast, under-11s, ...) are never offered.
-  const live = games.filter(g => !g.removed && compKeyOf(g) === (round.comp || firstGroup()) && umpiresForGrade(g.grade) !== 0);
+  // Every grade of the group that plays this round. Grades that start with no umpires (juniors, Blast, ...) are
+  // unticked; ticking one here turns it on for the association (Settings no longer sets this).
+  const live = games.filter(g => !g.removed && compKeyOf(g) === (round.comp || firstGroup()));
   const grades = [...new Set(live.map(g => g.grade))].sort(compareGrades);
   const count = gr => live.filter(g => g.grade === gr).length;
   // Umpires per game: what the board has, else what the association set for the grade, else 1.
@@ -90,6 +91,17 @@ async function openGradesModal({ store, round, chosenGames = new Set(), onDone }
         // A game a player umpire chose stays on by itself when its grade is unticked.
         if (!g.puOnly || !g.slots) { g.slots = g.slots || 1; g.puOnly = true; changed.push({ ...g }); }
       } else if (g.slots) { g.slots = 0; changed.push({ ...g }); }
+    }
+    // Grades that were set to no umpires and are ticked now: they need umpires from here on, everywhere (this
+    // round's slots, later rounds, and the dates members give availability for).
+    const turnedOn = grades.filter(gr => want[gr] && umpiresForGrade(gr) === 0);
+    if (turnedOn.length) {
+      const gradeUmpires = { ...((store.org && store.org.gradeUmpires) || {}) };
+      for (const gr of turnedOn) gradeUmpires[gr] = Math.max(1, ...live.filter(g => g.grade === gr).map(perGame));
+      await store.saveOrg({ gradeUmpires, updatedAt: new Date().toISOString() });
+      setGroups({ ...store.org, gradeUmpires });
+      const season = await store.getSeason();
+      if (season) await store.saveSeason({ ...season, updatedAt: '1970-01-01T00:00:00.000Z' });   // availability dates rebuilt with them
     }
     if (changed.length) await store.saveGames(round.id, changed);
     const patch = { ...summarise(games), changedAt: new Date().toISOString() };
