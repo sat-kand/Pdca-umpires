@@ -792,17 +792,27 @@ with sync_playwright() as p:
     if bring.get_attribute("open") is None:
         bring.locator("> summary").click()
     check(page.locator(".import-step select").count() == 0, "the membership file has no active or inactive choice: that follows availability")
-    upload_csv(page, "First name\tLast name\tEmail\tAddress\tMembership type\tMember since\n"
-              "Changed\tName\tumpire1@demo.test\t1 New St\tLife member\t2015\n"
-              f"Pat\tExample\tpat@example.com\t\t{pat_now.get('membership', '')}\t\n"
-              "Quiet\tMember\tquiet@example.com\t\t\t\n"
-              "Keen\tUmpire\tkeen@example.com\t\tOrdinary member\t15/04/2019", "members.tsv")
-    check(page.locator(".import-map select option:has-text('Member since')").count() == 0, "member since is not a field any more")
+    upload_csv(page, "First name\tLast name\tEmail\tAddress\tMembership type\tMember since\tShirt size\n"
+              "Changed\tName\tumpire1@demo.test\t1 New St\tLife member\t2015\tL\n"
+              f"Pat\tExample\tpat@example.com\t\t{pat_now.get('membership', '')}\t\t\n"
+              "Quiet\tMember\tquiet@example.com\t\t\t\tM\n"
+              "Keen\tUmpire\tkeen@example.com\t\tOrdinary member\t15/04/2019\t", "members.tsv")
+    ms = page.locator(".import-map .map-row:has(strong:text-is('Member since'))")
+    check(ms.locator(".chip.new:has-text('New field')").count() == 1 and ms.locator("button.map-remove").count() == 1
+          and page.locator(".import-map .map-row:has(strong:text-is('Email')) button.map-remove").count() == 0
+          and page.locator(".import-map select option:text-is('Ignore')").count() == 0,
+          "a column with no field is a New field with Remove; matched columns have no Remove, and there is no Ignore")
+    ms.locator("button.map-remove").click()
+    check(page.locator(".import-map .map-row:has(strong:text-is('Member since'))").count() == 0 and "Not brought in: Member since" in page.inner_text(".map-removed"),
+          "Remove hides the column; it is listed as not brought in")
+    page.click(".map-removed button:has-text('Member since')")
+    check(page.locator(".import-map .map-row:has(strong:text-is('Member since')) .chip.new").count() == 1, "and can be brought back")
+    page.locator(".import-map .map-row:has(strong:text-is('Member since')) button.map-remove").click()
     page.click(".import-step button:has-text('Check it') >> nth=0")
     prev = page.inner_text(".import-step .import-out >> nth=0")
     check("2 new" in prev and "1 updated" in prev and "1 existing, no change" in prev, f"the check counts new, updated and existing ({prev[:90]!r})")
     upd = page.locator(".import-preview li[data-status=updated]")
-    check(upd.count() == 1 and "Address" in upd.inner_text() and "Membership type" in upd.inner_text() and "Kept as they have it: First name, Last name" in upd.inner_text() and "Updated" in upd.inner_text(),
+    check(upd.count() == 1 and "Address" in upd.inner_text() and "Shirt size" in upd.inner_text() and "Membership type" in upd.inner_text() and "Kept as they have it: First name, Last name" in upd.inner_text() and "Updated" in upd.inner_text(),
           "an updated member says what it adds (a blank address, the membership type) and what is kept as they have it")
     check(page.locator(".import-preview li[data-status=existing]:has-text('pat@example.com') .chip:has-text('Existing')").count() == 1, "someone with nothing to change is tagged Existing, not Update")
     check(page.locator(".import-preview li[data-status=new] .chip:has-text('New')").count() == 2, "and the new people are tagged New")
@@ -813,6 +823,10 @@ with sync_playwright() as p:
     check(u1["name"] == before_u1["name"] and u1.get("phone") == before_u1.get("phone") and u1["membership"] == "Life member" and u1["address"] == "1 New St",
           "an existing member keeps their own details; the blank address is filled in and the membership type changes")
     check(not db["keen@example.com"].get("memberSince") and db["quiet@example.com"].get("approved"), "new people come in as members, with no member-since date")
+    own = page.evaluate("() => (JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.joining || {}).custom || []")
+    shirt = next((q for q in own if q["label"] == "Shirt size"), None)
+    check(shirt and db["quiet@example.com"].get("answers", {}).get(shirt["key"]) == "M" and u1.get("answers", {}).get(shirt["key"]) == "L" and not any(q["label"] == "Member since" for q in own),
+          "a new column becomes the association's own field, with each member's answer; a removed column is not added")
     check("Inactive umpire" in row_of(page, "quiet@example.com").inner_text() and "Active umpire" in row_of(page, "umpire1@demo.test").inner_text(),
           "a new member with no availability is an Inactive umpire; one with Available dates is an Active umpire")
     check(page.evaluate("() => getComputedStyle(document.querySelector('table.members tr[data-pid] td')).opacity") == "1" and row_of(page, "quiet@example.com").get_attribute("class") in ("", None),
@@ -868,8 +882,7 @@ with sync_playwright() as p:
     nm.locator("button.map-remove").click()
     check(nm.locator("input").input_value() == "" and "1 new membership type" in mt.inner_text(), "Remove leaves that answer blank, so the type is not added")
     nm.locator("input").fill("New Member")
-    page.locator(".import-map > .map-list > .map-row:has(strong:text-is('Address')) button.map-remove").click()
-    check(field_of("Address") == "", "Remove beside a column stops it being brought in")
+    check(page.locator(".import-map > .map-list > .map-row button.map-remove").count() == 0, "every column of PDCA's sheet is an existing field: no Remove buttons")
     page.click(".import-step button:has-text('Check it')")
     prev = page.inner_text(".import-step .import-out")
     check("3 new" in prev, f"the check reads all three rows ({prev[:60]!r})")
@@ -878,18 +891,18 @@ with sync_playwright() as p:
     db = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.umpires")
     x, y, z = db["xavier.sample@example.com"], db["yara.sample@example.com"], db["zed.sample@example.com"]
     check(x["firstName"] == "Xavier" and x["lastName"] == "Sample" and x["dob"] == "1980-03-09" and x["accreditation"] == "20/1234-O"
-          and x["accreditationProvider"] == "NSW Cricket Umpires & Scorers Association" and x["membership"] == "Existing Member" and not x.get("address"),
-          "the Excel rows come in: name trimmed, date of birth from the Excel date, accreditation translated, the ignored Address column left out")
+          and x["accreditationProvider"] == "NSW Cricket Umpires & Scorers Association" and x["membership"] == "Existing Member" and x.get("address", "").startswith("1 Test St"),
+          "the Excel rows come in: name trimmed, date of birth from the Excel date, accreditation translated, address")
     check(y["phone"] == "0411222333" and y["accreditationProvider"] == "PDCUA" and z["accreditationProvider"] == "Cricket Australia", "a mobile stored as a number gets its 0 back")
     types_now = [t["name"] for t in page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.membership.types")]
     check("Existing Member" in types_now and "New Member" in types_now, "the new membership types are added to Settings")
     saved = page.evaluate("() => JSON.parse(localStorage.getItem('pdca-umpires-demo-v2')).orgs.pdca.org.memberImport")
-    check(saved and saved["columns"].get("address") == "" and saved["columns"].get("contact number") == "phone", "the column choices are kept for the association")
+    check(saved and saved["columns"].get("address") == "address" and saved["columns"].get("contact number") == "phone" and saved["columns"].get("member since") == "", "the column choices are kept for the association, removed ones too")
     if bring.get_attribute("open") is None:
         bring.locator("> summary").click()
     page.set_input_files(".import-step input[type=file]", xlsx)
     page.wait_for_selector(".import-map .map-row")
-    check(field_of("Address") == "", "next time, the column they ignored is still ignored")
+    check(field_of("Contact number") == "phone", "next time, the columns come in the same way")
     page.evaluate("t => { const k = 'pdca-umpires-demo-v2'; const d = JSON.parse(localStorage.getItem(k)); d.orgs.pdca.org.membership = JSON.parse(t); localStorage.setItem(k, JSON.stringify(d)); }", types_before)   # the Settings checks below start from the seeded types
     page.reload()
     page.select_option(".member-tools select", "inactive")

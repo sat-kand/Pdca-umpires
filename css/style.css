@@ -577,7 +577,10 @@ main.enter > * { animation: page-in .18s ease-out; }
 .import-count.is-old { background: var(--green-l); border-color: #b9dcc7; }
 .import-preview li { padding: .35rem 0; border-bottom: 1px solid var(--line); align-items: flex-start; }
 .upd-what { color: #8a5a00; }
-.show-all { font-weight: 600; }
+.show-all { background: none; border: 0; padding: 0; font: inherit; font-size: .85rem; color: var(--ink); cursor: pointer; }
+.show-all:hover { text-decoration: underline; }
 .chip.st-new { background: #e3f0ff; color: #1d4f9c; font-weight: 600; }
 .chip.st-upd { background: #fff4dc; color: #8a5a00; font-weight: 600; }
 .chip.st-old { background: var(--green-l); color: var(--green-d); }
+.map-list > .map-row > .map-to { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; justify-self: stretch; }
+.map-list > .map-row > .map-to > select { flex: 1 1 100%; }

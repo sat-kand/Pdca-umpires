@@ -119,7 +119,8 @@ export function dateFrom(cell) {
 
 // Work out what a membership file would do, without changing anything.
 // rows (from a file) or text (pasted); cols overrides the column guess; values translates answers per field.
-export function planMembers({ text, rows: given, cols: chosen, values = {}, members = [], types = [] }) {
+// custom: [{ i, key, label }] columns kept as the association's own fields (answers on the membership).
+export function planMembers({ text, rows: given, cols: chosen, values = {}, members = [], types = [], custom = [] }) {
   const rows = given || parseTable(text);
   if (!rows.length) return { error: 'Paste the list, or choose a file.', people: [] };
   let cols = chosen || columnsOf(rows[0]);
@@ -156,6 +157,11 @@ export function planMembers({ text, rows: given, cols: chosen, values = {}, memb
         phone: parts[at + 1] || '', accreditation: parts[at + 2] || '', dob: '', address: '', accreditationProvider: '',
         membership: '' };
     }
+    if (cols) {
+      const answers = {};
+      for (const c of custom) { const v = String(row[c.i] || '').trim(); if (v) answers[c.key] = v; }
+      if (Object.keys(answers).length) p.answers = answers;
+    }
     if (!p.email || !EMAIL.test(p.email)) { if (row.some(c => (c || '').trim())) bad.push(row.join(', ')); continue; }
     if (seen.has(p.email)) continue;                      // the same person twice in one file: the first row wins
     seen.add(p.email);
@@ -167,8 +173,14 @@ export function planMembers({ text, rows: given, cols: chosen, values = {}, memb
       // What the file would change: blanks it fills in, the membership type, becoming a member.
       p.fills = Object.fromEntries(FILLABLE.filter(([k]) => p[k] && !String(had[k] || '').trim()).map(([k]) => [k, p[k]]));
       p.kept = FILLABLE.filter(([k]) => p[k] && String(had[k] || '').trim() && norm(String(had[k])) !== norm(p[k])).map(([, label]) => label);
+      // The association's own fields: the same, blanks filled in, answers they have kept.
+      const was = had.answers || {};
+      const newAns = custom.filter(c => p.answers && p.answers[c.key] && !String(was[c.key] || '').trim());
+      if (newAns.length) p.fills.answers = { ...was, ...Object.fromEntries(newAns.map(c => [c.key, p.answers[c.key]])) };
+      p.kept.push(...custom.filter(c => p.answers && p.answers[c.key] && String(was[c.key] || '').trim() && norm(String(was[c.key])) !== norm(p.answers[c.key])).map(c => c.label));
       p.changes = [
         ...FILLABLE.filter(([k]) => k in p.fills).map(([, label]) => label),
+        ...newAns.map(c => c.label),
         ...(p.membership && p.membership !== had.membership ? ['Membership type'] : []),
         ...(!['member', 'suspended'].includes(membershipOf(had)) ? ['Membership'] : []),
       ];

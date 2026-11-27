@@ -856,14 +856,26 @@ export async function viewUmpires(ctx) {
     const out = h('div', { class: 'import-out' });
     const checkBtn = h('button', { class: 'btn', type: 'button', disabled: true }, 'Check it');
     const importBtn = h('button', { class: 'btn primary', type: 'button', disabled: true }, 'Import');
-    let rows = null, head = [], choice = {}, values = {}, plan = null, headless = false, showAll = false;
+    let rows = null, head = [], choice = {}, values = {}, plan = null, headless = false, showAll = false, guesses = {};
+    const guessFor = i => guesses[i] || 'new';
 
-    const cols = () => { const c = {}; head.forEach((hd, i) => { const f = choice[i]; if (f && !(f in c)) c[f] = i; }); return c; };
+    // A column is one of Third Umpire's fields, one of the association's own fields (q:<key>), a new field of its
+    // own ('new': added on import, named after the heading), or removed (''): not brought in.
+    const ownQs = () => joinSettings(store.org).custom;
+    const qKey = hd => 'q' + headKey(hd).replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40);
+    const cols = () => { const c = {}; head.forEach((hd, i) => { const f = choice[i]; if (f && f !== 'new' && !f.startsWith('q:') && !(f in c)) c[f] = i; }); return c; };
+    const customCols = () => head.map((hd, i) => choice[i] === 'new' ? { i, key: qKey(hd), label: hd, fresh: true }
+      : (choice[i] || '').startsWith('q:') ? { i, key: choice[i].slice(2), label: (ownQs().find(q => q.key === choice[i].slice(2)) || {}).label || hd } : null)
+      .filter(Boolean).filter((c, n, all) => all.findIndex(x => x.key === c.key) === n);
     const distinct = i => [...new Set(rows.slice(1).map(r => String(r[i] || '').trim()).filter(Boolean))];
     const drawMap = () => {
       const c = cols();
       const fieldSel = i => h('select', { class: 'in-sm', 'aria-label': `Field for ${head[i] || 'column ' + (i + 1)}`, onchange: e => { choice[i] = e.target.value; plan = null; importBtn.disabled = true; drawMap(); } },
-        h('option', { value: '' }, 'Ignore'), MEMBER_FIELDS.map(([k, label]) => h('option', { value: k, selected: choice[i] === k }, label)));
+        MEMBER_FIELDS.map(([k, label]) => h('option', { value: k, selected: choice[i] === k }, label)),
+        ownQs().map(q => h('option', { value: 'q:' + q.key, selected: choice[i] === 'q:' + q.key }, q.label)),
+        h('option', { value: 'new', selected: choice[i] === 'new' }, `New field: ${head[i] || 'column ' + (i + 1)}`));
+      const unremove = i => { choice[i] = guessFor(i); plan = null; importBtn.disabled = true; drawMap(); };
+      const removed = head.map((hd, i) => i).filter(i => !choice[i]);
       const sample = i => rows.slice(1).map(r => String(r[i] || '').trim()).filter(Boolean).slice(0, 2).join(' · ');
       // Short lists of answers, each turned into a value Third Umpire keeps. Every row says whether that value is
       // one the association already has, or a new one the import adds.
@@ -920,11 +932,16 @@ export async function viewUmpires(ctx) {
         h('h4', {}, 'Match your columns'),
         h('p', { class: 'muted small' }, 'Each column of your sheet and what it holds. We guessed from the headings; change any that are wrong. Your choices are kept for next time.'),
         h('div', { class: 'map-head muted small' }, h('span', {}, 'Column in your sheet'), h('span'), h('span', {}, 'Field in Third Umpire')),
-        h('ul', { class: 'plain map-list' }, head.map((hd, i) => h('li', { class: 'map-row', 'data-col': i },
+        h('ul', { class: 'plain map-list' }, head.map((hd, i) => choice[i] && h('li', { class: 'map-row', 'data-col': i },
           h('span', { class: 'map-from' }, h('strong', {}, hd || `Column ${i + 1}`), h('span', { class: 'muted small map-sample' }, sample(i))),
           h('span', { class: 'map-arrow', 'aria-hidden': 'true' }, '→'),
-          h('span', { class: 'map-to' }, fieldSel(i), choice[i] && h('button', { class: 'link map-remove', type: 'button', 'aria-label': `Do not bring in ${hd || 'column ' + (i + 1)}`,
-            onclick: () => { choice[i] = ''; plan = null; importBtn.disabled = true; drawMap(); } }, 'Remove'))))),
+          h('span', { class: 'map-to' }, fieldSel(i),
+            choice[i] === 'new' && h('span', { class: 'chip new' }, 'New field'),
+            choice[i] === 'new' && h('button', { class: 'link map-remove', type: 'button', 'aria-label': `Do not bring in ${hd || 'column ' + (i + 1)}`,
+              onclick: () => { choice[i] = ''; plan = null; importBtn.disabled = true; drawMap(); } }, 'Remove'))))),
+        customCols().some(c => c.fresh) && h('p', { class: 'muted small' }, 'New fields are added to your association (Settings → New umpires → Your own questions) and each member\'s answer is kept. Remove any you do not need.'),
+        removed.length > 0 && h('p', { class: 'muted small map-removed' }, 'Not brought in: ',
+          removed.map((i, n) => [n ? ', ' : '', h('button', { class: 'link', type: 'button', title: 'Bring this column in', onclick: () => unremove(i) }, head[i] || `Column ${i + 1}`)])),
         !('email' in c) && h('p', { class: 'notice warn' }, 'Choose which column has the email address.'),
         valueCards.filter(Boolean));
     };
@@ -938,11 +955,22 @@ export async function viewUmpires(ctx) {
       const guess = matchColumns(head, saved.columns || {});
       choice = {}; values = {};
       for (const [f, i] of Object.entries(guess)) choice[i] = f;
+      // Columns with no field: one of the association's own fields by name, a saved choice, else a new field
+      // (unless it was removed last time). Empty columns are left out.
+      head.forEach((hd, i) => {
+        if (choice[i]) return;
+        const k = headKey(hd);
+        const sv = (saved.columns || {})[k];
+        if (sv !== undefined && sv !== 'new' && !(sv || '').startsWith('q:')) { choice[i] = ''; return; }
+        const own = ownQs().find(q => headKey(q.label) === k);
+        choice[i] = own ? 'q:' + own.key : (sv || '').startsWith('q:') && ownQs().some(q => 'q:' + q.key === sv) ? sv : (hd && distinct(i).length ? 'new' : '');
+      });
+      guesses = { ...choice };
       checkBtn.disabled = false;
       drawMap();
     };
     const check = () => {
-      plan = planMembers({ rows, cols: headless ? undefined : cols(), values, members, types });
+      plan = planMembers({ rows, cols: headless ? undefined : cols(), values, members, types, custom: headless ? [] : customCols() });
       importBtn.disabled = !!plan.error;
       if (plan.error) { setChildren(out, h('p', { class: 'notice warn' }, plan.error)); return; }
       drawPlan();
@@ -966,8 +994,8 @@ export async function viewUmpires(ctx) {
             p.status === 'updated' && h('div', { class: 'small upd-what' }, 'Adds: ', p.changes.join(', ')),
             p.kept && p.kept.length > 0 && h('div', { class: 'muted small' }, `Kept as they have it: ${p.kept.join(', ')}`)),
           h('span', { class: STATUS[p.status][0] }, STATUS[p.status][1])))),
-        list.length > LIMIT && h('p', {}, h('button', { class: 'link show-all', type: 'button', onclick: () => { showAll = !showAll; drawPlan(); } },
-          showAll ? 'Show fewer' : `… and ${list.length - LIMIT} more. Show all ${list.length}`)));
+        list.length > LIMIT && h('p', {}, h('button', { class: 'show-all', type: 'button', onclick: () => { showAll = !showAll; drawPlan(); } },
+          showAll ? 'Show fewer' : `… Show all ${list.length}`)));
     };
     file.onchange = guard(async () => {
       const f = file.files && file.files[0];
@@ -996,6 +1024,15 @@ export async function viewUmpires(ctx) {
       if (newTypes.length) {
         const org = store.org || {};
         await store.saveOrg({ membership: { ...(org.membership || {}), types: [...membershipTypes(org), ...newTypes.map(name => ({ name, fee: 0 }))] } });
+      }
+      // New fields from the sheet become the association's own fields (asked of new members too, optional).
+      const fresh = headless ? [] : customCols().filter(c => c.fresh && !ownQs().some(q => q.key === c.key));
+      if (fresh.length) {
+        const j = (store.org && store.org.joining) || {};
+        const all = [...ownQs(), ...fresh.map(c => ({ key: c.key, label: c.label, type: 'text', options: [], level: 'optional' }))];
+        await store.saveOrg({ joining: { ...j, custom: all } });
+        if (store.org) try { store.org.joining = { ...j, custom: all }; } catch (e) { /* a copy */ }
+        if (!headless) head.forEach((hd, i) => { if (choice[i] === 'new') columns[headKey(hd)] = 'q:' + qKey(hd); });
       }
       await store.saveOrg({ memberImport }).catch(e => console.error('import settings', e));
       if (store.org) try { store.org.memberImport = memberImport; } catch (e) { /* a copy in some stores */ }
