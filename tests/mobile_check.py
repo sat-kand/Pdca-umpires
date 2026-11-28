@@ -70,7 +70,8 @@ PROBE = """() => {
       const opt = el.options[el.selectedIndex];
       const c = document.createElement('canvas').getContext('2d'); c.font = getComputedStyle(el).font;
       const need = opt ? c.measureText(opt.text).width + 26 : 0;
-      if (need > r.width + 1 && !(opt && opt.text.length <= 2)) out.push('select too narrow (' + Math.round(r.width) + ' < ' + Math.round(need) + 'px): ' + name);
+      if (need > r.width + 1 && !(opt && opt.text.length <= 2) && !el.title)   // a picker with a title is cut short on purpose: the full name shows on hover
+         out.push('select too narrow (' + Math.round(r.width) + ' < ' + Math.round(need) + 'px): ' + name);
     } else if (el.scrollWidth > el.clientWidth + 2 && getComputedStyle(el).overflow !== 'visible') out.push('text cut off: ' + name);
     if (!inScroller(el) && (r.left < -1 || r.right > W + 1)) out.push('off screen: ' + name);
   }

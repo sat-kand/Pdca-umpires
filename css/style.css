@@ -596,13 +596,17 @@ main.enter > * { animation: page-in .18s ease-out; }
 
 /* Umpire places on the board: pickers side by side (wrapping when a long name needs the room), and the 2nd umpire's
    place held by a small dashed "+ person" button until it is wanted. */
-.slots { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .4rem; }
-.slots > .slot-wrap { flex: 1 1 0; min-width: 0; margin: 0; }
-.slots > .slot-wrap:nth-child(2) { flex-basis: 100%; }
-.slot-add { flex: none; display: inline-flex; align-items: center; gap: .1rem; align-self: stretch; min-height: 2.3rem; padding: 0 .55rem;
+.slots { display: grid; grid-template-columns: 14rem 2.6rem; gap: .3rem .4rem; align-items: center; }
+/* The picker is always the same size, and the side column always holds the + / × / blank space, so adding or removing
+   the 2nd umpire only adds a line below: nothing beside it (fixture, ground) moves. */
+.slots > .slot-wrap { grid-column: 1; min-width: 0; margin: 0; }
+.slots > .slot-add, .slots > .slot-remove { grid-column: 2; justify-self: stretch; }
+.slots > .slot-add { grid-row: 1; } .slots > .slot-remove { grid-row: 2; }
+.slot-add { display: inline-flex; align-items: center; justify-content: center; gap: .1rem; align-self: stretch; min-height: 2.3rem; padding: 0; box-sizing: border-box;
   border: 1.5px dashed #9db8a8; border-radius: 8px; background: #fff; color: var(--green); font-size: 1rem; font-weight: 600; cursor: pointer; }
+@media (max-width: 640px) { .alloc-board .slots { grid-template-columns: minmax(0, 1fr) 2.6rem; } }
 .slot-add:hover, .slot-add:focus-visible { border-color: var(--green); background: var(--green-l); }
 .slot-add .person-icon { width: 1.05rem; height: 1.05rem; }
-.slot-remove { flex: none; border: 0; background: none; color: var(--muted); font-size: 1.25rem; line-height: 1; padding: 0 .3rem; cursor: pointer; }
+.slot-remove { border: 0; background: none; color: var(--muted); font-size: 1.25rem; line-height: 1; padding: 0; text-align: center; cursor: pointer; }
 .slot-remove:hover, .slot-remove:focus-visible { color: var(--red, #b3261e); }
 .slot-add.spacer, .slot-remove.spacer { visibility: hidden; }

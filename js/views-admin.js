@@ -405,16 +405,13 @@ export async function viewBoard(ctx, rid) {
         : n ? g.days.map((d, di) => h('div', { class: 'day-block' },
           g.days.length > 1 && h('div', { class: 'day-label' }, `Day ${d.day} · ${fmtDay(d.date)}`),
           h('div', { class: 'slots' },
-            Array.from({ length: n }, (_, i) => {
-              const wrap = slotSelect(g, d.date, i, busyMap, loads);
-              // Later days keep an empty space of the same size, so their pickers line up with day 1's.
-              if (i === 1) wrap.append(di === 0 ? h('button', { class: 'slot-remove', type: 'button', 'aria-label': 'Remove 2nd umpire', title: 'Remove 2nd umpire', onclick: () => setUmpires(g, 1) }, '×')
-                : h('span', { class: 'slot-remove spacer', 'aria-hidden': 'true' }, '×'));
-              return wrap;
-            }),
+            Array.from({ length: n }, (_, i) => slotSelect(g, d.date, i, busyMap, loads)),
+            // The + and × sit in a side column of their own (later days keep a blank of the same size, so the pickers line up).
             n === 1 && (di === 0 ? h('button', { class: 'slot-add', type: 'button', 'aria-label': 'Add 2nd umpire', title: 'Add 2nd umpire', onclick: () => setUmpires(g, 2) },
               h('span', { 'aria-hidden': 'true' }, '+'), personIcon())
-              : h('span', { class: 'slot-add spacer', 'aria-hidden': 'true' }, h('span', {}, '+'), personIcon())))))
+              : h('span', { class: 'slot-add spacer', 'aria-hidden': 'true' })),
+            n === 2 && (di === 0 ? h('button', { class: 'slot-remove', type: 'button', 'aria-label': 'Remove 2nd umpire', title: 'Remove 2nd umpire', onclick: () => setUmpires(g, 1) }, '×')
+              : h('span', { class: 'slot-remove spacer', 'aria-hidden': 'true' })))))
           : h('span', { class: 'muted' }, 'No umpire needed')));
   }
   // One umpire or two. Taking the 2nd away clears whoever was in that place, asking first if someone was.
