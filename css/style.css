@@ -333,8 +333,6 @@ a.member-link:hover { text-decoration-color: currentColor; }
   .alloc-board tr { grid-template-columns: auto 1fr; }
   .alloc-board td:nth-child(3) { grid-column: 2; }
   .alloc-board td:nth-child(4) { grid-column: 1 / -1; }
-  .alloc-board .slots > .slot-wrap { flex: 1 1 0; }
-  .alloc-board .slots > .slot-wrap:nth-child(2) { flex-basis: 100%; }
 
   /* Settings grades: the grade and competition, then Group and Umpires side by side. */
   .grades-table tr { grid-template-columns: 2fr 1fr; }
@@ -599,7 +597,8 @@ main.enter > * { animation: page-in .18s ease-out; }
 /* Umpire places on the board: pickers side by side (wrapping when a long name needs the room), and the 2nd umpire's
    place held by a small dashed "+ person" button until it is wanted. */
 .slots { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .4rem; }
-.slots > .slot-wrap { flex: 1 1 12rem; min-width: 0; margin: 0; }
+.slots > .slot-wrap { flex: 1 1 0; min-width: 0; margin: 0; }
+.slots > .slot-wrap:nth-child(2) { flex-basis: 100%; }
 .slot-add { flex: none; display: inline-flex; align-items: center; gap: .1rem; align-self: stretch; min-height: 2.3rem; padding: 0 .55rem;
   border: 1.5px dashed #9db8a8; border-radius: 8px; background: #fff; color: var(--green); font-size: 1rem; font-weight: 600; cursor: pointer; }
 .slot-add:hover, .slot-add:focus-visible { border-color: var(--green); background: var(--green-l); }
