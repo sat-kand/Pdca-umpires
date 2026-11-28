@@ -405,17 +405,25 @@ with sync_playwright() as p:
     check(all(len(v) == len(set(v)) for v in by_day.values()), "no umpire is allocated to two Senior games on the same day")
 
     print("Admin: umpires per game")
-    check(page.locator("table.board thead th").last.inner_text().upper() == "UMPIRES"
-          and page.locator("table.board tbody tr").first.locator("td").last.locator("select.n-slots").count() == 1,
-          "the number of umpires is the last column, after the names")
-    page.wait_for_timeout(300)
-    page.locator("select.n-slots").first.select_option("2")
+    check(page.locator("table.board thead th").all_inner_texts()[-1].upper() == "UMPIRES" and page.locator("select.n-slots").count() == 0
+          and page.locator("table.board thead th").count() == 4,
+          "no separate umpires-needed column: the Umpires column holds the pickers")
+    row1 = page.locator("table.board tbody tr").first
+    add = row1.locator("button.slot-add")
+    check(add.count() == 1 and add.get_attribute("aria-label") == "Add 2nd umpire" and row1.locator("select.slot").count() >= 1,
+          "a one-umpire game has a small dashed + person button where the 2nd umpire would go")
+    ab, sb = add.bounding_box(), row1.locator("select.slot").first.bounding_box()
+    check(abs((ab["y"] + ab["height"] / 2) - (sb["y"] + sb["height"] / 2)) < 6 and ab["width"] < 70, "it sits beside the picker, on the same line, and is small")
+    slots_before = len(row1.locator("select.slot").all())
+    add.click()
     page.wait_for_timeout(300)
     m = re.search(r"of (\d+) slots", page.locator(".summary").inner_text())
-    check(int(m.group(1)) == 26 + 2, f"asking for 2 umpires on one two-day game adds 2 slots (now {m.group(1)})")
-    page.locator("select.n-slots").first.select_option("1")
+    check(int(m.group(1)) == 26 + 2 and row1.locator("select.slot").count() == slots_before * 2 and row1.locator("button.slot-add").count() == 0
+          and row1.locator("button.slot-remove").count() == 1,
+          f"+ adds the 2nd umpire on both days of a two-day game, with an x to remove it (now {m.group(1)} slots)")
+    row1.locator("button.slot-remove").click()
     page.wait_for_timeout(300)
-
+    check(row1.locator("button.slot-add").count() == 1 and row1.locator("select.slot").count() == slots_before, "x takes the 2nd umpire away again")
     print("Admin: availability tab, report tab, publish")
     page.click("a.tab:has-text('Availability')")
     page.wait_for_selector("td.av")

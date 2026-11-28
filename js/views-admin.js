@@ -29,7 +29,6 @@ const homeMembers = { filter: 'all', q: '', importOpen: false, comp: '', avail: 
 const editableUntil = r => addDays(r.end || r.start || '', EDIT_DAYS_AFTER);
 const isLocked = (r, today = todayLocal()) => !!(r && (r.end || r.start)) && editableUntil(r) < today;
 
-const SLOT_CHOICES = [[1, '1 umpire'], [2, '2 umpires']];
 
 const roundHeading = r => `${r.comp ? compLabel(r.comp) + ' · ' : ''}${r.title}`;
 
@@ -380,6 +379,7 @@ export async function viewBoard(ctx, rid) {
       return items.length > 0 && h('optgroup', { label: name }, items.map(o => h('option', { value: o.umpire.pid, selected: !!cur && cur.p === o.umpire.pid }, label(o))));
     }));
     if (cur && !opts.some(o => o.umpire.pid === cur.p)) sel.append(h('option', { value: cur.p, selected: true }, `${cur.n} (inactive)`));
+    if (cur) sel.title = cur.n;                                    // the full name, when a long one is cut short
     const warn = cur ? (() => {
       const u = B.umpires.find(x => x.pid === cur.p);
       return u ? assignmentWarnings({ game: g, date, slotIndex: i, umpire: u, availByEmail: B.availByEmail, busy: busyMap, claimOf }) : ['Umpire not in list'];
@@ -399,14 +399,42 @@ export async function viewBoard(ctx, rid) {
           h('button', { class: 'link', type: 'button', onclick: guard(async () => { await writeGame(g, { changeNote: '' }); draw(); }) }, 'dismiss'))),
       h('td', {}, mapsLink(g) ? h('a', { href: mapsLink(g), target: '_blank', rel: 'noopener' }, g.ground || '—') : (g.ground || '—'),
         g.days[0].time && h('div', { class: 'muted' }, g.days[0].time)),
-      h('td', {}, n ? g.days.map(d => h('div', { class: 'day-block' },
-        g.days.length > 1 && h('div', { class: 'day-label' }, `Day ${d.day} · ${fmtDay(d.date)}`),
-        Array.from({ length: n }, (_, i) => slotSelect(g, d.date, i, busyMap, loads)))) : h('span', { class: 'muted' }, 'No umpire needed')),
-      // How many umpires the game needs: set once, so it sits after the names.
-      h('td', {}, g.removed ? h('span', { class: 'chip warn' }, 'removed') : h('select', { class: 'n-slots', 'aria-label': 'Umpires needed', value: String(n),
-        onchange: guard(async e => { await writeGame(g, { slots: Number(e.target.value) }); draw(); }) },
-      SLOT_CHOICES.map(([v, l]) => h('option', { value: String(v) }, l)))));
+      // The umpires: one picker per place. The 2nd umpire's place holds a small dashed "+ person" button until
+      // it is wanted; then it is the 2nd picker, with an × to take it away again (set on the first day for all days).
+      h('td', {}, g.removed ? h('span', { class: 'chip warn' }, 'removed')
+        : n ? g.days.map((d, di) => h('div', { class: 'day-block' },
+          g.days.length > 1 && h('div', { class: 'day-label' }, `Day ${d.day} · ${fmtDay(d.date)}`),
+          h('div', { class: 'slots' },
+            Array.from({ length: n }, (_, i) => {
+              const wrap = slotSelect(g, d.date, i, busyMap, loads);
+              // Later days keep an empty space of the same size, so their pickers line up with day 1's.
+              if (i === 1) wrap.append(di === 0 ? h('button', { class: 'slot-remove', type: 'button', 'aria-label': 'Remove 2nd umpire', title: 'Remove 2nd umpire', onclick: () => setUmpires(g, 1) }, '×')
+                : h('span', { class: 'slot-remove spacer', 'aria-hidden': 'true' }, '×'));
+              return wrap;
+            }),
+            n === 1 && (di === 0 ? h('button', { class: 'slot-add', type: 'button', 'aria-label': 'Add 2nd umpire', title: 'Add 2nd umpire', onclick: () => setUmpires(g, 2) },
+              h('span', { 'aria-hidden': 'true' }, '+'), personIcon())
+              : h('span', { class: 'slot-add spacer', 'aria-hidden': 'true' }, h('span', {}, '+'), personIcon())))))
+          : h('span', { class: 'muted' }, 'No umpire needed')));
   }
+  // One umpire or two. Taking the 2nd away clears whoever was in that place, asking first if someone was.
+  const setUmpires = (g, want) => guard(async () => {
+    const alloc = structuredClone(g.alloc || {});
+    if (want < 2) {
+      const named = g.days.map(d => (alloc[d.date] || [])[1]).filter(Boolean);
+      if (named.length && !confirm(`Take ${named[0].n} off as 2nd umpire${g.days.length > 1 ? ' (all days)' : ''}?`)) return;
+      for (const d of g.days) if (alloc[d.date]) alloc[d.date] = alloc[d.date].slice(0, 1);
+    }
+    await writeGame(g, { slots: want, alloc });
+    draw();
+  })();
+  const personIcon = () => {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('class', 'person-icon');
+    svg.innerHTML = '<circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4.5 20c.8-3.8 3.8-6 7.5-6s6.7 2.2 7.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>';
+    return svg;
+  };
 
   async function doUpdateFixtures() {
     const res = await refreshRound(store, B.round, B.settings);
@@ -510,7 +538,7 @@ export async function viewBoard(ctx, rid) {
       sections.map(s => h('section', { class: 'card' },
         h('h2', {}, `${s.label} – ${fmtRange(s.dates)}`),
         h('div', { class: 'table-wrap' }, h('table', { class: 'board alloc-board' },        // stacks into cards on a phone
-          h('thead', {}, h('tr', {}, ['Grade', 'Fixture', 'Ground', 'Allocation', 'Umpires'].map(c => h('th', {}, c)))),
+          h('thead', {}, h('tr', {}, ['Grade', 'Fixture', 'Ground', 'Umpires'].map(c => h('th', {}, c)))),
           h('tbody', {}, s.games.map(g => gameRow(g, busyMap, loads))))))),
       !sections.length && h('p', { class: 'muted' }, 'No grades selected yet. Press Select grades to choose the grades that need umpires.'),
       h('p', { class: 'muted' }, '"allocated" next to a name means they are already on another game that day. Names are in last-name order.'),

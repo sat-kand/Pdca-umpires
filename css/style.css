@@ -79,7 +79,7 @@ table { border-collapse: collapse; width: 100%; }
 .board td input:not([type=checkbox]) { margin: 0; min-width: 8rem; }
 .day-block + .day-block { margin-top: .5rem; } .day-label { font-size: .78rem; color: var(--muted); margin-bottom: .15rem; }
 .slot-wrap { display: flex; align-items: center; gap: .3rem; margin: .15rem 0; }
-select.slot { min-width: 13rem; margin: 0; } select.slot.empty { border-color: #e0b44c; background: #fffaf0; } select.n-slots { width: auto; margin: 0; }
+select.slot { width: 100%; min-width: 0; margin: 0; text-overflow: ellipsis; } select.slot.empty { border-color: #e0b44c; background: #fffaf0; } select.n-slots { width: auto; margin: 0; }
 .warn-icon { color: var(--amber); cursor: help; font-size: 1.1rem; }
 .change { font-size: .82rem; color: var(--amber); margin-top: .15rem; }
 td.av { text-align: center; font-weight: 700; } td.av.ok { color: var(--green); background: var(--green-l); } td.av.maybe { color: var(--amber); background: var(--amber-l); } td.av.no { color: var(--red); background: var(--red-l); } td.av.none { color: #aaa; }
@@ -332,8 +332,9 @@ a.member-link:hover { text-decoration-color: currentColor; }
   /* Assign board: grade and fixture, the ground under the fixture, then the allocation and umpires full width. */
   .alloc-board tr { grid-template-columns: auto 1fr; }
   .alloc-board td:nth-child(3) { grid-column: 2; }
-  .alloc-board td:nth-child(4), .alloc-board td:nth-child(5) { grid-column: 1 / -1; }
-  .alloc-board td:nth-child(5)::before { content: 'Umpires needed'; display: block; font-size: .78rem; color: var(--muted); margin-bottom: .15rem; }
+  .alloc-board td:nth-child(4) { grid-column: 1 / -1; }
+  .alloc-board .slots > .slot-wrap { flex: 1 1 0; }
+  .alloc-board .slots > .slot-wrap:nth-child(2) { flex-basis: 100%; }
 
   /* Settings grades: the grade and competition, then Group and Umpires side by side. */
   .grades-table tr { grid-template-columns: 2fr 1fr; }
@@ -594,3 +595,15 @@ main.enter > * { animation: page-in .18s ease-out; }
 .info-i { flex: none; width: 1.3rem; height: 1.3rem; border-radius: 50%; background: var(--green-d); color: #fff; display: grid; place-items: center;
   font: italic 700 .8rem/1 Georgia, 'Times New Roman', serif; margin-top: .05rem; }
 .comp-tile.cont-only .tile-cont { margin-top: .3rem; }
+
+/* Umpire places on the board: pickers side by side (wrapping when a long name needs the room), and the 2nd umpire's
+   place held by a small dashed "+ person" button until it is wanted. */
+.slots { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .4rem; }
+.slots > .slot-wrap { flex: 1 1 12rem; min-width: 0; margin: 0; }
+.slot-add { flex: none; display: inline-flex; align-items: center; gap: .1rem; align-self: stretch; min-height: 2.3rem; padding: 0 .55rem;
+  border: 1.5px dashed #9db8a8; border-radius: 8px; background: #fff; color: var(--green); font-size: 1rem; font-weight: 600; cursor: pointer; }
+.slot-add:hover, .slot-add:focus-visible { border-color: var(--green); background: var(--green-l); }
+.slot-add .person-icon { width: 1.05rem; height: 1.05rem; }
+.slot-remove { flex: none; border: 0; background: none; color: var(--muted); font-size: 1.25rem; line-height: 1; padding: 0 .3rem; cursor: pointer; }
+.slot-remove:hover, .slot-remove:focus-visible { color: var(--red, #b3261e); }
+.slot-add.spacer, .slot-remove.spacer { visibility: hidden; }

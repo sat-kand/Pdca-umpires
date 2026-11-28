@@ -128,6 +128,17 @@ def main():
         page.wait_for_selector("table.board")
         rid = page.evaluate("() => location.pathname.split('/').pop()")
         shot("05-assign-board", "table.board")
+        # A game with 2 umpires, one with a long name: the pickers share the line on a laptop and wrap when needed.
+        page.evaluate("""() => { const k = 'pdca-umpires-demo-v2'; const db = JSON.parse(localStorage.getItem(k)); const u = Object.values(db.orgs.pdca.umpires)[0]; u.name = 'Alexandria Montgomery-Fitzwilliam'; localStorage.setItem(k, JSON.stringify(db)); }""")
+        page.reload(); page.wait_for_selector("table.board")
+        row = page.locator("table.board tbody tr").first
+        row.locator("button.slot-add").click(); page.wait_for_timeout(300)
+        for i, sel in enumerate(row.locator("select.slot").all()[:2]):
+            opts = sel.locator("option").all()
+            pick = next((o.get_attribute("value") for o in opts if "Montgomery" in o.inner_text()), None) if i == 0 else opts[2].get_attribute("value")
+            if pick: sel.select_option(pick); page.wait_for_timeout(300)
+        page.wait_for_timeout(400)
+        page.locator("table.board").first.screenshot(path=f"{OUT}/05b-two-umpires.png")
         page.click("button:has-text('Select grades')"); shot("06-select-grades", "dialog[open], .modal"); page.keyboard.press("Escape")
         goto(page, BASE + f"admin/round/{rid}/availability"); shot("07-round-availability")
         goto(page, BASE + f"admin/round/{rid}/report"); shot("08-report")
